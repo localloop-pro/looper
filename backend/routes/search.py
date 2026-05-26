@@ -55,14 +55,27 @@ def search_businesses(
     if category:
         query = query.filter(Business.category == category)
 
-    # Free-text search on name and description
-    search_term = f"%{q}%"
-    query = query.filter(
-        (Business.name.ilike(search_term)) |
-        (Business.description.ilike(search_term)) |
-        (Business.category.ilike(search_term)) |
-        (Business.suburb.ilike(search_term))
-    )
+    # Tokenized free-text search — split query into words, match any token
+    # This way "café near Bondi Beach" matches businesses with category "café" in "Bondi"
+    tokens = [t.strip().lower() for t in q.split() if len(t.strip()) > 1]
+    # Also include stopwords that might be relevant (like "beach", "road")
+    stopwords = {"near", "the", "a", "an", "in", "at", "on", "is", "are", "was", "for", "to", "of", "and", "or", "i", "me", "my", "what", "where", "who", "how", "find", "good", "best", "great"}
+    search_tokens = [t for t in tokens if t not in stopwords]
+    
+    if not search_tokens:
+        search_tokens = tokens  # fallback if all words are stopwords
+    
+    # Build OR filter: match any token against name, category, suburb, description
+    from sqlalchemy import or_
+    conditions = []
+    for token in search_tokens:
+        pattern = f"%{token}%"
+        conditions.append(Business.name.ilike(pattern))
+        conditions.append(Business.category.ilike(pattern))
+        conditions.append(Business.suburb.ilike(pattern))
+        conditions.append(Business.description.ilike(pattern))
+    
+    query = query.filter(or_(*conditions))
 
     businesses = query.all()
 
@@ -86,16 +99,30 @@ def search_businesses(
 
         top_review = get_top_review(biz.id, db)
 
+        # Relevance score: boost category/name matches over generic suburb matches
+        relevance = 0
+        for token in search_tokens:
+            if token in (biz.category or "").lower():
+                relevance += 5  # category match = highest relevance
+            if token in (biz.name or "").lower():
+                relevance += 3  # name match
+            if biz.suburb and token in biz.suburb.lower():
+                relevance += 2  # suburb match
+            if biz.description and token in biz.description.lower():
+                relevance += 1
+
         results.append({
             "business": biz,
             "review_count": review_count,
             "avg_rating": round(avg_rating, 1) if avg_rating else None,
             "top_review": top_review,
             "distance_km": round(distance, 1) if distance else None,
+            "relevance": relevance,
         })
 
-    # SORT: review_count DESC (most community-trusted first), then proximity
-    results.sort(key=lambda r: (-r["review_count"], r["distance_km"] or 999))
+    # SORT: relevance DESC (category match > name match > suburb match),
+    # then review_count DESC (most community-trusted first), then proximity
+    results.sort(key=lambda r: (-r["relevance"], -r["review_count"], r["distance_km"] or 999))
 
     # Build response
     ranked = []
