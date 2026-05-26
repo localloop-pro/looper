@@ -53,7 +53,7 @@ v0.1 backend is built, tested, and pushed. Awaiting Telegram bot token to go liv
 |------|-------|-------|
 | Telegram bot token | Bill | Create @looper_bot via @BotFather |
 | Gateway launch | Luna | `looper gateway run` after token set |
-| Widget integration | Luna | Embed on localloop.pro-main |
+| Widget integration | ✅ | Hooked into `handleAIQuery` in localloop.pro-main `index.html` — queries LOOPER API first, shows ⭐ ratings + review excerpts, falls back gracefully |
 | Facebook data pipeline | Future | 150k Bondi Local Loop members |
 | HuggingFace fine-tuning | Future | After training data accumulates |
 
@@ -63,7 +63,8 @@ v0.1 backend is built, tested, and pushed. Awaiting Telegram bot token to go liv
 
 | # | Timestamp | Agent | Action |
 |---|-----------|-------|--------|
-| 1 | 2026-05-26 | Luna | Created profile, repo, backend (FastAPI+SQLite), seeded 20 Bondi businesses + 11 reviews, built tokenized anti-bias search, onboarding flow, web widget, training pipeline |
+| 1 | 2026-05-26 06:00 | Luna | Integrated LOOPER into localloop.pro-main: patched `handleAIQuery` to query LOOPER API first with anti-bias formatting (⭐ ratings, review excerpts, distance). Config added via `window.LocalLoopConfig.looperApi`. Graceful fallback to existing search. |
+| 2 | 2026-05-26 | Luna | Created profile, repo, backend (FastAPI+SQLite), seeded 20 Bondi businesses + 11 reviews, built tokenized anti-bias search, onboarding flow, web widget, training pipeline |
 
 ---
 
