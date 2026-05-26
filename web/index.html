@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LOOPER Widget Demo</title>
+  <link rel="stylesheet" href="looper-widget.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 40px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+      min-height: 100vh;
+    }
+    .demo-content {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    h1 { color: #333; }
+    p { color: #666; line-height: 1.6; }
+    .note {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 12px 16px;
+      margin: 20px 0;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-content">
+    <h1>🏠 LocalLoop — LOOPER Widget Demo</h1>
+    <p>
+      This page demonstrates the LOOPER search widget. Click the blue button
+      in the bottom-right corner to ask Looper about local businesses and services.
+    </p>
+    <div class="note">
+      <strong>Try asking:</strong> "good café near Bondi Beach", "vet in Bondi Junction",
+      or "what's happening around here"
+    </div>
+    <p>
+      The LOOPER API must be running at <code>http://localhost:8000</code>
+      for the widget to respond.
+    </p>
+  </div>
+
+  <script src="looper-widget.js"></script>
+</body>
+</html>
