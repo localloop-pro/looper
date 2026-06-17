@@ -1,0 +1,10 @@
+# Optional training / ML stack — NOT installed by default
+# These bring heavy deps (torch, transformers) and most CVEs.
+# Install only on training/inference machines:
+#   pip install -r requirements-ml.txt
+
+datasets==2.21.0
+transformers==4.44.0
+torch==2.4.0
+accelerate==0.34.0
+peft==0.12.0
