@@ -1,6 +1,6 @@
 """LOOPER API — Pydantic Schemas"""
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Optional, List
 from datetime import datetime
 
 
@@ -87,3 +87,54 @@ class TrainingExportResponse(BaseModel):
     records_exported: int
     file_path: str
     format: str  # jsonl, parquet, etc.
+
+
+class HybridCardDealPayload(BaseModel):
+    """LooperIngestPayload — FROZEN shape per BRIDGE-CONTRACT-v1 §3b.
+    Receiver adapts to the sender, never the reverse. Note: `eventId` is
+    camelCase in an otherwise snake_case payload (sender's exact shape)."""
+    model_config = ConfigDict(extra="ignore")  # tolerate future additive sender fields
+
+    source: str  # "hybridcard"
+    eventId: str
+    hybrid_card_id: str
+    deal_id: str
+    business_name: str
+    category: str
+    pin_type: str  # offering | event
+    sub_type: Optional[str] = None
+    title: str
+    short_description: Optional[str] = None
+    discount_size: float = 0  # contract type is number (12.5 is valid) — stored, never ranked on (§7)
+    lat: float
+    lng: float
+    hours: Optional[str] = None
+    public_card_url: Optional[str] = None
+    active: bool = True
+    updated_at: Optional[str] = None
+    rank_boost: bool = False  # contract marker; ignored by all logic
+
+
+class HybridCardCardPayload(BaseModel):
+    """Card-lifecycle payload (card.upserted / card.removed) — T2 spec in
+    new-card localloop-waze-bridge/implementation-spec.md. eventId mirrors
+    the deal payload; the T2 sender isn't built yet — flagged as open
+    question R2 in .SEED/decisions.md."""
+    model_config = ConfigDict(extra="ignore")
+
+    event_kind: str = "card"
+    eventId: str
+    hybrid_card_id: str
+    slug: Optional[str] = None
+    business_name: str
+    category: str  # already mapped via contract §5 by the sender
+    sub_type: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    hours: Optional[Any] = None  # T2 spec says object; deal payload says string — tolerate both
+    public_card_url: Optional[str] = None
+    archetype: Optional[str] = None
+    status: Optional[str] = None
+    active: bool = True
+    updated_at: Optional[str] = None
+    rank_boost: bool = False

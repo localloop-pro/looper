@@ -9,6 +9,7 @@ venv/
 
 # Database
 backend/data/looper.db
+backend/data/*.db
 data/exports/
 data/hf_dataset/
 *.db-journal
@@ -17,6 +18,8 @@ data/hf_dataset/
 # Environment
 .env
 .env.local
+# Local deployment credentials (real secrets — never commit)
+local.env
 
 # IDE
 .vscode/
