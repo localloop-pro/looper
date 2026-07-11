@@ -1,6 +1,6 @@
 """LOOPER API — Pydantic Schemas"""
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional, List
+from typing import Any, Optional, List
 from datetime import datetime
 
 
@@ -113,3 +113,28 @@ class HybridCardDealPayload(BaseModel):
     active: bool = True
     updated_at: Optional[str] = None
     rank_boost: bool = False  # contract marker; ignored by all logic
+
+
+class HybridCardCardPayload(BaseModel):
+    """Card-lifecycle payload (card.upserted / card.removed) — T2 spec in
+    new-card localloop-waze-bridge/implementation-spec.md. eventId mirrors
+    the deal payload; the T2 sender isn't built yet — flagged as open
+    question R2 in .SEED/decisions.md."""
+    model_config = ConfigDict(extra="ignore")
+
+    event_kind: str = "card"
+    eventId: str
+    hybrid_card_id: str
+    slug: Optional[str] = None
+    business_name: str
+    category: str  # already mapped via contract §5 by the sender
+    sub_type: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    hours: Optional[Any] = None  # T2 spec says object; deal payload says string — tolerate both
+    public_card_url: Optional[str] = None
+    archetype: Optional[str] = None
+    status: Optional[str] = None
+    active: bool = True
+    updated_at: Optional[str] = None
+    rank_boost: bool = False

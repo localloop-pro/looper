@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from models import BridgeEvent, Business, Deal, get_db
-from schemas import HybridCardDealPayload
+from schemas import HybridCardCardPayload, HybridCardDealPayload
 from services import bridge_hmac
 from services.bridge_hmac import BridgeAuthError
 
@@ -103,4 +103,31 @@ async def ingest_hybridcard_deal(request: Request, db: Session = Depends(get_db)
     deal.active = payload.active  # deal.removed => False; row kept forever
 
     event_type = "deal.upserted" if payload.active else "deal.removed"
+    return _record_event_and_commit(db, payload.eventId, event_type, raw)
+
+
+@router.post("/hybridcard-card")
+async def ingest_hybridcard_card(request: Request, db: Session = Depends(get_db)):
+    """Receiver for card-lifecycle events (card.upserted / card.removed).
+
+    card.removed flips the business is_active flag — its deals stay
+    untouched (card unpublish ≠ deal.removed) but the whole business
+    disappears from /api/search via the is_active filter.
+    """
+    raw = await _verified_raw_body(request)
+    try:
+        payload = HybridCardCardPayload.model_validate_json(raw)
+    except ValidationError:
+        raise HTTPException(status_code=422, detail="invalid payload")
+
+    if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
+        return {"ok": True, "duplicate": True}
+
+    biz = _upsert_business(db, hybrid_card_id=payload.hybrid_card_id,
+                           name=payload.business_name, category=payload.category,
+                           lat=payload.lat, lng=payload.lng,
+                           website=payload.public_card_url)
+    biz.is_active = payload.active  # is_verified untouched
+
+    event_type = "card.upserted" if payload.active else "card.removed"
     return _record_event_and_commit(db, payload.eventId, event_type, raw)
