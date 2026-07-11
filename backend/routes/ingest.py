@@ -4,9 +4,15 @@ Contract rules this file lives by:
 - HMAC is verified over the RAW body bytes BEFORE any parsing.
 - The sender retries ALL non-2xx and replays events — every handler is
   idempotent on eventId and returns 200 only after a durable commit.
+- Retries arrive OUT OF ORDER (each retry is re-signed with a fresh
+  timestamp): the sender's payload updated_at is the ordering key, so a
+  stale retry never overwrites newer state (it is recorded + 200'd, but
+  its field changes are skipped).
 - active:false means DEACTIVATE, never delete.
 - discount_size / rank_boost are stored/ignored — never ranking inputs.
 """
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
@@ -19,11 +25,24 @@ from services.bridge_hmac import BridgeAuthError
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
+# Real contract payloads are ~2 KB; cap well above that but far below
+# anything that could hurt (body is buffered pre-auth and stored in
+# bridge_events.payload).
+MAX_BODY_BYTES = 64 * 1024
+
 
 async def _verified_raw_body(request: Request) -> bytes:
-    """Read the raw body and verify the X-HC-* HMAC headers over it.
-    Raises 401 on any auth failure."""
-    raw = await request.body()
+    """Read the raw body (bounded) and verify the X-HC-* HMAC headers over it.
+    Raises 413 on oversized bodies, 401 on any auth failure."""
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        raise HTTPException(status_code=413, detail="payload too large")
+    buf = bytearray()
+    async for chunk in request.stream():
+        buf.extend(chunk)
+        if len(buf) > MAX_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="payload too large")
+    raw = bytes(buf)
     try:
         bridge_hmac.verify(raw, request.headers)
     except BridgeAuthError:
@@ -31,40 +50,70 @@ async def _verified_raw_body(request: Request) -> bytes:
     return raw
 
 
-def _record_event_and_commit(db: Session, event_id: str, event_type: str, raw: bytes) -> dict:
-    """Append the idempotency ledger row and commit. A lost unique-index race
-    (concurrent replay of the same eventId) is a success, not an error."""
+def _parse_sender_ts(value: str | None) -> datetime | None:
+    """Sender updated_at (ISO-8601, e.g. 2026-07-11T00:00:00.000Z) → naive UTC.
+    Unparseable/missing → None (event applies unconditionally)."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _record_event_and_commit(db: Session, event_id: str, event_type: str, raw: bytes,
+                             *, stale: bool = False) -> dict:
+    """Append the idempotency ledger row and commit. 200 ONLY after the
+    commit is durable."""
     db.add(BridgeEvent(event_id=event_id, event_type=event_type,
+                       status="stale_skipped" if stale else "processed",
                        payload=raw.decode("utf-8", "replace")))
     try:
-        db.commit()  # 200 ONLY after durable commit
+        db.commit()
     except IntegrityError:
         db.rollback()
-        return {"ok": True, "duplicate": True}
-    return {"ok": True, "duplicate": False}
+        # Only a genuine eventId replay race counts as duplicate — any other
+        # integrity failure must stay non-2xx so the sender retries.
+        if db.query(BridgeEvent).filter(BridgeEvent.event_id == event_id).first():
+            return {"ok": True, "duplicate": True}
+        raise HTTPException(status_code=500, detail="transient conflict, retry")
+    result = {"ok": True, "duplicate": False}
+    if stale:
+        result["stale"] = True
+    return result
 
 
 def _upsert_business(db: Session, *, hybrid_card_id: str, name: str, category: str,
-                     lat: float | None, lng: float | None,
-                     website: str | None) -> Business:
-    """Create or update the Business keyed on hybrid_card_id (the bridge key)."""
+                     lat: float | None, lng: float | None, website: str | None,
+                     sender_ts: datetime | None) -> tuple[Business, bool]:
+    """Create or update the Business keyed on hybrid_card_id (the bridge key).
+
+    Returns (business, stale) — stale=True means a newer bridge event already
+    wrote this business, so this event's field changes were skipped."""
     biz = db.query(Business).filter(Business.hybrid_card_id == hybrid_card_id).first()
     if biz is None:
         biz = Business(hybrid_card_id=hybrid_card_id, source="hybrid_card",
                        name=name, category=category, lat=lat, lng=lng,
-                       website=website, is_active=True)
+                       website=website, is_active=True, bridge_updated_at=sender_ts)
         db.add(biz)
         db.flush()  # need biz.id for FKs before commit
-    else:
-        biz.name = name
-        biz.category = category
-        if lat is not None:
-            biz.lat = lat
-        if lng is not None:
-            biz.lng = lng
-        if website:
-            biz.website = website
-    return biz
+        return biz, False
+    if sender_ts and biz.bridge_updated_at and sender_ts < biz.bridge_updated_at:
+        return biz, True
+    biz.name = name
+    biz.category = category
+    if lat is not None:
+        biz.lat = lat
+    if lng is not None:
+        biz.lng = lng
+    if website:
+        biz.website = website
+    if sender_ts:
+        biz.bridge_updated_at = sender_ts
+    return biz, False
 
 
 @router.post("/hybridcard-deal")
@@ -81,29 +130,36 @@ async def ingest_hybridcard_deal(request: Request, db: Session = Depends(get_db)
     if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
         return {"ok": True, "duplicate": True}
 
-    biz = _upsert_business(db, hybrid_card_id=payload.hybrid_card_id,
-                           name=payload.business_name, category=payload.category,
-                           lat=payload.lat, lng=payload.lng,
-                           website=payload.public_card_url)
+    sender_ts = _parse_sender_ts(payload.updated_at)
+    biz, _ = _upsert_business(db, hybrid_card_id=payload.hybrid_card_id,
+                              name=payload.business_name, category=payload.category,
+                              lat=payload.lat, lng=payload.lng,
+                              website=payload.public_card_url, sender_ts=sender_ts)
 
     deal = db.query(Deal).filter(Deal.deal_id == payload.deal_id).first()
+    stale = (deal is not None and sender_ts is not None
+             and deal.source_updated_at is not None
+             and sender_ts < deal.source_updated_at)
     if deal is None:
         deal = Deal(deal_id=payload.deal_id, business_id=biz.id)
         db.add(deal)
-    deal.title = payload.title
-    deal.short_description = payload.short_description
-    deal.category = payload.category
-    deal.pin_type = payload.pin_type
-    deal.sub_type = payload.sub_type
-    deal.discount_size = payload.discount_size
-    deal.lat = payload.lat
-    deal.lng = payload.lng
-    deal.hours = payload.hours
-    deal.public_card_url = payload.public_card_url
-    deal.active = payload.active  # deal.removed => False; row kept forever
+    if not stale:
+        deal.title = payload.title
+        deal.short_description = payload.short_description
+        deal.category = payload.category
+        deal.pin_type = payload.pin_type
+        deal.sub_type = payload.sub_type
+        deal.discount_size = payload.discount_size
+        deal.lat = payload.lat
+        deal.lng = payload.lng
+        deal.hours = payload.hours
+        deal.public_card_url = payload.public_card_url
+        deal.active = payload.active  # deal.removed => False; row kept forever
+        if sender_ts:
+            deal.source_updated_at = sender_ts
 
     event_type = "deal.upserted" if payload.active else "deal.removed"
-    return _record_event_and_commit(db, payload.eventId, event_type, raw)
+    return _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
 
 
 @router.post("/hybridcard-card")
@@ -123,11 +179,13 @@ async def ingest_hybridcard_card(request: Request, db: Session = Depends(get_db)
     if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
         return {"ok": True, "duplicate": True}
 
-    biz = _upsert_business(db, hybrid_card_id=payload.hybrid_card_id,
-                           name=payload.business_name, category=payload.category,
-                           lat=payload.lat, lng=payload.lng,
-                           website=payload.public_card_url)
-    biz.is_active = payload.active  # is_verified untouched
+    sender_ts = _parse_sender_ts(payload.updated_at)
+    biz, stale = _upsert_business(db, hybrid_card_id=payload.hybrid_card_id,
+                                  name=payload.business_name, category=payload.category,
+                                  lat=payload.lat, lng=payload.lng,
+                                  website=payload.public_card_url, sender_ts=sender_ts)
+    if not stale:
+        biz.is_active = payload.active  # is_verified untouched
 
     event_type = "card.upserted" if payload.active else "card.removed"
-    return _record_event_and_commit(db, payload.eventId, event_type, raw)
+    return _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)

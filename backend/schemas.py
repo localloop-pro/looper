@@ -105,7 +105,7 @@ class HybridCardDealPayload(BaseModel):
     sub_type: Optional[str] = None
     title: str
     short_description: Optional[str] = None
-    discount_size: int = 0  # marker sizing ONLY — stored, never ranked on (contract §7)
+    discount_size: float = 0  # contract type is number (12.5 is valid) — stored, never ranked on (§7)
     lat: float
     lng: float
     hours: Optional[str] = None

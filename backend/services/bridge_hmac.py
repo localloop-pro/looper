@@ -51,7 +51,10 @@ def verify(raw_body: bytes, headers, *, keys: dict[str, str] | None = None,
         raise BridgeAuthError("timestamp outside replay window")
 
     expected = hmac.new(keys[kid].encode(), f"{ts}.".encode() + raw_body, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(sig[len("sha256="):], expected):
+    # compare as bytes: compare_digest raises TypeError on non-ASCII str input,
+    # which would turn a garbage header into a 500 instead of a 401
+    got = sig[len("sha256="):].encode("utf-8", "replace")
+    if not hmac.compare_digest(got, expected.encode()):
         raise BridgeAuthError("signature mismatch")
     return kid
 

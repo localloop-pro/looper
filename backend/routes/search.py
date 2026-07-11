@@ -50,9 +50,9 @@ def search_businesses(
     3. Proximity (if location provided)
     NEVER ranks by sponsorship, payment, or editor preference."""
 
-    # Build query — deactivated businesses (card.removed) never surface;
-    # != False keeps legacy NULL rows visible
-    query = db.query(Business).filter(Business.is_active != False)
+    # Build query — deactivated businesses (card.removed) never surface.
+    # IS NOT false (not != false): NULL-safe, so legacy NULL rows stay visible
+    query = db.query(Business).filter(Business.is_active.is_not(False))
     if category:
         query = query.filter(Business.category == category)
 
@@ -180,7 +180,7 @@ def list_businesses(
     db: Session = Depends(get_db),
 ):
     """List businesses, optionally filtered by category and location."""
-    query = db.query(Business).filter(Business.is_active != False)
+    query = db.query(Business).filter(Business.is_active.is_not(False))
     if category:
         query = query.filter(Business.category == category)
 

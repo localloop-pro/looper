@@ -44,6 +44,7 @@ class Business(Base):
     description = Column(Text)
     is_verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)  # card.removed => False; never delete
+    bridge_updated_at = Column(DateTime)  # sender's updated_at high-water mark (stale-event gate)
     source = Column(String(50), default="manual")  # manual, facebook, hybrid_card
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -126,12 +127,13 @@ class Deal(Base):
     category = Column(String(100))
     pin_type = Column(String(30))  # offering, event
     sub_type = Column(String(100))
-    discount_size = Column(Integer)  # STORAGE ONLY — never a ranking input (contract §7)
+    discount_size = Column(Float)  # contract type is number — STORAGE ONLY, never a ranking input (§7)
     lat = Column(Float)
     lng = Column(Float)
     hours = Column(String(200))
     public_card_url = Column(String(500))
     active = Column(Boolean, default=True)
+    source_updated_at = Column(DateTime)  # sender's updated_at (stale-event gate)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
@@ -143,11 +145,19 @@ def init_db():
     # create_all never ALTERs existing tables — add columns introduced after
     # a DB was first created (additive, idempotent).
     if "sqlite" in DATABASE_URL:
+        added_columns = {
+            "businesses": {"is_active": "BOOLEAN DEFAULT 1", "bridge_updated_at": "DATETIME"},
+            "deals": {"source_updated_at": "DATETIME"},
+        }
         with engine.connect() as conn:
-            cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(businesses)")]
-            if cols and "is_active" not in cols:
-                conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN is_active BOOLEAN DEFAULT 1")
-                conn.commit()
+            for table, columns in added_columns.items():
+                cols = [row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")]
+                if not cols:
+                    continue  # table doesn't exist yet; create_all handles it
+                for name, ddl in columns.items():
+                    if name not in cols:
+                        conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+            conn.commit()
 
 
 def get_db():

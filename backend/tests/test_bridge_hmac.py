@@ -76,6 +76,15 @@ def test_missing_headers():
         bridge_hmac.verify(BODY, {}, keys=KEYS, now_ms=NOW)
 
 
+def test_non_ascii_signature_is_auth_error_not_typeerror():
+    # compare_digest(str, str) raises TypeError on non-ASCII — must surface
+    # as a 401-mapped BridgeAuthError, never a 500
+    headers = signed_headers()
+    headers["x-hc-signature"] = "sha256=Ā" + headers["x-hc-signature"][8:]
+    with pytest.raises(BridgeAuthError):
+        bridge_hmac.verify(BODY, headers, keys=KEYS, now_ms=NOW)
+
+
 def test_no_keys_configured():
     with pytest.raises(BridgeAuthError):
         bridge_hmac.verify(BODY, signed_headers(), keys={}, now_ms=NOW)
