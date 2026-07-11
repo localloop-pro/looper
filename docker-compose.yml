@@ -1,0 +1,16 @@
+services:
+  looper-api:
+    build: ./backend
+    container_name: looper-api
+    ports:
+      - "${LOOPER_PORT:-8000}:8000"
+    environment:
+      LOOPER_DB_URL: sqlite:///data/looper.db
+      HYBRIDCARD_INGEST_SECRET: ${HYBRIDCARD_INGEST_SECRET:-}
+      HYBRIDCARD_KEY_IDS: ${HYBRIDCARD_KEY_IDS:-hc-1}
+    volumes:
+      - looper-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  looper-data:
