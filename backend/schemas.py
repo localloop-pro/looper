@@ -1,5 +1,5 @@
 """LOOPER API — Pydantic Schemas"""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -87,3 +87,29 @@ class TrainingExportResponse(BaseModel):
     records_exported: int
     file_path: str
     format: str  # jsonl, parquet, etc.
+
+
+class HybridCardDealPayload(BaseModel):
+    """LooperIngestPayload — FROZEN shape per BRIDGE-CONTRACT-v1 §3b.
+    Receiver adapts to the sender, never the reverse. Note: `eventId` is
+    camelCase in an otherwise snake_case payload (sender's exact shape)."""
+    model_config = ConfigDict(extra="ignore")  # tolerate future additive sender fields
+
+    source: str  # "hybridcard"
+    eventId: str
+    hybrid_card_id: str
+    deal_id: str
+    business_name: str
+    category: str
+    pin_type: str  # offering | event
+    sub_type: Optional[str] = None
+    title: str
+    short_description: Optional[str] = None
+    discount_size: int = 0  # marker sizing ONLY — stored, never ranked on (contract §7)
+    lat: float
+    lng: float
+    hours: Optional[str] = None
+    public_card_url: Optional[str] = None
+    active: bool = True
+    updated_at: Optional[str] = None
+    rank_boost: bool = False  # contract marker; ignored by all logic

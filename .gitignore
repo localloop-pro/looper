@@ -9,6 +9,7 @@ venv/
 
 # Database
 backend/data/looper.db
+backend/data/*.db
 data/exports/
 data/hf_dataset/
 *.db-journal

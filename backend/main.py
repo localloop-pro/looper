@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from models import init_db
-from routes import users, search, map, reviews
+from routes import users, search, map, reviews, ingest
 
 # Initialize DB tables
 init_db()
@@ -34,6 +34,7 @@ app.include_router(users.router)
 app.include_router(search.router)
 app.include_router(map.router)
 app.include_router(reviews.router)
+app.include_router(ingest.router)
 
 
 @app.get("/")

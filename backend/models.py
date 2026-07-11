@@ -43,6 +43,7 @@ class Business(Base):
     hybrid_card_id = Column(String(100))  # link to Hybrid Card profile
     description = Column(Text)
     is_verified = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)  # card.removed => False; never delete
     source = Column(String(50), default="manual")  # manual, facebook, hybrid_card
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -99,11 +100,54 @@ class TrainingLog(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class BridgeEvent(Base):
+    """One row per received BRIDGE-CONTRACT-v1 event — the idempotency ledger.
+    The sender retries ALL non-2xx, so the same eventId arrives repeatedly."""
+    __tablename__ = "bridge_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String(64), nullable=False, unique=True, index=True)
+    event_type = Column(String(40))  # deal.upserted, deal.removed, card.upserted, card.removed
+    payload = Column(Text)  # raw JSON as received (public-safe per contract §8)
+    status = Column(String(20), default="processed")
+    received_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Deal(Base):
+    """HybridCard deal mirrored via the bridge. deal.removed deactivates,
+    NEVER deletes (BRIDGE-CONTRACT-v1 §2)."""
+    __tablename__ = "deals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    deal_id = Column(String(64), nullable=False, unique=True, index=True)
+    business_id = Column(Integer, ForeignKey("businesses.id"), nullable=False, index=True)
+    title = Column(String(200))
+    short_description = Column(String(500))
+    category = Column(String(100))
+    pin_type = Column(String(30))  # offering, event
+    sub_type = Column(String(100))
+    discount_size = Column(Integer)  # STORAGE ONLY — never a ranking input (contract §7)
+    lat = Column(Float)
+    lng = Column(Float)
+    hours = Column(String(200))
+    public_card_url = Column(String(500))
+    active = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
 def init_db():
     """Create all tables. Safe to call multiple times."""
     import os
     os.makedirs("data", exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    # create_all never ALTERs existing tables — add columns introduced after
+    # a DB was first created (additive, idempotent).
+    if "sqlite" in DATABASE_URL:
+        with engine.connect() as conn:
+            cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(businesses)")]
+            if cols and "is_active" not in cols:
+                conn.exec_driver_sql("ALTER TABLE businesses ADD COLUMN is_active BOOLEAN DEFAULT 1")
+                conn.commit()
 
 
 def get_db():

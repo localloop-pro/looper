@@ -50,8 +50,9 @@ def search_businesses(
     3. Proximity (if location provided)
     NEVER ranks by sponsorship, payment, or editor preference."""
 
-    # Build query
-    query = db.query(Business)
+    # Build query — deactivated businesses (card.removed) never surface;
+    # != False keeps legacy NULL rows visible
+    query = db.query(Business).filter(Business.is_active != False)
     if category:
         query = query.filter(Business.category == category)
 
@@ -122,6 +123,9 @@ def search_businesses(
 
     # SORT: relevance DESC (category match > name match > suburb match),
     # then review_count DESC (most community-trusted first), then proximity
+    # ANTI-BIAS INVARIANT (BRIDGE-CONTRACT-v1 §7): ranking inputs are
+    # relevance, review_count, distance ONLY. Never discount_size, source,
+    # rank_boost, or any paid signal. test_search_antibias.py enforces this.
     results.sort(key=lambda r: (-r["relevance"], -r["review_count"], r["distance_km"] or 999))
 
     # Build response
@@ -176,7 +180,7 @@ def list_businesses(
     db: Session = Depends(get_db),
 ):
     """List businesses, optionally filtered by category and location."""
-    query = db.query(Business)
+    query = db.query(Business).filter(Business.is_active != False)
     if category:
         query = query.filter(Business.category == category)
 
