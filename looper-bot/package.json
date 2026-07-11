@@ -1,5 +1,5 @@
 {
-  "name": "rileyjarvis",
+  "name": "looper-bot",
   "version": "1.0.0",
   "description": "A local Electron desktop AI companion powered by OpenAI Realtime.",
   "main": "electron/main.cjs",

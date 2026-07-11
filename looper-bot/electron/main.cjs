@@ -10,14 +10,22 @@ dotenv.config({ path: path.join(process.cwd(), ".env.local") });
 
 const execFileAsync = promisify(execFile);
 const dataDir = path.join(process.cwd(), "data");
-const dbPath = path.join(dataDir, "ricky-db.json");
+const dbPath = path.join(dataDir, "looper-db.json");
+// migrate pre-rename local data (bot was called "Ricky" until 2026-07-11)
+try {
+  const fsSync = require("node:fs");
+  const legacyDbPath = path.join(dataDir, "ricky-db.json");
+  if (fsSync.existsSync(legacyDbPath) && !fsSync.existsSync(dbPath)) {
+    fsSync.renameSync(legacyDbPath, dbPath);
+  }
+} catch {}
 let currentMode = "display";
 let mainWindow = null;
 let normalWindowBounds = null;
 let dbWriteQueue = Promise.resolve();
 
-const RICKY_INSTRUCTIONS = `# Role and Objective
-You are Ricky, Riley's desktop AI operator. You speak through realtime voice and can use local tools.
+const LOOPER_INSTRUCTIONS = `# Role and Objective
+You are Looper, Bill's desktop AI operator. You speak through realtime voice and can use local tools.
 
 # Personality and Tone
 Concise, calm, useful. Use a confident man's voice. Talk like a smart operator, not a chatbot.
@@ -28,14 +36,14 @@ Concise, calm, useful. Use a confident man's voice. Talk like a smart operator, 
 
 # Tool Behavior
 - Use read-only tools when the user's intent is clear.
-- When Riley says "show me the menu", "show me what I can do", or asks what Ricky can do, call show_menu immediately.
+- When Bill says "show me the menu", "show me what I can do", or asks what Looper can do, call show_menu immediately.
 - For web search, notes, charts, records, image generation, and artifact display, act directly when the request is clear.
-- For thumbnail creation/editing, always use the thumbnail board tools, never generic image_generate and never artifact_show with imageLoading. Generate exactly one 16:9 image per request. Never generate multiple unless Riley separately asks again. Every generate/edit request gets a permanent database number that never changes, like #18 then #19 then #20. Do not renumber visible grid positions. Show paginated 3x3 pages of the permanent numbers. Do not show a standalone fullscreen loading animation for thumbnails. Use Riley's wording literally: do not invent elaborate extra concepts, fake text, or extra thumbnail ideas. For edits, use the exact existing numbered/selected image as input and make only the requested change.
-- The thumbnail board persists across sessions. If Riley references thumbnail #N, trust that permanent number and call the matching thumbnail tool. Do not say you cannot see old thumbnails. Use thumbnail_grid to refresh state or change pages if needed.
+- For thumbnail creation/editing, always use the thumbnail board tools, never generic image_generate and never artifact_show with imageLoading. Generate exactly one 16:9 image per request. Never generate multiple unless Bill separately asks again. Every generate/edit request gets a permanent database number that never changes, like #18 then #19 then #20. Do not renumber visible grid positions. Show paginated 3x3 pages of the permanent numbers. Do not show a standalone fullscreen loading animation for thumbnails. Use Bill's wording literally: do not invent elaborate extra concepts, fake text, or extra thumbnail ideas. For edits, use the exact existing numbered/selected image as input and make only the requested change.
+- The thumbnail board persists across sessions. If Bill references thumbnail #N, trust that permanent number and call the matching thumbnail tool. Do not say you cannot see old thumbnails. Use thumbnail_grid to refresh state or change pages if needed.
 - When a thumbnail finishes generating or editing, do not announce it verbally. The UI updates silently.
 - For sending messages, deleting data, buying things, account changes, sharing private information, or anything irreversible, summarize the action and ask for explicit confirmation before calling the modifying tool.
 - If a tool requires a confirmed field, set confirmed to true only after the user clearly confirms.
-- Typing text and pressing Enter/Return in computer use mode are allowed without extra approval when Riley asks you to type or send a prompt. Ask first before clicking controls or taking actions that delete, purchase, change settings, or expose private information.
+- Typing text and pressing Enter/Return in computer use mode are allowed without extra approval when Bill asks you to type or send a prompt. Ask first before clicking controls or taking actions that delete, purchase, change settings, or expose private information.
 - Explain what you are doing in one short sentence before longer tool work. Do not over-explain.
 
 # Artifacts
@@ -49,7 +57,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "set_mode",
-    description: "Switch Ricky between display mode and computer use mode.",
+    description: "Switch Looper between display mode and computer use mode.",
     parameters: {
       type: "object",
       properties: {
@@ -79,7 +87,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "show_menu",
-    description: "Show Ricky's capability menu in the artifact panel. Call this when the user asks 'show me the menu', 'show me what I can do', or asks what Ricky can do.",
+    description: "Show Looper's capability menu in the artifact panel. Call this when the user asks 'show me the menu', 'show me what I can do', or asks what Looper can do.",
     parameters: {
       type: "object",
       properties: {},
@@ -117,7 +125,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_reference_add",
-    description: "Add a local image file as a reference image for making thumbnails of Riley. Use when Riley gives a file path to a photo of himself.",
+    description: "Add a local image file as a reference image for making thumbnails of Bill. Use when Bill gives a file path to a photo of himself.",
     parameters: {
       type: "object",
       properties: {
@@ -131,7 +139,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_generate",
-    description: "Generate exactly one 16:9 YouTube thumbnail into Ricky's persistent paginated thumbnail board. Uses Riley reference images if available. Assigns a new permanent number that never changes. Never generate multiple at once.",
+    description: "Generate exactly one 16:9 YouTube thumbnail into Looper's persistent paginated thumbnail board. Uses Bill reference images if available. Assigns a new permanent number that never changes. Never generate multiple at once.",
     parameters: {
       type: "object",
       properties: {
@@ -144,7 +152,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_edit",
-    description: "Edit one existing thumbnail by permanent thumbnail number, or edit the currently selected thumbnail if number is omitted. Use this whenever Riley says 'edit number 20' or 'edit this'. The edited result gets a new permanent number.",
+    description: "Edit one existing thumbnail by permanent thumbnail number, or edit the currently selected thumbnail if number is omitted. Use this whenever Bill says 'edit number 20' or 'edit this'. The edited result gets a new permanent number.",
     parameters: {
       type: "object",
       properties: {
@@ -158,7 +166,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_select",
-    description: "Select a permanent numbered thumbnail and show it fullscreen. Use when Riley says 'pull up number 20', 'show number 20', 'open number 20', or 'select number 20'.",
+    description: "Select a permanent numbered thumbnail and show it fullscreen. Use when Bill says 'pull up number 20', 'show number 20', 'open number 20', or 'select number 20'.",
     parameters: {
       type: "object",
       properties: {
@@ -171,7 +179,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "thumbnail_grid",
-    description: "Show one paginated 3x3 page of the persistent thumbnail board and return compact board state. Use to refresh state, change pages, or when Riley asks what thumbnails exist.",
+    description: "Show one paginated 3x3 page of the persistent thumbnail board and return compact board state. Use to refresh state, change pages, or when Bill asks what thumbnails exist.",
     parameters: {
       type: "object",
       properties: {
@@ -197,7 +205,7 @@ const toolSpecs = [
   {
     type: "function",
     name: "note_add",
-    description: "Add a note to Ricky's fun local notes list.",
+    description: "Add a note to Looper's fun local notes list.",
     parameters: {
       type: "object",
       properties: {
@@ -452,7 +460,7 @@ function requireComputerMode() {
     return {
       ok: false,
       needsMode: "computer",
-      message: "Computer control is disabled. Ask Ricky to switch to computer use mode first.",
+      message: "Computer control is disabled. Ask Looper to switch to computer use mode first.",
     };
   }
   return null;
@@ -490,7 +498,7 @@ async function createWindow() {
     height: 760,
     minWidth: 420,
     minHeight: 520,
-    title: "Ricky",
+    title: "Looper",
     frame: false,
     transparent: true,
     backgroundColor: "#00000000",
@@ -561,14 +569,14 @@ ipcMain.handle("realtime:create-token", async () => {
     throw new Error("OPENAI_API_KEY is missing in .env.local");
   }
   const db = await readDb();
-  const instructions = `${RICKY_INSTRUCTIONS}\n\n${buildThumbnailBoardInstructions(db)}`;
+  const instructions = `${LOOPER_INSTRUCTIONS}\n\n${buildThumbnailBoardInstructions(db)}`;
 
   const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "OpenAI-Safety-Identifier": crypto.createHash("sha256").update("riley-local-ricky").digest("hex"),
+      "OpenAI-Safety-Identifier": crypto.createHash("sha256").update("bill-local-looper").digest("hex"),
     },
     body: JSON.stringify({
       session: {
@@ -593,7 +601,7 @@ ipcMain.handle("realtime:create-token", async () => {
           },
         },
         tracing: {
-          workflow_name: "Ricky Desktop Companion",
+          workflow_name: "Looper Desktop Companion",
         },
       },
     }),
@@ -624,7 +632,7 @@ ipcMain.handle("tools:execute", async (_event, toolCall) => {
         ok: true,
         mode: currentMode,
         artifact: {
-          title: "Ricky Mode",
+          title: "Looper Mode",
           kind: "progress",
           content: `Mode switched to ${currentMode === "computer" ? "computer use" : "display"} mode.`,
         },
@@ -639,7 +647,7 @@ ipcMain.handle("tools:execute", async (_event, toolCall) => {
       return {
         ok: true,
         artifact: {
-          title: "Ricky Menu",
+          title: "Looper Menu",
           kind: "markdown",
           content: buildMenuMarkdown(),
         },
@@ -859,7 +867,7 @@ async function webSearch(args) {
     return {
       ok: false,
       missingEnv: "EXA_API_KEY",
-      message: "EXA_API_KEY is not set. Add it to .env.local to enable Ricky's web search tool.",
+      message: "EXA_API_KEY is not set. Add it to .env.local to enable Looper's web search tool.",
     };
   }
 
@@ -896,7 +904,7 @@ async function webSearch(args) {
 function formatSearchMarkdown(query, results) {
   const cleanQuery = query.trim() || "Search";
   if (results.length === 0) {
-    return `# ${cleanQuery}\n\nNo strong web results came back for this search. Try a narrower query or ask Ricky to search a specific site.`;
+    return `# ${cleanQuery}\n\nNo strong web results came back for this search. Try a narrower query or ask Looper to search a specific site.`;
   }
 
   const sections = results.slice(0, 8).map((result, index) => {
@@ -910,7 +918,7 @@ function formatSearchMarkdown(query, results) {
     return `### ${index + 1}. ${title}\n\n${text || "No snippet was returned for this result."}\n\n- Source: ${source}${published}\n- ${link}`;
   });
 
-  return [`# ${cleanQuery}`, `Ricky found ${results.length} source${results.length === 1 ? "" : "s"}.`, ...sections].join(
+  return [`# ${cleanQuery}`, `Looper found ${results.length} source${results.length === 1 ? "" : "s"}.`, ...sections].join(
     "\n\n",
   );
 }
@@ -931,13 +939,13 @@ function hostname(url) {
 }
 
 function buildMenuMarkdown() {
-  return `# Ricky Menu
+  return `# Looper Menu
 
 Here is what you can ask me to do.
 
 ## Voice and Conversation
 
-- Talk naturally with Ricky in realtime.
+- Talk naturally with Looper in realtime.
 - Interrupt mid-response and ask follow-ups.
 - Ask unrelated questions while tools keep running.
 
@@ -962,14 +970,14 @@ Here is what you can ask me to do.
 
 ## Notes and Records
 
-- Add notes to Ricky's local note grid.
+- Add notes to Looper's local note grid.
 - Create, search, update, and confirm-delete local database records.
 
 ## Computer Use Mode
 
 - "Switch to computer use mode."
 - Open apps, click, type, press Enter/Return, scroll, inspect the UI, and take screen snapshots.
-- Ricky asks before risky actions like sending, deleting, buying, changing settings, or sharing private info.
+- Looper asks before risky actions like sending, deleting, buying, changing settings, or sharing private info.
 
 ## Good Starter Prompts
 
@@ -1009,7 +1017,7 @@ async function generateImage(args) {
   const url = data.data?.[0]?.url;
   if (b64) {
     await fs.mkdir(dataDir, { recursive: true });
-    const imagePath = path.join(dataDir, `ricky-image-${Date.now()}.png`);
+    const imagePath = path.join(dataDir, `looper-image-${Date.now()}.png`);
     await fs.writeFile(imagePath, Buffer.from(b64, "base64"));
     return {
       ok: true,
@@ -1310,7 +1318,7 @@ function thumbnailRecord(image, prompt, type, size) {
 
 function thumbnailPrompt(prompt, hasReferences) {
   return [
-    hasReferences ? "Use the provided reference image(s) of Riley as the identity reference." : "",
+    hasReferences ? "Use the provided reference image(s) of Bill as the identity reference." : "",
     "Create one 16:9 YouTube thumbnail.",
     "Follow this request literally. Do not add extra concepts, fake UI, extra text, watermarks, or unrelated elements.",
     prompt,
@@ -1451,7 +1459,7 @@ Next new thumbnail number: ${summary.page.nextNumber}
 Visible permanent thumbnail numbers:
 ${imageLines}
 
-When Riley says "pull up number N", "select N", or "show N", call thumbnail_select with that permanent number. When Riley says "edit this", use thumbnail_edit with no number if a selected thumbnail number exists. When Riley says "edit number N", call thumbnail_edit with that permanent number. When he asks for older thumbnails or another page, call thumbnail_grid with the requested page. Do not claim you cannot see prior thumbnails; this board state is persistent and paginated.`;
+When Bill says "pull up number N", "select N", or "show N", call thumbnail_select with that permanent number. When Bill says "edit this", use thumbnail_edit with no number if a selected thumbnail number exists. When Bill says "edit number N", call thumbnail_edit with that permanent number. When he asks for older thumbnails or another page, call thumbnail_grid with the requested page. Do not claim you cannot see prior thumbnails; this board state is persistent and paginated.`;
 }
 
 async function thumbnailBoardArtifact(db, view) {
@@ -1538,7 +1546,7 @@ function normalizeMermaidDiagram(diagram, title) {
 
 function fallbackMermaidDiagram(title) {
   const safeTitle = String(title || "Chart").replace(/["<>]/g, "");
-  return `flowchart TD\n  A["${safeTitle}"] --> B["Chart request received"]\n  B --> C["Ricky will show a safe fallback if syntax fails"]`;
+  return `flowchart TD\n  A["${safeTitle}"] --> B["Chart request received"]\n  B --> C["Looper will show a safe fallback if syntax fails"]`;
 }
 
 app.whenReady().then(createWindow);

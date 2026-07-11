@@ -8,7 +8,7 @@
 
 LOOPER — the LocalLoop community connection agent. Two subsystems:
 
-- `looper-bot/` — "Ricky" Electron + React + Vite voice companion (OpenAI
+- `looper-bot/` — "Looper" Electron + React + Vite voice companion (OpenAI
   Realtime API over WebRTC, tool-calling, artifact panel). The Jarvis-like
   interface.
 - `backend/` — FastAPI + SQLite community search API (businesses, reviews,

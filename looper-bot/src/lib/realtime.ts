@@ -1,7 +1,7 @@
-import type { RickyArtifact, RickyToolCall, RickyToolResult, RickyToolSpec } from "../vite-env";
+import type { LooperArtifact, LooperToolCall, LooperToolResult, LooperToolSpec } from "../vite-env";
 
-export type RickyConnectionState = "idle" | "connecting" | "connected" | "error";
-export type RickyMood = "idle" | "listening" | "thinking" | "speaking" | "working" | "error";
+export type LooperConnectionState = "idle" | "connecting" | "connected" | "error";
+export type LooperMood = "idle" | "listening" | "thinking" | "speaking" | "working" | "error";
 
 export type MouthShape = {
   open: number;
@@ -12,17 +12,17 @@ export type MouthShape = {
 
 export type TranscriptEntry = {
   id: string;
-  role: "user" | "ricky" | "system" | "tool";
+  role: "user" | "looper" | "system" | "tool";
   text: string;
   at: string;
 };
 
 export type RealtimeCallbacks = {
-  onConnectionState: (state: RickyConnectionState) => void;
-  onMood: (mood: RickyMood) => void;
+  onConnectionState: (state: LooperConnectionState) => void;
+  onMood: (mood: LooperMood) => void;
   onMouthShape: (shape: MouthShape) => void;
   onTranscript: (entry: TranscriptEntry) => void;
-  onArtifact: (artifact: RickyArtifact) => void;
+  onArtifact: (artifact: LooperArtifact) => void;
   onMode: (mode: "display" | "computer") => void;
   onStatus: (message: string) => void;
   onThumbnailReady: () => void;
@@ -55,13 +55,13 @@ type ResponseOutputItem = {
 
 const realtimeUrl = "https://api.openai.com/v1/realtime/calls";
 
-export class RickyRealtimeClient {
+export class LooperRealtimeClient {
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
   private micStream: MediaStream | null = null;
   private callbacks: RealtimeCallbacks;
   private currentAssistantText = "";
-  private toolSpecs: RickyToolSpec[] = [];
+  private toolSpecs: LooperToolSpec[] = [];
   private toolRunning = false;
   private audioContext: AudioContext | null = null;
   private outputAnalyser: AnalyserNode | null = null;
@@ -79,8 +79,8 @@ export class RickyRealtimeClient {
     this.callbacks.onStatus("Minting a Realtime client secret.");
 
     try {
-      this.toolSpecs = await window.ricky.getToolSpecs();
-      const token = await window.ricky.createRealtimeToken();
+      this.toolSpecs = await window.looper.getToolSpecs();
+      const token = await window.looper.createRealtimeToken();
       const pc = new RTCPeerConnection();
       const audio = document.createElement("audio");
       audio.autoplay = true;
@@ -103,7 +103,7 @@ export class RickyRealtimeClient {
       dc.addEventListener("open", () => {
         this.callbacks.onConnectionState("connected");
         this.callbacks.onMood("idle");
-        this.callbacks.onStatus("Ricky is live. Start talking naturally.");
+        this.callbacks.onStatus("Looper is live. Start talking naturally.");
       });
       dc.addEventListener("message", (event) => {
         void this.handleServerEvent(event.data);
@@ -156,7 +156,7 @@ export class RickyRealtimeClient {
 
   sendText(text: string): void {
     if (!this.dc || this.dc.readyState !== "open") {
-      this.callbacks.onStatus("Connect Ricky before sending a text prompt.");
+      this.callbacks.onStatus("Connect Looper before sending a text prompt.");
       return;
     }
     this.callbacks.onTranscript(newEntry("user", text));
@@ -219,7 +219,7 @@ export class RickyRealtimeClient {
     if (event.type === "response.done") {
       const output = event.response?.output || [];
       const spoken = this.currentAssistantText || output.map(collectOutputText).filter(Boolean).join("\n");
-      if (spoken) this.callbacks.onTranscript(newEntry("ricky", spoken));
+      if (spoken) this.callbacks.onTranscript(newEntry("looper", spoken));
       this.currentAssistantText = "";
 
       const functionCalls = output.filter((item) => item.type === "function_call" && item.name && item.call_id);
@@ -257,22 +257,22 @@ export class RickyRealtimeClient {
         this.callbacks.onArtifact({
           title: "Generating Image",
           kind: "imageLoading",
-          content: typeof parsedArgs.prompt === "string" ? parsedArgs.prompt : "Ricky is generating an image.",
+          content: typeof parsedArgs.prompt === "string" ? parsedArgs.prompt : "Looper is generating an image.",
         });
       }
       if (name === "thumbnail_generate" || name === "thumbnail_edit") {
-        const loadingResult = await window.ricky.executeTool({
+        const loadingResult = await window.looper.executeTool({
           name: "thumbnail_loading_prepare",
           arguments: {
             ...parsedArgs,
             mode: name === "thumbnail_edit" ? "edit" : "generate",
           },
-        } satisfies RickyToolCall);
+        } satisfies LooperToolCall);
         if (typeof loadingResult.runId === "string") parsedArgs.runId = loadingResult.runId;
         if (typeof loadingResult.targetId === "string") parsedArgs.targetId = loadingResult.targetId;
         if (loadingResult.artifact) this.callbacks.onArtifact(loadingResult.artifact);
       }
-      const result = await window.ricky.executeTool({ name, arguments: parsedArgs } satisfies RickyToolCall);
+      const result = await window.looper.executeTool({ name, arguments: parsedArgs } satisfies LooperToolCall);
       if (result.mode === "display" || result.mode === "computer") {
         this.callbacks.onMode(result.mode);
       }
@@ -286,7 +286,7 @@ export class RickyRealtimeClient {
     this.toolRunning = false;
   }
 
-  private async returnToolOutput(callId: string, result: RickyToolResult): Promise<void> {
+  private async returnToolOutput(callId: string, result: LooperToolResult): Promise<void> {
     this.sendEvent({
       type: "conversation.item.create",
       item: {
@@ -422,7 +422,7 @@ function parseToolArguments(raw: string): Record<string, unknown> {
   }
 }
 
-function sanitizeToolResult(result: RickyToolResult): RickyToolResult {
+function sanitizeToolResult(result: LooperToolResult): LooperToolResult {
   if (!result.artifact) return result;
 
   const { artifact, ...rest } = result;

@@ -36,3 +36,9 @@
   Page Private Reply to a comment (one per commenter, 7 days,
   `pages_messaging` + `groups_feed` webhook) → F7.6 pilot with kill switch.
   Community Chats were discontinued Oct 2025 — not a channel.
+- 2026-07-11: The desktop bot is named **Looper** (Bill's word) — "Ricky" and
+  the ported "Riley/rileyjarvis" persona are retired. Full rename in
+  looper-bot (UI strings, instructions, window.looper bridge, package name
+  looper-bot, LooperFace component); local data auto-migrates
+  ricky-db.json → looper-db.json on first launch. Voice dock on the map was
+  already "Hey Looper" — now consistent everywhere.

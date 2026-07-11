@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-export type RickyArtifact = {
+export type LooperArtifact = {
   title: string;
   kind:
     | "text"
@@ -18,21 +18,21 @@ export type RickyArtifact = {
   fullscreen?: boolean;
 };
 
-export type RickyToolSpec = {
+export type LooperToolSpec = {
   type: "function";
   name: string;
   description: string;
   parameters: Record<string, unknown>;
 };
 
-export type RickyToolCall = {
+export type LooperToolCall = {
   name: string;
   arguments: Record<string, unknown>;
 };
 
-export type RickyToolResult = {
+export type LooperToolResult = {
   ok: boolean;
-  artifact?: RickyArtifact;
+  artifact?: LooperArtifact;
   mode?: "display" | "computer";
   message?: string;
   error?: string;
@@ -41,10 +41,10 @@ export type RickyToolResult = {
 
 declare global {
   interface Window {
-    ricky: {
+    looper: {
       createRealtimeToken: () => Promise<{ value: string; expiresAt: number | null }>;
-      executeTool: (toolCall: RickyToolCall) => Promise<RickyToolResult>;
-      getToolSpecs: () => Promise<RickyToolSpec[]>;
+      executeTool: (toolCall: LooperToolCall) => Promise<LooperToolResult>;
+      getToolSpecs: () => Promise<LooperToolSpec[]>;
     };
   }
 }

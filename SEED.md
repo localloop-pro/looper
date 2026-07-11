@@ -4,7 +4,7 @@ Last updated: 2026-07-11
 
 ## What this project is
 
-LOOPER — LocalLoop's community connection agent ("Ricky" / Jarvis-like voice
+LOOPER — LocalLoop's community connection agent ("Looper" / Jarvis-like voice
 bot + FastAPI search backend). Owner: Bill / QikFlo Pty Ltd. This repo is the
 **bridge brain** between three systems:
 
