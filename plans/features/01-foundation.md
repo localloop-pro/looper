@@ -9,10 +9,10 @@
 
 ## Checklist
 
-- [ ] **F0.1** — Repo scaffolding + knowledge base (looper)
-- [ ] **F0.2** — Everything runs locally (one command each)
-- [ ] **F0.3** — Secrets + env master table (generate once, store in Coolify + local `.env`s)
-- [ ] **F0.4** — Dockerize the looper backend
+- [x] **F0.1** — Repo scaffolding + knowledge base (looper)
+- [x] **F0.2** — Everything runs locally (one command each)
+- [x] **F0.3** — Secrets + env master table (generate once, store in Coolify + local `.env`s)
+- [x] **F0.4** — Dockerize the looper backend
 
 ---
 

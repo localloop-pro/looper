@@ -17,6 +17,13 @@
 - 2026-07-10: Bill approved creating SEED/AGENTS/CLAUDE scaffolding in this
   repo; hybridcard-ai "big picture" repo intentionally not read (new-card
   planning corpus is the source of truth).
+- 2026-07-11: Phase 0 (F0.1–F0.4) + F1.1/F1.2 shipped on branch
+  `plan/bridge-v1` (Bill approved scope, push+PR, and the feature-file
+  split). Both Looper BRIDGE-CONTRACT-v1 receivers live with 39 passing
+  tests. OPEN QUESTION (R2): the T2 card-payload spec in new-card omits
+  `eventId`; our `/api/ingest/hybridcard-card` requires it (mirrors the
+  deal payload) — confirm with the new-card side BEFORE their T2 sender
+  ships, else dedupe degrades to (hybrid_card_id, updated_at).
 - 2026-07-10: Facebook onboarding strategy (verified by web research):
   Groups API is DEAD (removed Apr 2024 — no app can read member requests /
   question answers / approve members; Zapier & Make dropped groups);
