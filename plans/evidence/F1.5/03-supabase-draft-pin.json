@@ -1,0 +1,23 @@
+{
+  "_evidence": "F1.5 phase 1 — draft pin in REAL Supabase, read via the PUBLIC anon key path (same read any site visitor performs). Captured 2026-07-12 from the local dry run.",
+  "_query": "GET /rest/v1/pin?payload->>deal_id=eq.f150000000000000000000d1",
+  "status": 200,
+  "draftPinFound": 1,
+  "pin": {
+    "id": "00d730ee-d18a-4b30-a8e3-643476cd1626",
+    "category": "Food",
+    "tier": "premium",
+    "place_name": "F1.5 Dry Run Cafe (TEST)",
+    "heartbeat": "1 mon",
+    "is_expired": false,
+    "moderation_status": "pending_review",
+    "business_name": "F1.5 Dry Run Cafe (TEST)",
+    "title": "40% off brunch (F1.5 dry run)",
+    "discount_pct": 40,
+    "marker_size": "large",
+    "active": true,
+    "rank_boost": false,
+    "lat": -33.8908,
+    "lng": 151.2767
+  }
+}

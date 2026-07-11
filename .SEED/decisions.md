@@ -36,6 +36,40 @@
   Page Private Reply to a comment (one per commenter, 7 days,
   `pages_messaging` + `groups_feed` webhook) → F7.6 pilot with kill switch.
   Community Chats were discontinued Oct 2025 — not a channel.
+- 2026-07-12: F1.3 shipped in the llx11 repo (`workers/looper-gateway`):
+  `POST /api/bridge/pin` is a **dealId-keyed upsert** (one LocalLoop pin per
+  HybridCard deal — deal.updated/removed PATCH in place, never twin rows) with
+  the KV eventId replay ledger layered on top. Bridge pins are tier
+  **`premium`** (paying businesses; the 1-month heartbeat keeps drafts alive
+  through moderation — a short heartbeat would let `cleanup_expired_pins()`
+  reap them unseen; tier is TTL only, never ranking). `deal.removed` ⇒
+  `moderation_status='removed'` + zero heartbeat (expired); revival ⇒ back to
+  `pending_review`; stale out-of-order events (older `updatedAt`) are acked
+  but never applied. OPEN QUESTION (for F5.2): a content update currently
+  PRESERVES a moderator's `approved` status — decide whether deal edits
+  should force re-moderation. llx11 changes left uncommitted for Bill.
+- 2026-07-12: F1.4 shipped in llx11: `assets/js/hybridcard-markers.js`
+  (business-layer.js wrapper pattern — self-bootstraps on `localloopMap`,
+  injects its own CSS; index.html got ONE script line). Renders only
+  `source='hybridcard'` pins with `moderation_status IN (approved,published)`
+  AND `active`, as logo markers (28/38/48/64 px by `marker_size`, fallback
+  initial-letter dot) with popup + "View card →" restricted to
+  `*.hybridcard.ai` (off-domain claim_url rebuilt from slug). Anti-bias: rows
+  render in DB order, never sorted by discount/tier. F1.3 receiver now also
+  writes `payload.lat/lng` (browser convention — see WKB gotcha). Verified
+  in-browser via `LocalLoopHybridcardDemoRows` hook: approved renders at
+  48px, pending/removed never render, popup fields + link correct, console
+  clean. Residual for F1.5: live-Supabase seeded pin + Lighthouse >90 check.
+- 2026-07-12: F1.5 dry run PHASE 1 executed locally (the plan's "minimal
+  staging"): real new-card outbox → drainOutbox → both real receivers →
+  SQLite rows + REAL Supabase draft pin (pending_review, premium, invisible
+  to the public map — evidence in `plans/evidence/F1.5/`). Harness:
+  `new-card/tests/integration/f15-bridge-dryrun.test.ts` (F15_DRY_RUN=1,
+  phases upsert/removed, pinned dealId f150000000000000000000d1). REMAINING
+  (Bill): approve the draft pin (prod write — hot zone, permission gate
+  correctly blocked the agent), run phase `removed`, delete/retire the TEST
+  pin, then the true staging deploy (worker secrets/KV, Coolify envs, cron).
+  F1.5 box stays UNTICKED until those pass.
 - 2026-07-11: The desktop bot is named **Looper** (Bill's word) — "Ricky" and
   the ported "Riley/rileyjarvis" persona are retired. Full rename in
   looper-bot (UI strings, instructions, window.looper bridge, package name

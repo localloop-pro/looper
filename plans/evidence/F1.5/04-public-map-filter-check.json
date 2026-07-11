@@ -1,0 +1,7 @@
+{
+  "_evidence": "F1.5 phase 1 — the EXACT PostgREST filter assets/js/hybridcard-markers.js uses for the public map returns ZERO rows while the test pin is pending_review. Drafts are invisible to the public map. Captured 2026-07-12.",
+  "_query": "GET /rest/v1/pin?select=id,payload&or=(is_expired.eq.false,is_expired.is.null)&payload->>source=eq.hybridcard&payload->>moderation_status=in.(approved,published)&limit=500",
+  "status": 200,
+  "approvedHybridcardPinsVisibleToPublicMap": 0,
+  "conclusion": "PENDING PIN CORRECTLY INVISIBLE on public map path"
+}

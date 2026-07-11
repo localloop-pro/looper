@@ -26,3 +26,22 @@
   widget users will type "cafe" — normalize accents when F3.x lands.
 - On Bill's machine a local TypeDB server already listens on port 8000 —
   run the backend with `LOOPER_PORT=8010` locally (README documents this).
+- `wrangler dev` on Bill's machine: the local workerd binary supports max
+  compatibility date 2026-05-28, but wrangler.jsonc pins 2026-06-05 — local
+  dev needs `--compatibility-date 2026-05-28` (deploys are unaffected).
+- llx11 on localhost is ALWAYS test mode (`test-mode.js`): `LocalLoopAPI`
+  only initializes when the supabase-js CDN script loads; embedded/preview
+  browsers may fail its SRI fetch — verify real-data map behaviour in a
+  normal browser (or on staging), not headless previews.
+- llx11 browser code cannot read the `pin.coordinates` geography column:
+  PostgREST returns it as WKB hex, `LocalLoopAPI.parsePinCoordinates` is
+  referenced but NEVER DEFINED anywhere, and the site's marker modules rely
+  on `payload.lat`/`payload.lng` instead (claim-V1 convention). Anything that
+  writes pins for the map MUST duplicate lat/lng into the payload (the bridge
+  receiver does since F1.4); hybridcard-markers.js also carries a WKB-hex
+  fallback parser.
+- llx11 `pin` table: trigger `trg_pin_computed_columns` recomputes
+  `expires_at`/`is_expired` from `created_at + heartbeat_duration` on EVERY
+  insert AND update — PATCHing `expires_at` directly is silently clobbered.
+  To expire a pin, set `heartbeat_duration` to `'0 hours'`. Also means a
+  1-hour-heartbeat draft dies before moderation — bridge pins use `1 month`.

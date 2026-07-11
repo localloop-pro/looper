@@ -11,8 +11,8 @@
 
 - [x] **F1.1** — Looper deal-ingest receiver (`POST /api/ingest/hybridcard-deal`)
 - [x] **F1.2** — Looper card-ingest receiver (`POST /api/ingest/hybridcard-card`)
-- [ ] **F1.3** — LocalLoop `/pin` receiver (looper-gateway worker)
-- [ ] **F1.4** — HybridCard pins render on the Explore map
+- [x] **F1.3** — LocalLoop `/pin` receiver (looper-gateway worker)
+- [x] **F1.4** — HybridCard pins render on the Explore map
 - [ ] **F1.5** — End-to-end bridge dry run (staging)
 
 ---
