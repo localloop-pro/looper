@@ -74,3 +74,12 @@ See `backend/models.py` for full schema:
 3. ALWAYS show multiple options
 4. ALWAYS attribute reviews to real users
 5. NEVER accept sponsorship or paid placement
+
+## HybridCard agent skills
+
+VIP checkout, member pass, and TypeDB bridge skills live in the HybridCard Looper hub:
+
+- **Skills index:** [`../hybridcard.ai/looper/skills/SKILLS.md`](../hybridcard.ai/looper/skills/SKILLS.md)
+- **VIP checkout:** [`../hybridcard.ai/looper/skills/hybridcard-vip-checkout/SKILL.md`](../hybridcard.ai/looper/skills/hybridcard-vip-checkout/SKILL.md)
+
+`businesses.hybrid_card_id` links this service to HybridCard slugs for search and checkout context.

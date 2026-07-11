@@ -17,6 +17,8 @@ data/hf_dataset/
 # Environment
 .env
 .env.local
+# Local deployment credentials (real secrets — never commit)
+local.env
 
 # IDE
 .vscode/
