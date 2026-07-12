@@ -73,6 +73,9 @@ check("find me a florist in Bronte → scoped search", route("find me a florist 
 check("find me a florist near me → clean term + radius", route("find me a florist near me"), { intent: "search", searchTerm: "florist", radiusM: 1000 });
 check("find me an accountant within 5 km → clean term + radius", route("find me an accountant within 5 km"), { intent: "search", searchTerm: "accountant", radiusM: 5000 });
 check("search for an accountant bondi → scoped search", route("search for an accountant bondi"), { intent: "search", searchTerm: "accountant", suburb: "bondi" });
+check("find florist in Bronte (no article) → scoped search", route("find florist in bronte"), { intent: "search", searchTerm: "florist", suburb: "bronte" });
+check("search for accountant near me (no article) → scoped search", route("search for accountant near me"), { intent: "search", searchTerm: "accountant", radiusM: 1000 });
+check("show me Bondi Wholefoods stays a business (name contains suburb)", route("show me Bondi Wholefoods"), { intent: "business", businessName: "bondi wholefoods" });
 check("find me AN accountant → search", route("find me an accountant"), { intent: "search", searchTerm: "accountant" });
 check("where is Bondi Pizza → business (naming verb beats Food)", route("where is Bondi Pizza"), { intent: "business", businessName: "bondi pizza" });
 check("tell me about The Burger Shop → business", route("tell me about The Burger Shop"), { intent: "business", businessName: "burger shop" });

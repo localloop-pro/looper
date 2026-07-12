@@ -355,7 +355,12 @@
         cmd.coords = suburbs[asSuburb];
         return cmd;
       }
-      if (biz[1]) {
+      // Scope signals make this discovery even without an article:
+      // "find florist in Bronte" / "search for accountant near me" must be
+      // scoped searches — a business lookup would ignore radius/suburb.
+      var locative = scopeSub &&
+        new RegExp("\\b(?:in|at|around|near)\\s+" + scopeSub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$").test(name);
+      if (biz[1] || cmd.radiusM != null || locative) {
         // "find me a florist" — indefinite article ⇒ discovery, not a name.
         // A named suburb scopes it AND leaves the search term clean
         // ("find me a florist in bronte" → term "florist", coords Bronte),

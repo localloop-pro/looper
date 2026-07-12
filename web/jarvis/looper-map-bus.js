@@ -140,12 +140,14 @@
     state.map.flyTo({ center: [state.home.lng, state.home.lat], zoom: state.home.zoom, essential: true });
   }
 
-  // Coordinates must be present AND finite — the API is data, and
-  // Number("N/A") is NaN while Number(null) is 0; neither may reach
-  // setLngLat/fitBounds.
+  // Coordinates must be present, finite AND in range — the API is data:
+  // Number("N/A") is NaN, Number(null) is 0, and a finite lat of 999 makes
+  // Mapbox throw inside setLngLat/fitBounds.
   function hasValidCoords(p) {
-    return p && p.lng != null && p.lat != null &&
-      isFinite(Number(p.lng)) && isFinite(Number(p.lat));
+    if (!p || p.lng == null || p.lat == null) return false;
+    var lng = Number(p.lng), lat = Number(p.lat);
+    return isFinite(lng) && isFinite(lat) &&
+      lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90;
   }
 
   // Drop/refresh result markers for a set of businesses
