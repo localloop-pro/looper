@@ -94,6 +94,9 @@ check("florist in bronte within 5 km → clean term + scope + radius", route("fl
 check("bonding therapist is NOT bondi (word boundary)", route("bonding therapist near me"), { intent: "search", searchTerm: "bonding therapist", suburb: undefined, radiusM: 1000 });
 check("best dog wash in coogee → scoped free text", route("best dog wash in coogee"), { intent: "search", suburb: "coogee", superlative: true });
 check("take me to a business (not suburb)", route("take me to the health emporium"), { intent: "business", businessName: "health emporium" });
+check("take me to A cafe near me → scoped search", route("take me to a cafe near me"), { intent: "search", searchTerm: "cafe", radiusM: 1000 });
+check("navigate to restaurants in Bronte → scoped search", route("navigate to restaurants in bronte"), { intent: "search", searchTerm: "restaurants", suburb: "bronte" });
+check("go to plumber within 2 km → scoped search", route("go to plumber within 2 km"), { intent: "search", searchTerm: "plumber", radiusM: 2000 });
 
 // ---- offers / anti-bias -------------------------------------------------------
 check("deals → offers intent", route("any deals around"), { intent: "offers", category: "Offers" });

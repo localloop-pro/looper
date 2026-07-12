@@ -149,8 +149,9 @@
   // separately so route() can send those to free-text search instead.
   var BUSINESS_RE = /\b(?:find(?: me)?|show me|show|tell me about|where is|where's|look up|search for)\s+(?:(a|an|some)\s+|the\s+)?([\w\s'&-]+)$/;
 
-  // "take me to X" / "go to X" / "fly to X" — suburb first, else business.
-  var GOTO_RE = /\b(?:take me to|go to|fly to|navigate to|head to|jump to)\s+(?:the\s+)?([\w\s'&-]+)$/;
+  // "take me to X" / "go to X" / "fly to X" — suburb first, else business;
+  // an indefinite article ("take me to A cafe") marks discovery, not a name.
+  var GOTO_RE = /\b(?:take me to|go to|fly to|navigate to|head to|jump to)\s+(?:(a|an|some)\s+|the\s+)?([\w\s'&-]+)$/;
 
   // Naming verbs mean a specific business, even when the name contains a
   // category word ("where is Bondi Pizza" is a lookup, not a Food search) —
@@ -232,21 +233,6 @@
 
     if (SUPERLATIVE_RE.test(stripped)) cmd.superlative = true;
 
-    // "take me to bronte" → suburb; "take me to gertrude and alice" → business
-    var goto_ = stripped.match(GOTO_RE);
-    if (goto_) {
-      var sub = matchSuburb(goto_[1], suburbs, true);
-      if (sub) {
-        cmd.intent = "suburb";
-        cmd.suburb = sub;
-        cmd.coords = suburbs[sub];
-        return cmd;
-      }
-      cmd.intent = "business";
-      cmd.businessName = stripArticles(goto_[1].trim());
-      return cmd;
-    }
-
     // Suburb scope, computed ONCE so every category-style intent keeps it
     // ("deals in Bronte" must not silently search the current map center).
     var scopeSub = matchSuburb(stripped, suburbs, false);
@@ -278,6 +264,29 @@
     function hasLocativeTail(text) {
       return !!scopeSub &&
         new RegExp("\\b(?:in|at|around|near)\\s+" + scopeSub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$").test(text);
+    }
+
+    // "take me to bronte" → suburb; "take me to gertrude and alice" →
+    // business; article/scope signals mean navigation-style DISCOVERY
+    // ("take me to a cafe near me", "navigate to restaurants in Bronte").
+    var goto_ = stripped.match(GOTO_RE);
+    if (goto_) {
+      var gotoTarget = stripArticles(goto_[2].trim());
+      var sub = matchSuburb(gotoTarget, suburbs, true);
+      if (sub) {
+        cmd.intent = "suburb";
+        cmd.suburb = sub;
+        cmd.coords = suburbs[sub];
+        return cmd;
+      }
+      if (goto_[1] || cmd.radiusM != null || hasLocativeTail(gotoTarget)) {
+        cmd.intent = "search";
+        cmd.searchTerm = cleanScopedTerm(gotoTarget, scopeSub) || gotoTarget;
+        return applyScope(cmd);
+      }
+      cmd.intent = "business";
+      cmd.businessName = gotoTarget;
+      return cmd;
     }
 
     // Naming verbs win over category words (see NAMED_RE above) — but an
