@@ -96,6 +96,71 @@ cd looper-bot
 npm ci && npm run dev   # Electron app; needs OPENAI_API_KEY in looper-bot/.env.local
 ```
 
+With the backend running, Looper can also answer local-business questions
+(`localloop_search`), open the live map deep-linked
+(`localloop_open_map` → `https://localloop.ai/?cat=Food&fly=…`), and report
+the HybridCard bridge status (`localloop_bridge_status`). Optional env in
+`looper-bot/.env.local`: `LOOPER_API_BASE` (default `http://localhost:8000`),
+`LOCALLOOP_MAP_URL` (default `https://localloop.ai`).
+
+## Jarvis map demo (talk to Looper ON the map)
+
+The `web/jarvis/` modules put the animated Looper face on any
+Mapbox-GL-compatible map with full voice control (ported from the old
+explore-local build, bugs fixed). Try it locally — no keys needed:
+
+```bash
+cd backend
+pip install -r requirements.txt
+python seed.py          # once, seeds Bondi businesses
+python main.py          # serves API + demo
+# open http://localhost:8000/demo in Chrome (or Safari)
+# (on Bill's machine: LOOPER_PORT=8010 python main.py → http://localhost:8010/demo)
+```
+
+Tap the face and say: *"find me a café"*, *"any deals near me"*,
+*"take me to Bronte"*, *"who can help me with my garden"*, *"zoom in"*,
+*"reset the map"*. Or press **🎙 Hey Looper** for hands-free mode — the mic
+stays open and only utterances starting with "Hey Looper …" act (say "stop"
+to interrupt). Voice needs Chrome/Edge/Safari (Firefox falls back to typed
+input). Category chips fire the same grammar as the voice.
+
+Every search is logged to `training_log` (query + intent + anonymous
+session, emails/mobiles scrubbed) so `python training/export.py` now has
+real data.
+
+Verify without a mic or backend:
+
+```bash
+node web/tests/voice-command-router.test.js      # 46 grammar unit tests
+# full headless flow (needs playwright):
+cd web && python3 -m http.server 8088 &
+node tests/jarvis-smoke.playwright.js
+```
+
+### Embedding on the live map (llx11) — one script block
+
+`index.html` is sacred (surgical edits only), so integration is four script
+tags + one init call, e.g. right before `</body>`:
+
+```html
+<script src="https://api.localloop.ai/web/jarvis/voice-command-router.js"></script>
+<script src="https://api.localloop.ai/web/jarvis/looper-map-bus.js"></script>
+<script src="https://api.localloop.ai/web/jarvis/looper-face.js"></script>
+<script src="https://api.localloop.ai/web/jarvis/looper-jarvis.js"></script>
+<script>
+  LooperJarvis.init({
+    map: window.localloopMap,            // the existing Mapbox map
+    markerLib: window.mapboxgl,
+    apiBase: window.LocalLoopConfig.looperApi,
+    district: "Bondi",
+    onCategory: (cat) => { /* sync the site's category filter here */ },
+  });
+</script>
+```
+
+Deep links work out of the box: `/?cat=Food&q=coffee&fly=151.2743,-33.8908,16`.
+
 ## API Endpoints
 
 | Method | Path | Description |
@@ -103,12 +168,17 @@ npm ci && npm run dev   # Electron app; needs OPENAI_API_KEY in looper-bot/.env.
 | POST | `/api/onboard` | User onboarding (name + mobile + interest) |
 | GET  | `/api/code/{code}` | Validate 6-digit join code |
 | GET  | `/api/search?q=&lat=&lng=&radius=` | Search businesses by query |
+| GET  | `/api/discover?suburb=&category=&radius_km=` | Suburb discovery (graph-ready, `engine: fallback` today) |
 | GET  | `/api/businesses?category=&lat=&lng=` | List businesses by category |
 | POST | `/api/reviews` | Submit a review |
 | GET  | `/api/reviews/{business_id}` | Get reviews for a business |
 | POST | `/api/pins` | Add a map pin |
 | GET  | `/api/pins?lat=&lng=&radius=` | Get pins in area |
 | GET  | `/api/tourist-info` | Tourist-specific info |
+| POST | `/api/ingest/hybridcard-deal` | BRIDGE-CONTRACT-v1 deal receiver (HMAC) |
+| POST | `/api/ingest/hybridcard-card` | BRIDGE-CONTRACT-v1 card receiver (HMAC) |
+| GET  | `/api/ingest/status` | Read-only bridge cockpit (counts + recent events) |
+| GET  | `/demo` | Jarvis voice-map demo (serves `web/jarvis/`) |
 
 ## Database Schema
 

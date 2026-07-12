@@ -3,8 +3,9 @@ import math
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from models import Business, Review, get_db
+from models import Business, Deal, Review, fold_accents, get_db
 from schemas import SearchResponse, SearchResult
+from services import telemetry
 
 router = APIRouter(prefix="/api", tags=["search"])
 
@@ -42,6 +43,8 @@ def search_businesses(
     radius_km: float = Query(5.0, ge=0.1, le=50.0),
     category: str | None = Query(None),
     limit: int = Query(5, ge=1, le=20),
+    intent: str | None = Query(None, description="Caller-classified intent (telemetry only, never ranking)"),
+    session: str | None = Query(None, description="Anonymous session id (telemetry only)"),
     db: Session = Depends(get_db),
 ):
     """Search businesses by name, category, or description. Ranked by verifiable data ONLY:
@@ -58,7 +61,8 @@ def search_businesses(
 
     # Tokenized free-text search — split query into words, match any token
     # This way "café near Bondi Beach" matches businesses with category "café" in "Bondi"
-    tokens = [t.strip().lower() for t in q.split() if len(t.strip()) > 1]
+    # Tokens are accent-folded ("cafe" == "café") — voice transcripts type ASCII.
+    tokens = [fold_accents(t.strip()) for t in q.split() if len(t.strip()) > 1]
     # Also include stopwords that might be relevant (like "beach", "road")
     stopwords = {"near", "the", "a", "an", "in", "at", "on", "is", "are", "was", "for", "to", "of", "and", "or", "i", "me", "my", "what", "where", "who", "how", "find", "good", "best", "great"}
     search_tokens = [t for t in tokens if t not in stopwords]
@@ -66,16 +70,18 @@ def search_businesses(
     if not search_tokens:
         search_tokens = tokens  # fallback if all words are stopwords
     
-    # Build OR filter: match any token against name, category, suburb, description
+    # Build OR filter: match any token against name, category, suburb,
+    # description — both sides accent-folded via the registered SQLite
+    # fold_accents() function (models.py), so "cafe" finds "café".
     from sqlalchemy import or_
     conditions = []
     for token in search_tokens:
         pattern = f"%{token}%"
-        conditions.append(Business.name.ilike(pattern))
-        conditions.append(Business.category.ilike(pattern))
-        conditions.append(Business.suburb.ilike(pattern))
-        conditions.append(Business.description.ilike(pattern))
-    
+        conditions.append(func.fold_accents(Business.name).like(pattern))
+        conditions.append(func.fold_accents(Business.category).like(pattern))
+        conditions.append(func.fold_accents(Business.suburb).like(pattern))
+        conditions.append(func.fold_accents(Business.description).like(pattern))
+
     query = query.filter(or_(*conditions))
 
     businesses = query.all()
@@ -100,16 +106,17 @@ def search_businesses(
 
         top_review = get_top_review(biz.id, db)
 
-        # Relevance score: boost category/name matches over generic suburb matches
+        # Relevance score: boost category/name matches over generic suburb
+        # matches (accent-folded on both sides, same as the SQL filter)
         relevance = 0
         for token in search_tokens:
-            if token in (biz.category or "").lower():
+            if token in (fold_accents(biz.category) or ""):
                 relevance += 5  # category match = highest relevance
-            if token in (biz.name or "").lower():
+            if token in (fold_accents(biz.name) or ""):
                 relevance += 3  # name match
-            if biz.suburb and token in biz.suburb.lower():
+            if biz.suburb and token in fold_accents(biz.suburb):
                 relevance += 2  # suburb match
-            if biz.description and token in biz.description.lower():
+            if biz.description and token in fold_accents(biz.description):
                 relevance += 1
 
         results.append({
@@ -131,17 +138,33 @@ def search_businesses(
     # Build response
     ranked = []
     for r in results[:limit]:
+        biz = r["business"]
+        # HybridCard connection: expose the public card URL when the business
+        # has one (informational link only — NEVER a ranking input, §7).
+        card_url = None
+        if biz.hybrid_card_id:
+            deal = (db.query(Deal)
+                    .filter(Deal.business_id == biz.id,
+                            Deal.active == True,
+                            Deal.public_card_url.is_not(None))
+                    .first())
+            if deal:
+                card_url = deal.public_card_url
+            elif biz.website and ".hybridcard.ai" in biz.website:
+                card_url = biz.website
         ranked.append(SearchResult(
-            business_id=r["business"].id,
-            name=r["business"].name,
-            category=r["business"].category,
-            address=r["business"].address,
-            lat=r["business"].lat,
-            lng=r["business"].lng,
+            business_id=biz.id,
+            name=biz.name,
+            category=biz.category,
+            address=biz.address,
+            lat=biz.lat,
+            lng=biz.lng,
             review_count=r["review_count"],
             avg_rating=r["avg_rating"],
             top_review=r["top_review"],
             distance_km=r["distance_km"],
+            website=biz.website,
+            card_url=card_url,
         ))
 
     # Contextual message from LOOPER (neutral, informative)
@@ -161,6 +184,13 @@ def search_businesses(
             f"ranked by community experience (most reviewed first). "
             f"I don't pick favorites — you decide! ✨"
         )
+
+    # F2.5 telemetry: query + summary into training_log (PII-scrubbed,
+    # best-effort — see services/telemetry.py). Feeds training/export.py.
+    telemetry.log_query(
+        db, q, intent=intent or "search", session_id=session,
+        response_text=f"{message} [{', '.join(r.name for r in ranked[:5])}]",
+    )
 
     return SearchResponse(
         query=q,

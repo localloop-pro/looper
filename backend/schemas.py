@@ -39,6 +39,8 @@ class SearchResult(BaseModel):
     avg_rating: Optional[float]
     top_review: Optional[str]  # most recent helpful review excerpt
     distance_km: Optional[float]
+    website: Optional[str] = None
+    card_url: Optional[str] = None  # HybridCard public card link (never a ranking input)
 
 
 class SearchResponse(BaseModel):

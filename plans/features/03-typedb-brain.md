@@ -15,6 +15,17 @@
 - [ ] **F2.4** — Archetype + skill graph (category assist)
 - [ ] **F2.5** — Self-improving telemetry (finally write `training_log`)
 
+> **2026-07-12 progress (see `.SEED/decisions.md`):** the FALLBACK half of
+> F2.3 shipped — `GET /api/discover` (routes/discover.py) with the frozen
+> response shape + `engine: "fallback"`, seed suburb table mirroring the
+> voice router's, `TYPEDB_ENABLED` gate ready for the graph engine. F2.5's
+> core shipped: every `/api/search` and `/api/discover` now writes
+> `training_log` (intent + anonymous session id, emails/AU-mobiles scrubbed
+> — services/telemetry.py; no-PII test included), so `training/export.py`
+> has real data. F2.3's box ticks only after the TypeDB engine + parity
+> test (needs F2.1/F2.2); F2.5's after the TypeDB DB-2 archetype counters
+> (needs F2.4).
+
 ---
 
 

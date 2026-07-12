@@ -1,0 +1,607 @@
+/* LOOPER Jarvis — the voice companion that lives ON the map (F3.3 + F4.2).
+ *
+ * One script tag turns any Mapbox-GL-compatible page into a Jarvis-driven
+ * map: the animated Looper face docks bottom-right, listens ("Hey Looper"),
+ * routes speech through the ported voice grammar (voice-command-router.js),
+ * answers from the LOOPER brain (/api/search), and drives the map through
+ * LooperMapBus. Falls back to typed input where Web Speech is unavailable
+ * (Firefox — gotcha: HTTPS-only mic, Chrome/Edge/Safari only).
+ *
+ * Load order: voice-command-router.js, looper-map-bus.js, looper-face.js,
+ * then this file. Then:
+ *
+ *   LooperJarvis.init({
+ *     map: mapInstance,                        // mapbox-gl or maplibre-gl
+ *     apiBase: "http://localhost:8000/api",   // or LocalLoopConfig.looperApi
+ *     district: "Bondi",
+ *     home: { lng: 151.2743, lat: -33.8915, zoom: 14.5 },
+ *     markerLib: window.maplibregl,
+ *     onCategory: (cat) => {...},              // sync host filter chips
+ *   });
+ *
+ * PERSONA (from SEED.md / the master plan — Looper is LocalLoop's community
+ * connection agent): warm, local, useful. NEVER declares a "best" business,
+ * always offers multiple options ranked only by community reviews, recency
+ * and distance. Discounts size markers, never rankings. Its mission is to
+ * connect locals to each other and to the businesses around them.
+ */
+(function (root) {
+  "use strict";
+
+  var Router = root.LooperVoiceRouter;
+  var Bus = root.LooperMapBus;
+  var Face = root.LooperFace;
+
+  // ---------------------------------------------------------------- persona
+  var PERSONA = {
+    name: "Looper",
+    greetings: [
+      "Hey! I'm Looper, your {district} Local Loop guide. Ask me to find food, deals, jobs — or say take me to Bondi.",
+      "G'day! Looper here. What are you after — a feed, a deal, or someone local to help you out?",
+    ],
+    acks: ["On it.", "One sec.", "Let me have a look.", "Checking the loop."],
+    noResults: [
+      "I couldn't find anything for that around here yet. Want to be the first to add it to the loop?",
+    ],
+    apiDown: [
+      "Sorry — the Looper brain is offline right now. Try me again in a tick.",
+    ],
+    unknown: [
+      "I didn't catch that. Try: find me a café, any deals nearby, or take me to Bondi Junction.",
+    ],
+    antiBias: "I don't pick favourites — the community's reviews decide, and the full list is on your screen.",
+    superlative: "I don't do 'best' — I show you what locals actually say. ",
+    connectOutro: " Tap any card to see how to reach them — that's what the loop is for: locals helping locals.",
+    offersNote: " Deals change the size of a pin, never its rank — reviews always come first.",
+    bookingNote: " I can't make the booking for you yet, but every card has contact details.",
+    help:
+      "I'm Looper — the voice of your Local Loop map. You can say: find me a café. Any deals near me? " +
+      "Who can help me with my garden? Take me to Bronte. Zoom in. Reset the map. " +
+      "I rank by community reviews only — never by who pays. And if you run a business, ask me about getting your Hybrid Card.",
+  };
+
+  function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+
+  // ------------------------------------------------------------------ state
+  var S = {
+    inited: false,
+    apiBase: "http://localhost:8000/api",
+    district: "Bondi",
+    home: { lng: 151.2743, lat: -33.8915, zoom: 14.5 },
+    face: null,
+    recognition: null,
+    listening: false,
+    handsFree: false, // wake-word mode: always listening, only "hey looper …" acts
+    speaking: false,
+    lastSearch: null, // {cmd} for set_radius re-runs (stale-closure fix: radius comes from the NEW command)
+    lastRadiusM: 1500,
+    ui: {},
+    map: null,
+    speechSupported: false,
+    // anonymous per-page-load session id — telemetry only, never identity
+    session: (root.crypto && root.crypto.randomUUID) ? root.crypto.randomUUID() : "s" + String(Math.random()).slice(2),
+  };
+
+  var WAKE_RE = /^(?:hey|ok|okay)\s+looper\b/;
+
+  // ------------------------------------------------------------------- UI
+  var CSS = [
+    "#looper-jarvis{position:fixed;right:18px;bottom:18px;z-index:9999;display:flex;flex-direction:column;align-items:flex-end;gap:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}",
+    "#looper-jarvis .lj-panel{width:min(340px,calc(100vw - 36px));max-height:46vh;overflow-y:auto;background:rgba(10,12,18,.94);color:#e8ecf4;border:1px solid rgba(86,189,255,.35);border-radius:16px;padding:12px 14px;backdrop-filter:blur(14px);box-shadow:0 12px 40px rgba(0,0,0,.45);display:none;}",
+    "#looper-jarvis .lj-panel.lj-open{display:block;}",
+    "#looper-jarvis .lj-msg{font-size:13.5px;line-height:1.45;margin:0 0 8px;}",
+    "#looper-jarvis .lj-option{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;margin:6px 0;border:1px solid rgba(255,255,255,.09);border-radius:10px;background:rgba(255,255,255,.04);cursor:pointer;}",
+    "#looper-jarvis .lj-option:hover{border-color:rgba(86,189,255,.6);}",
+    "#looper-jarvis .lj-option .lj-name{font-weight:650;font-size:13px;}",
+    "#looper-jarvis .lj-option .lj-meta{font-size:12px;color:#9fb4c8;}",
+    "#looper-jarvis .lj-option a{color:#7ddfff;text-decoration:none;font-size:12px;white-space:nowrap;}",
+    "#looper-jarvis .lj-dock{display:flex;align-items:center;gap:10px;}",
+    "#looper-jarvis .lj-face-btn{position:relative;border:none;background:none;padding:0;cursor:pointer;border-radius:999px;}",
+    "#looper-jarvis .lj-face-btn:focus-visible{outline:3px solid #7ddfff;outline-offset:3px;}",
+    "#looper-jarvis .lj-status{max-width:220px;background:rgba(10,12,18,.9);border:1px solid rgba(86,189,255,.3);color:#bfe9ff;font-size:12px;padding:6px 12px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}",
+    "#looper-jarvis .lj-wake{border:1px solid rgba(86,189,255,.3);background:rgba(10,12,18,.9);color:#7ddfff;font-size:12px;padding:6px 11px;border-radius:999px;cursor:pointer;}",
+    "#looper-jarvis .lj-wake.on{background:#56bdff;color:#04121e;border-color:#56bdff;}",
+    "#looper-jarvis .lj-input-row{display:none;gap:6px;width:min(340px,calc(100vw - 36px));}",
+    "#looper-jarvis .lj-input-row.lj-open{display:flex;}",
+    "#looper-jarvis .lj-input-row input{flex:1;background:rgba(10,12,18,.94);border:1px solid rgba(86,189,255,.35);color:#e8ecf4;border-radius:999px;padding:9px 14px;font-size:13px;outline:none;}",
+    "#looper-jarvis .lj-input-row button{background:rgba(86,189,255,.9);border:none;color:#04121e;font-weight:700;border-radius:999px;padding:0 16px;cursor:pointer;}",
+    ".looper-result-marker{width:18px;height:18px;border-radius:999px;background:#56bdff;border:3px solid #0b2437;box-shadow:0 0 12px rgba(86,189,255,.8);cursor:pointer;}",
+    ".looper-popup{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.45;color:#12202e;}",
+    ".looper-popup a{color:#0b76c4;font-weight:600;text-decoration:none;}",
+    ".looper-popup-cat{color:#5a7186;font-size:12px;}",
+    ".looper-popup-meta{font-size:12px;}",
+  ].join("\n");
+
+  function injectCss() {
+    if (document.getElementById("looper-jarvis-css")) return;
+    var s = document.createElement("style");
+    s.id = "looper-jarvis-css";
+    s.textContent = CSS;
+    document.head.appendChild(s);
+  }
+
+  function buildUi() {
+    injectCss();
+    var wrap = document.createElement("div");
+    wrap.id = "looper-jarvis";
+    wrap.innerHTML =
+      '<div class="lj-panel" id="lj-panel"></div>' +
+      '<div class="lj-input-row" id="lj-input-row">' +
+      '  <input id="lj-input" type="text" placeholder="Ask Looper… e.g. find me a café" aria-label="Ask Looper">' +
+      '  <button id="lj-send" aria-label="Send">➤</button>' +
+      "</div>" +
+      '<div class="lj-dock">' +
+      '  <button class="lj-wake" id="lj-wake" title="Hands-free: say ‘Hey Looper …’" aria-label="Toggle hands-free Hey Looper mode">🎙 Hey Looper</button>' +
+      '  <div class="lj-status" id="lj-status">Tap my face to talk</div>' +
+      '  <button class="lj-face-btn" id="lj-face-btn" aria-label="Talk to Looper"></button>' +
+      "</div>";
+    document.body.appendChild(wrap);
+
+    S.ui.panel = wrap.querySelector("#lj-panel");
+    S.ui.status = wrap.querySelector("#lj-status");
+    S.ui.faceBtn = wrap.querySelector("#lj-face-btn");
+    S.ui.wake = wrap.querySelector("#lj-wake");
+    S.ui.inputRow = wrap.querySelector("#lj-input-row");
+    S.ui.input = wrap.querySelector("#lj-input");
+    S.ui.send = wrap.querySelector("#lj-send");
+
+    S.face = Face.mount(S.ui.faceBtn, { size: 118 });
+
+    S.ui.faceBtn.addEventListener("click", toggleListening);
+    S.ui.wake.addEventListener("click", toggleHandsFree);
+    S.ui.send.addEventListener("click", function () { submitTyped(); });
+    S.ui.input.addEventListener("keydown", function (e) { if (e.key === "Enter") submitTyped(); });
+  }
+
+  function submitTyped() {
+    var q = (S.ui.input.value || "").trim();
+    if (!q) return;
+    S.ui.input.value = "";
+    ask(q);
+  }
+
+  function setStatus(text) { S.ui.status.textContent = text; }
+
+  function showPanel(html) {
+    S.ui.panel.innerHTML = html;
+    S.ui.panel.classList.add("lj-open");
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // ------------------------------------------------------------- speech out
+  // Old build: rate 0.9 / pitch 1.1, chunk >200 chars (Chrome cutoff bug),
+  // cancel() on barge-in. Ported with .lang + onerror (gotcha fixes).
+  function chunkText(text, max) {
+    max = max || 200;
+    var out = [];
+    var sentences = String(text).match(/[^.!?]+[.!?]*\s*/g) || [String(text)];
+    var buf = "";
+    sentences.forEach(function (s) {
+      if ((buf + s).length > max && buf) { out.push(buf.trim()); buf = s; }
+      else buf += s;
+      while (buf.length > max) { out.push(buf.slice(0, max).trim()); buf = buf.slice(max); }
+    });
+    if (buf.trim()) out.push(buf.trim());
+    return out;
+  }
+
+  function speak(text, done) {
+    if (!("speechSynthesis" in root)) { if (done) done(); return; }
+    stopSpeaking();
+    var chunks = chunkText(text);
+    if (!chunks.length) { if (done) done(); return; }
+    S.speaking = true;
+    S.face.startTalking();
+    var i = 0;
+    function next() {
+      if (!S.speaking || i >= chunks.length) { finish(); return; }
+      var u = new SpeechSynthesisUtterance(chunks[i++]);
+      u.lang = "en-AU";
+      u.rate = 0.95;
+      u.pitch = 1.05;
+      var voice = pickVoice();
+      if (voice) u.voice = voice;
+      u.onend = next;
+      u.onerror = finish;
+      root.speechSynthesis.speak(u);
+    }
+    function finish() {
+      if (!S.speaking) return;
+      S.speaking = false;
+      S.face.stopTalking();
+      if (done) done();
+    }
+    next();
+  }
+
+  var cachedVoice = null;
+  function pickVoice() {
+    if (cachedVoice) return cachedVoice;
+    var voices = root.speechSynthesis.getVoices() || [];
+    cachedVoice =
+      voices.find(function (v) { return /en[-_]AU/i.test(v.lang); }) ||
+      voices.find(function (v) { return /^en/i.test(v.lang); }) ||
+      null;
+    return cachedVoice;
+  }
+  if ("speechSynthesis" in root) {
+    root.speechSynthesis.onvoiceschanged = function () { cachedVoice = null; };
+  }
+
+  function stopSpeaking() {
+    if ("speechSynthesis" in root) root.speechSynthesis.cancel();
+    if (S.speaking) { S.speaking = false; S.face.stopTalking(); }
+  }
+
+  // -------------------------------------------------------------- speech in
+  function setupRecognition() {
+    var SR = root.SpeechRecognition || root.webkitSpeechRecognition;
+    if (!SR) {
+      S.speechSupported = false;
+      S.ui.inputRow.classList.add("lj-open"); // Firefox et al: typed fallback
+      setStatus("Type to ask Looper (voice needs Chrome/Safari)");
+      return;
+    }
+    S.speechSupported = true;
+    var rec = new SR();
+    rec.lang = "en-AU";
+    rec.continuous = false; // one utterance per tap; auto-restarts while enabled
+    rec.interimResults = true;
+
+    rec.onresult = function (event) {
+      var finalText = "";
+      var interim = "";
+      for (var i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) finalText += event.results[i][0].transcript;
+        else interim += event.results[i][0].transcript;
+      }
+      if (interim) {
+        setStatus("“" + interim.trim() + "”");
+        if (!S.handsFree) stopSpeaking(); // push-to-talk: any voice barges in
+      }
+      var text = finalText.trim();
+      if (!text) return;
+      if (S.handsFree) {
+        // Open mic hears Looper's own TTS — while speaking, only an
+        // explicit stop command interrupts (else it would cancel itself).
+        if (S.speaking) {
+          if (Router.route(text).intent === "stop") stopSpeaking();
+          return;
+        }
+        // Only utterances addressed to Looper act; everything else is
+        // ignored (never logged, never sent anywhere).
+        if (!WAKE_RE.test(Router.clean(text))) {
+          setStatus("Say “Hey Looper …” to ask");
+          return;
+        }
+      }
+      ask(text);
+    };
+    rec.onerror = function (event) {
+      // gotcha fix: the old build had no onerror at all
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        stopListening();
+        S.ui.inputRow.classList.add("lj-open");
+        setStatus("Mic blocked — type to ask Looper");
+      }
+    };
+    rec.onend = function () {
+      if (S.listening) {
+        try { rec.start(); } catch (e) { /* already starting */ }
+      } else {
+        S.face.setMood("idle");
+      }
+    };
+    S.recognition = rec;
+  }
+
+  function toggleListening() {
+    if (!S.speechSupported) {
+      S.ui.inputRow.classList.toggle("lj-open");
+      if (S.ui.inputRow.classList.contains("lj-open")) S.ui.input.focus();
+      return;
+    }
+    if (S.listening) stopListening();
+    else startListening();
+  }
+
+  // Wake-word mode: keep the mic open, act only on "Hey Looper …".
+  function toggleHandsFree() {
+    if (!S.speechSupported) {
+      setStatus("Voice needs Chrome/Safari");
+      return;
+    }
+    S.handsFree = !S.handsFree;
+    S.ui.wake.classList.toggle("on", S.handsFree);
+    if (S.handsFree) {
+      startListening();
+      setStatus("Hands-free — say “Hey Looper …”");
+    } else {
+      stopListening();
+    }
+  }
+
+  function startListening() {
+    if (!S.recognition) return;
+    stopSpeaking();
+    S.listening = true;
+    S.recognition.continuous = S.handsFree; // hands-free keeps the stream open
+    S.face.setMood("listening");
+    setStatus(S.handsFree ? "Hands-free — say “Hey Looper …”" : "Listening… say “find me a café”");
+    try { S.recognition.start(); } catch (e) { /* already started */ }
+  }
+
+  function stopListening() {
+    S.listening = false;
+    S.handsFree = false;
+    if (S.ui.wake) S.ui.wake.classList.remove("on");
+    if (S.recognition) { try { S.recognition.stop(); } catch (e) { /* not started */ } }
+    S.face.setMood("idle");
+    setStatus("Tap my face to talk");
+  }
+
+  // ------------------------------------------------------------- the brain
+  function api(path, params) {
+    var qs = new URLSearchParams(params).toString();
+    return fetch(S.apiBase + path + (qs ? "?" + qs : "")).then(function (r) {
+      if (!r.ok) throw new Error("API " + r.status);
+      return r.json();
+    });
+  }
+
+  function mapCenter() {
+    if (S.map && S.map.getCenter) {
+      var c = S.map.getCenter();
+      return { lat: c.lat, lng: c.lng };
+    }
+    return { lat: S.home.lat, lng: S.home.lng };
+  }
+
+  function cardUrl(r) {
+    // HybridCard connection: prefer the API's card_url; else derive nothing —
+    // never guess a slug (public-safe rule: only verifiable links).
+    return r.card_url || null;
+  }
+
+  function optionsHtml(results, headline) {
+    var html = '<p class="lj-msg">' + escapeHtml(headline) + "</p>";
+    results.forEach(function (r, i) {
+      var stars = r.avg_rating ? "⭐ " + r.avg_rating : "no ratings yet";
+      var dist = r.distance_km != null ? " · " + r.distance_km + " km" : "";
+      var link = cardUrl(r)
+        ? '<a href="' + escapeHtml(cardUrl(r)) + '" target="_blank" rel="noopener">View card →</a>'
+        : (r.website ? '<a href="' + escapeHtml(r.website) + '" target="_blank" rel="noopener">Website →</a>' : "");
+      html +=
+        '<div class="lj-option" data-i="' + i + '">' +
+        '<div><div class="lj-name">' + (i + 1) + ". " + escapeHtml(r.name) + "</div>" +
+        '<div class="lj-meta">' + escapeHtml(r.category || "") + " · " + stars + " · " +
+        (r.review_count || 0) + " reviews" + dist + "</div></div>" +
+        "<div>" + link + "</div></div>";
+    });
+    return html;
+  }
+
+  function wireOptionClicks(results) {
+    Array.prototype.forEach.call(S.ui.panel.querySelectorAll(".lj-option"), function (el) {
+      el.addEventListener("click", function () {
+        var r = results[Number(el.getAttribute("data-i"))];
+        if (r && r.lng != null && r.lat != null) Bus.flyTo(r.lng, r.lat, 17);
+      });
+    });
+  }
+
+  function speakResults(results, cmd, radiusKm) {
+    var n = results.length;
+    var lead = (cmd.superlative ? PERSONA.superlative : "") +
+      "I found " + n + " option" + (n === 1 ? "" : "s") +
+      (radiusKm ? " within " + radiusKm + " kilometres" : "") + ". ";
+    var names = results.slice(0, 3).map(function (r) {
+      var bit = r.name;
+      if (r.avg_rating) bit += " has " + r.avg_rating + " stars from " + r.review_count + " reviews";
+      else if (r.review_count) bit += " has " + r.review_count + " reviews";
+      return bit;
+    });
+    var tail = "";
+    if (cmd.intent === "connect") tail = PERSONA.connectOutro;
+    else if (cmd.intent === "offers") tail = PERSONA.offersNote;
+    else if (cmd.intent === "booking") tail = PERSONA.bookingNote;
+    speak(lead + names.join(". ") + ". " + PERSONA.antiBias + tail);
+  }
+
+  function runSearch(cmd) {
+    var center = cmd.coords || mapCenter();
+    // Stale-closure fix (gotcha): the radius for THIS command comes from the
+    // command object itself, falling back to the last explicitly-set radius.
+    var radiusM = cmd.radiusM || S.lastRadiusM;
+    if (cmd.radiusM) S.lastRadiusM = cmd.radiusM;
+    S.lastSearch = cmd;
+
+    if (cmd.category) Bus.setCategory(cmd.category);
+    S.face.setMood("thinking");
+    setStatus(pick(PERSONA.acks));
+
+    var radiusKm = Math.max(0.1, Math.min(50, radiusM / 1000));
+    return api("/search", {
+      q: cmd.searchTerm || cmd.raw,
+      lat: center.lat,
+      lng: center.lng,
+      radius_km: radiusKm,
+      limit: 5,
+      intent: cmd.intent, // telemetry only (F2.5) — never a ranking input
+      session: S.session,
+    }).then(function (data) {
+      var results = (data && data.results) || [];
+      S.face.setMood("idle");
+      if (!results.length) {
+        showPanel('<p class="lj-msg">' + escapeHtml(data.message || pick(PERSONA.noResults)) + "</p>");
+        speak(pick(PERSONA.noResults));
+        return;
+      }
+      Bus.showResults(results);
+      if (cmd.coords) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
+      showPanel(optionsHtml(results, data.message || "Here's what the loop knows:"));
+      wireOptionClicks(results);
+      speakResults(results, cmd, radiusKm);
+    }).catch(function () {
+      S.face.setMood("error");
+      setStatus("Looper brain offline");
+      showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.apiDown)) + "</p>");
+      speak(pick(PERSONA.apiDown), function () { S.face.setMood("idle"); });
+    });
+  }
+
+  function runBusiness(cmd) {
+    S.face.setMood("thinking");
+    return api("/search", { q: cmd.businessName, limit: 3, intent: "business", session: S.session }).then(function (data) {
+      var results = (data && data.results) || [];
+      S.face.setMood("idle");
+      if (!results.length) {
+        speak("I couldn't find " + cmd.businessName + " on the loop yet.");
+        showPanel('<p class="lj-msg">No match for “' + escapeHtml(cmd.businessName) + '” yet.</p>');
+        return;
+      }
+      var top = results[0];
+      Bus.showResults([top]);
+      if (top.lng != null) Bus.flyTo(top.lng, top.lat, 17); // old build: zoom 17
+      showPanel(optionsHtml(results, "Closest matches:"));
+      wireOptionClicks(results);
+      var line = top.name;
+      if (top.avg_rating) line += " — " + top.avg_rating + " stars from " + top.review_count + " community reviews.";
+      else line += " — no reviews yet. Maybe you'll leave the first one?";
+      if (top.top_review) line += " One local said: " + top.top_review;
+      speak(line);
+    }).catch(function () {
+      S.face.setMood("idle");
+      speak(pick(PERSONA.apiDown));
+    });
+  }
+
+  // ------------------------------------------------------------ the router
+  function execute(cmd) {
+    switch (cmd.intent) {
+      case "stop":
+        stopSpeaking();
+        setStatus("Tap my face to talk");
+        return;
+      case "greet":
+        speak(pick(PERSONA.greetings).replace("{district}", S.district));
+        return;
+      case "help":
+        showPanel('<p class="lj-msg">' + escapeHtml(PERSONA.help) + "</p>");
+        speak(PERSONA.help);
+        return;
+      case "suburb":
+        if (cmd.coords) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
+        speak("Taking you to " + cmd.suburb + ".");
+        return;
+      case "zoom":
+        Bus.zoom(cmd.zoomDelta);
+        return;
+      case "reset":
+        Bus.reset();
+        speak("Back to the whole " + S.district + " loop.");
+        return;
+      case "set_radius":
+        S.lastRadiusM = cmd.radiusM;
+        if (S.lastSearch) {
+          var rerun = Object.assign({}, S.lastSearch, { radiusM: cmd.radiusM });
+          runSearch(rerun);
+        } else {
+          speak("Got it — I'll search within " + (cmd.radiusM / 1000) + " kilometres.");
+        }
+        return;
+      case "business":
+        runBusiness(cmd);
+        return;
+      case "search":
+      case "connect":
+      case "offers":
+      case "booking":
+      case "news":
+        runSearch(cmd);
+        return;
+      default:
+        speak(pick(PERSONA.unknown));
+        showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.unknown)) + "</p>");
+    }
+  }
+
+  function ask(text) {
+    stopSpeaking(); // barge-in
+    setStatus("“" + text + "”");
+    var cmd = Router.route(text, { radiusM: S.lastRadiusM });
+    execute(cmd);
+    return cmd;
+  }
+
+  // ------------------------------------------------------- deep links (F4.2)
+  // ?cat=Food&q=coffee&fly=151.2743,-33.8908,16 — same contract Ricky's
+  // localloop_open_map tool builds.
+  function applyDeepLinks() {
+    var params = new URLSearchParams(root.location.search);
+    var fly = params.get("fly");
+    if (fly) {
+      var parts = fly.split(",").map(Number);
+      if (parts.length >= 2 && isFinite(parts[0]) && isFinite(parts[1])) {
+        Bus.flyTo(parts[0], parts[1], isFinite(parts[2]) ? parts[2] : undefined);
+      }
+    }
+    var cat = params.get("cat");
+    if (cat) Bus.setCategory(cat);
+    var q = params.get("q");
+    if (q) ask(q);
+  }
+
+  // ------------------------------------------------------------------- init
+  function init(opts) {
+    if (S.inited) return API;
+    opts = opts || {};
+    var cfg = root.LooperJarvisConfig || {};
+    var llCfg = root.LocalLoopConfig || {};
+
+    S.apiBase = (opts.apiBase || cfg.apiBase || llCfg.looperApi || S.apiBase).replace(/\/$/, "");
+    if (!/\/api$/.test(S.apiBase)) S.apiBase += "/api";
+    S.district = opts.district || cfg.district || S.district;
+    S.home = opts.home || cfg.home || S.home;
+    S.map = opts.map || root.localloopMap || null;
+
+    buildUi();
+    setupRecognition();
+
+    if (S.map) {
+      Bus.init(S.map, {
+        home: S.home,
+        markerLib: opts.markerLib || root.maplibregl || root.mapboxgl,
+        onCategory: opts.onCategory || cfg.onCategory || null,
+        resolveBusiness: function (name) {
+          return api("/search", { q: name, limit: 1 }).then(function (d) {
+            return (d.results && d.results[0]) || null;
+          });
+        },
+      });
+      applyDeepLinks();
+    }
+
+    S.inited = true;
+    return API;
+  }
+
+  var API = {
+    init: init,
+    ask: ask,
+    speak: speak,
+    stop: function () { stopSpeaking(); stopListening(); },
+    startListening: startListening,
+    stopListening: stopListening,
+    get face() { return S.face; },
+    bus: Bus,
+    router: Router,
+  };
+
+  root.LooperJarvis = API;
+})(typeof self !== "undefined" ? self : this);

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, nativeImage, screen } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeImage, screen, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const path = require("node:path");
@@ -23,6 +23,10 @@ let currentMode = "display";
 let mainWindow = null;
 let normalWindowBounds = null;
 let dbWriteQueue = Promise.resolve();
+
+// LocalLoop ecosystem endpoints (F4.1/F4.2)
+const LOOPER_API_BASE = (process.env.LOOPER_API_BASE || "http://localhost:8000").replace(/\/$/, "");
+const LOCALLOOP_MAP_URL = (process.env.LOCALLOOP_MAP_URL || "https://localloop.ai").replace(/\/$/, "");
 
 const LOOPER_INSTRUCTIONS = `# Role and Objective
 You are Looper, Bill's desktop AI operator. You speak through realtime voice and can use local tools.
@@ -51,7 +55,16 @@ Use artifacts for menus, web results, graphics, notes, database tables, code sni
 For Mermaid charts, keep syntax simple: start with flowchart TD, avoid markdown fences, avoid parentheses in node labels, and use short alphanumeric node IDs.
 
 # Audio
-Let the user interrupt. If audio is unclear, ask one short clarifying question instead of guessing.`;
+Let the user interrupt. If audio is unclear, ask one short clarifying question instead of guessing.
+
+# LocalLoop (you are LOOPER's desktop face — the Jarvis of the Local Loop map)
+- You are the community connection agent for LocalLoop (localloop.ai): you connect locals to each other and to the businesses around them.
+- When asked about local businesses, services, food, deals, or anything "around here", you MUST use the localloop tools (localloop_search, localloop_businesses). Never answer from memory and never invent names, ratings, or review counts.
+- ANTI-BIAS RULES (non-negotiable): never call any business "the best". Always present MULTIPLE options. Ranking comes only from community reviews, recency, and distance — never from discounts, payments, or who owns a card. If Bill asks for "the best", say you show what the community says instead.
+- To control the live map, call localloop_open_map with a category, query, or coordinates — it opens localloop.ai deep-linked to that view (the map's Looper dock takes it from there).
+- For "how's the bridge?" or questions about HybridCard deals flowing in, use localloop_bridge_status.
+- Businesses with a Hybrid Card have a card_url — offer it as "their card" link. If a business has none, you may mention they can get one at hybridcard.ai.
+- Privacy: never read out emails, mobile numbers, or member identities. Aggregate counts only.`;
 
 const toolSpecs = [
   {
@@ -105,6 +118,78 @@ const toolSpecs = [
         numResults: { type: "number", minimum: 1, maximum: 10 },
       },
       required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "localloop_search",
+    description: "Search the LocalLoop community for businesses and services (LOOPER brain, anti-bias: ranked by community reviews, recency, proximity only). Use for any 'find me a…', 'what's good around…', local business or service question. Returns multiple options with ratings and review counts — present at least two.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        lat: { type: "number" },
+        lng: { type: "number" },
+        radius_km: { type: "number", minimum: 0.1, maximum: 50 },
+        limit: { type: "number", minimum: 1, maximum: 20 },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "localloop_discover",
+    description: "Discover LocalLoop businesses around a suburb (Bondi, Bronte, Bondi Junction, Byron Bay, …) with optional category and radius. Anti-bias: ranked by community reviews, review recency, proximity only. Prefer this over localloop_search when Bill names a suburb.",
+    parameters: {
+      type: "object",
+      properties: {
+        suburb: { type: "string" },
+        category: { type: "string" },
+        radius_km: { type: "number", minimum: 0.1, maximum: 50 },
+        limit: { type: "number", minimum: 1, maximum: 50 },
+      },
+      required: ["suburb"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "localloop_businesses",
+    description: "List LocalLoop businesses, optionally filtered by category (e.g. café, health, trades). Use when Bill wants a plain list rather than a search.",
+    parameters: {
+      type: "object",
+      properties: {
+        category: { type: "string" },
+        limit: { type: "number", minimum: 1, maximum: 50 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "localloop_open_map",
+    description: "Open the live LocalLoop Explore map (localloop.ai) in the browser, deep-linked to a category filter, a search query for the map's Looper dock, and/or a camera position. Use when Bill says 'show me … on the map'. Category must be one of: News, Sales, Offers, Events, Accommodation, Job-Offers, Fetch_Deliveries, Food.",
+    parameters: {
+      type: "object",
+      properties: {
+        category: { type: "string", enum: ["News", "Sales", "Offers", "Events", "Accommodation", "Job-Offers", "Fetch_Deliveries", "Food"] },
+        query: { type: "string" },
+        lng: { type: "number" },
+        lat: { type: "number" },
+        zoom: { type: "number", minimum: 1, maximum: 22 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "localloop_bridge_status",
+    description: "Read-only HybridCard→LocalLoop bridge cockpit: recent bridge events, counts by status/type, active deals and card-linked businesses. Use when Bill asks how the bridge is doing or whether deals are flowing.",
+    parameters: {
+      type: "object",
+      properties: {},
       additionalProperties: false,
     },
   },
@@ -658,6 +743,26 @@ ipcMain.handle("tools:execute", async (_event, toolCall) => {
       return await webSearch(args);
     }
 
+    if (name === "localloop_search") {
+      return await localloopSearch(args);
+    }
+
+    if (name === "localloop_discover") {
+      return await localloopDiscover(args);
+    }
+
+    if (name === "localloop_businesses") {
+      return await localloopBusinesses(args);
+    }
+
+    if (name === "localloop_open_map") {
+      return await localloopOpenMap(args);
+    }
+
+    if (name === "localloop_bridge_status") {
+      return await localloopBridgeStatus();
+    }
+
     if (name === "image_generate") {
       return await generateImage(args);
     }
@@ -861,6 +966,146 @@ end tell`;
   }
 });
 
+async function localloopApi(path, params) {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value !== undefined && value !== null && value !== "") qs.set(key, String(value));
+  }
+  const url = `${LOOPER_API_BASE}${path}${qs.size ? `?${qs}` : ""}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`LOOPER API ${response.status}: ${await response.text()}`);
+  }
+  return response.json();
+}
+
+function businessesTable(results) {
+  const rows = results.map((r, i) => {
+    const stars = r.avg_rating ? `⭐ ${r.avg_rating}` : "no ratings yet";
+    const dist = r.distance_km != null ? ` · ${r.distance_km} km` : "";
+    const link = r.card_url ? ` · [View card](${r.card_url})` : r.website ? ` · [Website](${r.website})` : "";
+    return `| ${i + 1} | ${r.name} | ${r.category || ""} | ${stars} · ${r.review_count || 0} reviews${dist}${link} |`;
+  });
+  return ["| # | Business | Category | Community |", "|---|---|---|---|", ...rows].join("\n");
+}
+
+async function localloopSearch(args) {
+  try {
+    const data = await localloopApi("/api/search", {
+      q: String(args.query || ""),
+      lat: args.lat,
+      lng: args.lng,
+      radius_km: args.radius_km,
+      limit: Math.max(1, Math.min(20, Number(args.limit || 5))),
+    });
+    const results = Array.isArray(data.results) ? data.results : [];
+    return {
+      ok: true,
+      message: data.message,
+      results,
+      artifact: {
+        title: `Local Loop: ${args.query}`,
+        kind: "markdown",
+        content: `${data.message || ""}\n\n${businessesTable(results)}\n\n_Ranked by community reviews, recency and distance only — never by payment._`,
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error), message: "The LOOPER API is offline. Is the backend running?" };
+  }
+}
+
+async function localloopDiscover(args) {
+  try {
+    const data = await localloopApi("/api/discover", {
+      suburb: String(args.suburb || ""),
+      category: args.category,
+      radius_km: args.radius_km,
+      limit: Math.max(1, Math.min(50, Number(args.limit || 10))),
+      intent: "discover",
+      session: "looper-desktop",
+    });
+    const results = Array.isArray(data.results) ? data.results : [];
+    return {
+      ok: true,
+      engine: data.engine,
+      message: data.message,
+      results,
+      artifact: {
+        title: `Local Loop: ${args.suburb}${args.category ? ` · ${args.category}` : ""}`,
+        kind: "markdown",
+        content: `${data.message || ""}\n\n${businessesTable(results)}\n\n_Engine: ${data.engine} · ranked by community reviews, recency and distance only._`,
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error), message: "The LOOPER API is offline. Is the backend running?" };
+  }
+}
+
+async function localloopBusinesses(args) {
+  try {
+    const data = await localloopApi("/api/businesses", {
+      category: args.category,
+      limit: Math.max(1, Math.min(50, Number(args.limit || 20))),
+    });
+    const results = Array.isArray(data.results) ? data.results : [];
+    return {
+      ok: true,
+      count: data.count,
+      results,
+      artifact: {
+        title: `Local Loop businesses${args.category ? `: ${args.category}` : ""}`,
+        kind: "markdown",
+        content: businessesTable(results),
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error), message: "The LOOPER API is offline. Is the backend running?" };
+  }
+}
+
+// F4.2 deep-link contract — the map side parses ?cat=&q=&fly=lng,lat,zoom
+// (web/jarvis/looper-jarvis.js applyDeepLinks + llx11 once integrated).
+async function localloopOpenMap(args) {
+  const params = new URLSearchParams();
+  if (args.category) params.set("cat", String(args.category));
+  if (args.query) params.set("q", String(args.query));
+  if (Number.isFinite(args.lng) && Number.isFinite(args.lat)) {
+    const fly = [args.lng, args.lat];
+    if (Number.isFinite(args.zoom)) fly.push(args.zoom);
+    params.set("fly", fly.join(","));
+  }
+  const url = `${LOCALLOOP_MAP_URL}/${params.size ? `?${params}` : ""}`;
+  await shell.openExternal(url);
+  return {
+    ok: true,
+    url,
+    artifact: { title: "Local Loop map", kind: "markdown", content: `Opened the map: [${url}](${url})` },
+  };
+}
+
+async function localloopBridgeStatus() {
+  try {
+    const data = await localloopApi("/api/ingest/status");
+    const counts = data.counts || {};
+    const recent = Array.isArray(data.recent_events) ? data.recent_events : [];
+    const rows = recent.map((e) => `| ${e.received_at || ""} | ${e.event_type || ""} | ${e.status || ""} |`);
+    const content = [
+      `**Total events:** ${counts.total_events ?? 0} · **Active deals:** ${counts.active_deals ?? 0} · **Card businesses:** ${counts.card_businesses ?? 0}`,
+      "",
+      "| Received | Event | Status |",
+      "|---|---|---|",
+      ...rows,
+    ].join("\n");
+    return {
+      ok: true,
+      counts,
+      artifact: { title: "HybridCard bridge status", kind: "markdown", content },
+    };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error), message: "The LOOPER API is offline. Is the backend running?" };
+  }
+}
+
 async function webSearch(args) {
   const exaKey = process.env.EXA_API_KEY;
   if (!exaKey) {
@@ -961,6 +1206,13 @@ Here is what you can ask me to do.
 - "Search the web for ..."
 - "Look up the latest on ..."
 - Results render as a clean Markdown brief with source links.
+
+## Local Loop
+
+- "What's good for lunch in Bondi?" — community search, multiple options, real reviews.
+- "Show me Bondi cafés on the map." — opens localloop.ai deep-linked to that view.
+- "Any deals waiting on the bridge?" — HybridCard bridge status, read-only.
+- Rankings come from community reviews only — Looper never picks favourites.
 
 ## Visuals
 

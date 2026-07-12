@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<!-- Jarvis smoke harness: exercises the full voice→map flow with a fake map +
+     stubbed API (no CDN, no mic, no backend). Drive it manually in a browser
+     or via web/tests/jarvis-smoke.playwright.js -->
+<html lang="en">
+<head><meta charset="UTF-8"><title>Jarvis smoke</title>
+<style>body{background:#05070b;height:100vh;margin:0}</style></head>
+<body>
+<script src="../jarvis/voice-command-router.js"></script>
+<script src="../jarvis/looper-map-bus.js"></script>
+<script src="../jarvis/looper-face.js"></script>
+<script src="../jarvis/looper-jarvis.js"></script>
+<script>
+  window.__calls = [];
+  var fakeMap = {
+    _zoom: 14.5,
+    getZoom: function () { return this._zoom; },
+    getCenter: function () { return { lng: 151.2743, lat: -33.8915 }; },
+    flyTo: function (o) { window.__calls.push(["flyTo", o]); },
+    easeTo: function (o) { window.__calls.push(["easeTo", o]); this._zoom = o.zoom || this._zoom; },
+    fitBounds: function (b, o) { window.__calls.push(["fitBounds", b, o]); },
+  };
+
+  // Stub the LOOPER API
+  var realFetch = window.fetch;
+  window.fetch = function (url) {
+    window.__calls.push(["fetch", String(url)]);
+    return Promise.resolve({
+      ok: true,
+      json: function () {
+        return Promise.resolve({
+          query: "café",
+          message: "Here are 2 options for 'café', ranked by community experience.",
+          total_results: 2,
+          results: [
+            { business_id: 1, name: "Gertrude & Alice", category: "café", lat: -33.8893, lng: 151.2735,
+              review_count: 12, avg_rating: 4.8, top_review: '"Great books, better coffee"', distance_km: 0.4,
+              website: null, card_url: "https://gertrude.hybridcard.ai" },
+            { business_id: 2, name: "Bondi Wholefoods", category: "café", lat: -33.8908, lng: 151.2748,
+              review_count: 7, avg_rating: 4.5, top_review: null, distance_km: 0.6,
+              website: "https://example.com", card_url: null },
+          ],
+        });
+      },
+    });
+  };
+
+  LooperJarvis.init({ map: fakeMap, district: "Bondi", apiBase: "http://stub" });
+</script>
+</body>
+</html>
