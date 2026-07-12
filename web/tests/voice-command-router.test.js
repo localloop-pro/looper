@@ -54,6 +54,8 @@ check("hotel → Accommodation", route("show me hotels in bondi"), { intent: "se
 check("job → Job-Offers", route("any jobs going around here"), { intent: "search", category: "Job-Offers" });
 check("delivery → Fetch_Deliveries", route("I need a courier"), { intent: "connect" });
 check("spa/relax → brain-only search (no pin category)", route("I want to relax at a spa"), { intent: "search", category: undefined });
+check("plumber noun reaches the brain", route("find me a plumber"), { intent: "search", searchTerm: "plumber trades services" });
+check("dentist noun reaches the brain", route("i want a dentist"), { intent: "search", searchTerm: "dentist health fitness wellness" });
 
 // ---- radius (stale-closure fix: radius travels in the command) --------------
 check("within 2 km", route("cafes within 2 km"), { intent: "search", category: "Food", radiusM: 2000 });
@@ -78,6 +80,8 @@ check("take me to a business (not suburb)", route("take me to the health emporiu
 // ---- offers / anti-bias -------------------------------------------------------
 check("deals → offers intent", route("any deals around"), { intent: "offers", category: "Offers" });
 check("specials → offers", route("show me today's specials"), { intent: "offers", category: "Offers" });
+check("deals in Bronte keeps suburb scope", route("any deals in bronte"), { intent: "offers", category: "Offers", suburb: "bronte" });
+check("news in Byron Bay keeps suburb scope", route("news in byron bay"), { intent: "news", category: "News", suburb: "byron bay" });
 
 // ---- sales (own frozen pin category, distinct from Offers) ---------------------
 check("show me sales → Sales", route("show me sales"), { intent: "search", category: "Sales" });

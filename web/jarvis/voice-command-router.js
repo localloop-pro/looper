@@ -235,17 +235,33 @@
       cmd.searchTerm = connectTarget;
       if (category) {
         cmd.category = category.pin || undefined;
-        if (connectTarget.split(" ").length > 4) cmd.searchTerm = category.term;
+        if (connectTarget.split(" ").length > 4) cmd.searchTerm = termFor(category);
       }
       if (connectSuburb) { cmd.suburb = connectSuburb; cmd.coords = suburbs[connectSuburb]; }
       return cmd;
     }
 
+    // Suburb scope, computed ONCE so every category-style intent keeps it
+    // ("deals in Bronte" must not silently search the current map center).
+    var scopeSub = matchSuburb(stripped, suburbs, false);
+    function applyScope(c) {
+      if (scopeSub) { c.suburb = scopeSub; c.coords = suburbs[scopeSub]; }
+      return c;
+    }
+    // The brain should see the user's actual noun, not just our broad
+    // bucket term ("find me a plumber" must send "plumber", not only
+    // "trades services") — prepend the matched synonym to the term.
+    function termFor(cat) {
+      var m = stripped.match(cat.re);
+      var noun = m && m[0] ? m[0] : "";
+      return noun && cat.term.indexOf(noun) === -1 ? noun + " " + cat.term : cat.term;
+    }
+
     if (booking) {
       cmd.intent = "booking";
-      if (category) { cmd.category = category.pin || undefined; cmd.searchTerm = category.term; }
+      if (category) { cmd.category = category.pin || undefined; cmd.searchTerm = termFor(category); }
       else cmd.searchTerm = stripped.replace(BOOKING_RE, "").trim() || "restaurant";
-      return cmd;
+      return applyScope(cmd);
     }
 
     // Offers/deals get their own intent (anti-bias handling downstream).
@@ -253,7 +269,7 @@
       cmd.intent = "offers";
       cmd.category = "Offers";
       cmd.searchTerm = category.term;
-      return cmd;
+      return applyScope(cmd);
     }
 
     // News/events phrasing like "what's happening"
@@ -261,7 +277,7 @@
       cmd.intent = "news";
       cmd.category = category.pin;
       cmd.searchTerm = category.term;
-      return cmd;
+      return applyScope(cmd);
     }
 
     // Specific business: old build's /(?:find|show|tell me about) X/ regex.
@@ -290,19 +306,16 @@
     if (category) {
       cmd.intent = "search";
       if (category.pin) cmd.category = category.pin;
-      cmd.searchTerm = category.term;
+      cmd.searchTerm = termFor(category);
       // a mentioned suburb scopes the search ("cafes in bronte")
-      var inSub = matchSuburb(stripped, suburbs, false);
-      if (inSub) { cmd.suburb = inSub; cmd.coords = suburbs[inSub]; }
-      return cmd;
+      return applyScope(cmd);
     }
 
     // Bare suburb mention: "bondi junction please"
-    var bare = matchSuburb(stripped, suburbs, false);
-    if (bare && stripped.split(" ").length <= 4) {
+    if (scopeSub && stripped.split(" ").length <= 4) {
       cmd.intent = "suburb";
-      cmd.suburb = bare;
-      cmd.coords = suburbs[bare];
+      cmd.suburb = scopeSub;
+      cmd.coords = suburbs[scopeSub];
       return cmd;
     }
 

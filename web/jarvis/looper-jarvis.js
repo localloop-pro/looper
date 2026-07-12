@@ -605,9 +605,13 @@
         return;
       case "zoom":
         Bus.zoom(cmd.zoomDelta);
+        // a superseded in-flight search can no longer restore the mood —
+        // quick map commands settle the face themselves
+        S.face.setMood("idle");
         return;
       case "reset":
         Bus.reset();
+        S.face.setMood("idle");
         speak("Back to the whole " + S.district + " loop.");
         return;
       case "set_radius":
