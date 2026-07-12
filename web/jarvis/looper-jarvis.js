@@ -91,7 +91,10 @@
 
   // ------------------------------------------------------------------- UI
   var CSS = [
-    "#looper-jarvis{position:fixed;right:18px;bottom:18px;z-index:9999;display:flex;flex-direction:column;align-items:flex-end;gap:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}",
+    // Position is host-tunable (init opts.dock) so the dock can clear a
+    // site's own fixed UI (mobile bottom nav, Mapbox bottom-right controls).
+    "#looper-jarvis{position:fixed;right:var(--lj-right,18px);bottom:var(--lj-bottom,18px);z-index:9999;display:flex;flex-direction:column;align-items:flex-end;gap:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}",
+    "@media (max-width:768px){#looper-jarvis{bottom:var(--lj-bottom-mobile,var(--lj-bottom,18px));right:var(--lj-right-mobile,var(--lj-right,12px));}}",
     "#looper-jarvis .lj-panel{width:min(340px,calc(100vw - 36px));max-height:46vh;overflow-y:auto;background:rgba(10,12,18,.94);color:#e8ecf4;border:1px solid rgba(86,189,255,.35);border-radius:16px;padding:12px 14px;backdrop-filter:blur(14px);box-shadow:0 12px 40px rgba(0,0,0,.45);display:none;}",
     "#looper-jarvis .lj-panel.lj-open{display:block;}",
     "#looper-jarvis .lj-msg{font-size:13.5px;line-height:1.45;margin:0 0 8px;}",
@@ -125,10 +128,18 @@
     document.head.appendChild(s);
   }
 
-  function buildUi() {
+  function buildUi(dock) {
     injectCss();
     var wrap = document.createElement("div");
     wrap.id = "looper-jarvis";
+    // host offsets → CSS vars (e.g. llx11: clear the mobile bottom nav and
+    // the map's bottom-right NavigationControl)
+    if (dock) {
+      if (dock.right) wrap.style.setProperty("--lj-right", dock.right);
+      if (dock.bottom) wrap.style.setProperty("--lj-bottom", dock.bottom);
+      if (dock.mobileBottom) wrap.style.setProperty("--lj-bottom-mobile", dock.mobileBottom);
+      if (dock.mobileRight) wrap.style.setProperty("--lj-right-mobile", dock.mobileRight);
+    }
     wrap.innerHTML =
       '<div class="lj-panel" id="lj-panel"></div>' +
       '<div class="lj-input-row" id="lj-input-row">' +
@@ -576,7 +587,8 @@
         return;
       }
       var top = results[0];
-      Bus.showResults([top]);
+      // every listed match gets a marker — the panel and the map must agree
+      Bus.showResults(results);
       // both coords or no flight — a null lat coerces to the equator
       if (top.lng != null && top.lat != null) Bus.flyTo(top.lng, top.lat, 17); // old build: zoom 17
       showPanel(optionsHtml(results, "Closest matches:"));
@@ -694,7 +706,7 @@
     S.onMicClose = opts.onMicClose || cfg.onMicClose || null;
     S.beforeSpeak = opts.beforeSpeak || cfg.beforeSpeak || null;
 
-    buildUi();
+    buildUi(opts.dock || cfg.dock || null);
     setupRecognition();
 
     if (S.map) {

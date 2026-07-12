@@ -69,6 +69,8 @@ check("where is X → business", route("where is speedos"), { intent: "business"
 check("show X → business", route("show me Bondi Wholefoods"), { intent: "business", businessName: "bondi wholefoods" });
 check("find me A florist → search (article = discovery)", route("find me a florist"), { intent: "search", searchTerm: "florist" });
 check("find me a florist in Bronte → scoped search", route("find me a florist in bronte"), { intent: "search", searchTerm: "florist", suburb: "bronte" });
+check("find me a florist near me → clean term + radius", route("find me a florist near me"), { intent: "search", searchTerm: "florist", radiusM: 1000 });
+check("find me an accountant within 5 km → clean term + radius", route("find me an accountant within 5 km"), { intent: "search", searchTerm: "accountant", radiusM: 5000 });
 check("search for an accountant bondi → scoped search", route("search for an accountant bondi"), { intent: "search", searchTerm: "accountant", suburb: "bondi" });
 check("find me AN accountant → search", route("find me an accountant"), { intent: "search", searchTerm: "accountant" });
 check("where is Bondi Pizza → business (naming verb beats Food)", route("where is Bondi Pizza"), { intent: "business", businessName: "bondi pizza" });

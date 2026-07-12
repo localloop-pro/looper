@@ -131,6 +131,16 @@
     return null;
   }
 
+  // Once a radius is parsed it lives in cmd.radiusM — the phrase itself
+  // must never reach the brain as literal search text.
+  function stripRadiusPhrases(t) {
+    return t
+      .replace(/\b(?:within|inside|in)?\s*\d+(?:\.\d+)?\s*(?:km|kilometres?|kilometers?|k|m|metres|meters)\b/g, " ")
+      .replace(/\b(?:near me|nearby|around me|close by|walking distance)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   // Old build's specific-business regex, widened verbs, greedy name capture.
   // An indefinite article after the verb ("find me A florist") signals a
   // category-style discovery, not a proper business name — captured
@@ -317,8 +327,10 @@
       if (biz[1]) {
         // "find me a florist" — indefinite article ⇒ discovery, not a name.
         // A named suburb scopes it AND leaves the search term clean
-        // ("find me a florist in bronte" → term "florist", coords Bronte).
+        // ("find me a florist in bronte" → term "florist", coords Bronte),
+        // and parsed radius phrases never reach the brain as literal text.
         cmd.intent = "search";
+        name = stripRadiusPhrases(name);
         if (scopeSub) {
           name = name
             .replace(scopeSub, " ")
@@ -368,11 +380,7 @@
     // removed, it's a search ("bus stop near me" → search "bus stop");
     // a bare radius ("within 2 km") re-runs the last search with it.
     if (radiusM !== null) {
-      var leftover = stripped
-        .replace(/\b(?:within|inside|in)?\s*\d+(?:\.\d+)?\s*(?:km|kilometres?|kilometers?|k|m|metres|meters)\b/g, " ")
-        .replace(/\b(?:near me|nearby|around me|close by|walking distance)\b/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+      var leftover = stripRadiusPhrases(stripped);
       if (leftover) {
         cmd.intent = "search";
         cmd.searchTerm = leftover;
