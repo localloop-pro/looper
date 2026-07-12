@@ -83,6 +83,7 @@ check("fly to byron bay", route("fly to Byron Bay"), { intent: "suburb", suburb:
 check("bare suburb", route("rose bay"), { intent: "suburb", suburb: "rose bay" });
 check("florist in Bronte → scoped search, not just fly", route("florist in bronte"), { intent: "search", searchTerm: "florist", suburb: "bronte" });
 check("accountant bondi → scoped search", route("accountant bondi"), { intent: "search", searchTerm: "accountant", suburb: "bondi" });
+check("florist in bronte within 5 km → clean term + scope + radius", route("florist in bronte within 5 km"), { intent: "search", searchTerm: "florist", suburb: "bronte", radiusM: 5000 });
 check("take me to a business (not suburb)", route("take me to the health emporium"), { intent: "business", businessName: "health emporium" });
 
 // ---- offers / anti-bias -------------------------------------------------------
@@ -100,12 +101,17 @@ check("second hand → Sales", route("second hand furniture"), { intent: "search
 check("best cafe → superlative flagged (anti-bias)", route("what's the best cafe"), { intent: "search", category: "Food", superlative: true });
 
 // ---- booking ------------------------------------------------------------------
-check("booking intent", route("book a table for two"), { intent: "booking" });
+check("booking intent", route("book a table for two"), { intent: "booking", searchTerm: "restaurant" });
 check("booking + category", route("book me a restaurant"), { intent: "booking", category: "Food" });
+check("book a table in Bronte → restaurant + scope", route("book a table in bronte"), { intent: "booking", searchTerm: "restaurant", suburb: "bronte" });
+check("table for two near me → restaurant + radius", route("table for two near me"), { intent: "booking", searchTerm: "restaurant", radiusM: 1000 });
+check("book a haircut keeps its noun", route("book a haircut"), { intent: "booking", searchTerm: "haircut" });
 
 // ---- connect (the mission) ------------------------------------------------------
 check("connect me with a plumber", route("connect me with a plumber"), { intent: "connect", searchTerm: "plumber" });
 check("i need an electrician", route("I need an electrician"), { intent: "connect", searchTerm: "electrician" });
+check("i need an electrician near me → clean term", route("I need an electrician near me"), { intent: "connect", searchTerm: "electrician", radiusM: 1000 });
+check("connect me with a plumber in bronte → clean + scoped", route("connect me with a plumber in bronte"), { intent: "connect", searchTerm: "plumber", suburb: "bronte" });
 check("who can help with garden", route("who can help me with my garden"), { intent: "connect" });
 
 // ---- news / events ---------------------------------------------------------------

@@ -257,6 +257,18 @@
     var category = matchCategory(stripped);
     var booking = BOOKING_RE.test(stripped);
 
+    // Strip location noise from a term the brain will receive: parsed
+    // radius phrases, a matched suburb, then dangling prepositions —
+    // "electrician near me" → "electrician", "plumber in bronte" → "plumber".
+    function cleanScopedTerm(text, sub) {
+      var t = stripRadiusPhrases(text);
+      if (sub) t = t.replace(sub, " ");
+      return t
+        .replace(/\b(?:in|at|around|near)\b\s*$/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
     // Connect intent (the mission): "connect me with a plumber",
     // "i need an electrician", "who can help me with my garden"
     var connect = stripped.match(CONNECT_RE);
@@ -264,7 +276,7 @@
       var connectTarget = stripArticles(connect[1].trim());
       var connectSuburb = matchSuburb(connectTarget, suburbs, false);
       cmd.intent = "connect";
-      cmd.searchTerm = connectTarget;
+      cmd.searchTerm = cleanScopedTerm(connectTarget, connectSuburb) || connectTarget;
       if (category) {
         cmd.category = category.pin || undefined;
         if (connectTarget.split(" ").length > 4) cmd.searchTerm = termFor(category);
@@ -292,7 +304,19 @@
     if (booking) {
       cmd.intent = "booking";
       if (category) { cmd.category = category.pin || undefined; cmd.searchTerm = termFor(category); }
-      else cmd.searchTerm = stripped.replace(BOOKING_RE, "").trim() || "restaurant";
+      else {
+        // "book a table in Bronte" — the leftover after removing the verb,
+        // scope and filler is just table-talk, and the brain would treat it
+        // literally; generic table bookings default to restaurants.
+        var bookTerm = cleanScopedTerm(stripped.replace(BOOKING_RE, " "), scopeSub)
+          .replace(/\b(?:a|an|the|for|me|us|please|tonight|today|tomorrow)\b/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!bookTerm || /^table(?: \w+)?$/.test(bookTerm) || /^(?:two|three|four|five|six|\d+)$/.test(bookTerm)) {
+          bookTerm = "restaurant";
+        }
+        cmd.searchTerm = bookTerm;
+      }
       return applyScope(cmd);
     }
 
@@ -380,13 +404,14 @@
     // removed, it's a search ("bus stop near me" → search "bus stop");
     // a bare radius ("within 2 km") re-runs the last search with it.
     if (radiusM !== null) {
-      var leftover = stripRadiusPhrases(stripped);
+      var leftover = cleanScopedTerm(stripped, scopeSub);
       if (leftover) {
+        // "florist in bronte within 5 km" → term "florist", coords Bronte
         cmd.intent = "search";
         cmd.searchTerm = leftover;
-      } else {
-        cmd.intent = "set_radius";
+        return applyScope(cmd);
       }
+      cmd.intent = "set_radius";
       return cmd;
     }
 
