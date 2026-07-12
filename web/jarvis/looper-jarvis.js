@@ -71,13 +71,18 @@
     face: null,
     recognition: null,
     listening: false,
+    handsFree: false, // wake-word mode: always listening, only "hey looper …" acts
     speaking: false,
     lastSearch: null, // {cmd} for set_radius re-runs (stale-closure fix: radius comes from the NEW command)
     lastRadiusM: 1500,
     ui: {},
     map: null,
     speechSupported: false,
+    // anonymous per-page-load session id — telemetry only, never identity
+    session: (root.crypto && root.crypto.randomUUID) ? root.crypto.randomUUID() : "s" + String(Math.random()).slice(2),
   };
+
+  var WAKE_RE = /^(?:hey|ok|okay)\s+looper\b/;
 
   // ------------------------------------------------------------------- UI
   var CSS = [
@@ -94,6 +99,8 @@
     "#looper-jarvis .lj-face-btn{position:relative;border:none;background:none;padding:0;cursor:pointer;border-radius:999px;}",
     "#looper-jarvis .lj-face-btn:focus-visible{outline:3px solid #7ddfff;outline-offset:3px;}",
     "#looper-jarvis .lj-status{max-width:220px;background:rgba(10,12,18,.9);border:1px solid rgba(86,189,255,.3);color:#bfe9ff;font-size:12px;padding:6px 12px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}",
+    "#looper-jarvis .lj-wake{border:1px solid rgba(86,189,255,.3);background:rgba(10,12,18,.9);color:#7ddfff;font-size:12px;padding:6px 11px;border-radius:999px;cursor:pointer;}",
+    "#looper-jarvis .lj-wake.on{background:#56bdff;color:#04121e;border-color:#56bdff;}",
     "#looper-jarvis .lj-input-row{display:none;gap:6px;width:min(340px,calc(100vw - 36px));}",
     "#looper-jarvis .lj-input-row.lj-open{display:flex;}",
     "#looper-jarvis .lj-input-row input{flex:1;background:rgba(10,12,18,.94);border:1px solid rgba(86,189,255,.35);color:#e8ecf4;border-radius:999px;padding:9px 14px;font-size:13px;outline:none;}",
@@ -124,6 +131,7 @@
       '  <button id="lj-send" aria-label="Send">➤</button>' +
       "</div>" +
       '<div class="lj-dock">' +
+      '  <button class="lj-wake" id="lj-wake" title="Hands-free: say ‘Hey Looper …’" aria-label="Toggle hands-free Hey Looper mode">🎙 Hey Looper</button>' +
       '  <div class="lj-status" id="lj-status">Tap my face to talk</div>' +
       '  <button class="lj-face-btn" id="lj-face-btn" aria-label="Talk to Looper"></button>' +
       "</div>";
@@ -132,6 +140,7 @@
     S.ui.panel = wrap.querySelector("#lj-panel");
     S.ui.status = wrap.querySelector("#lj-status");
     S.ui.faceBtn = wrap.querySelector("#lj-face-btn");
+    S.ui.wake = wrap.querySelector("#lj-wake");
     S.ui.inputRow = wrap.querySelector("#lj-input-row");
     S.ui.input = wrap.querySelector("#lj-input");
     S.ui.send = wrap.querySelector("#lj-send");
@@ -139,6 +148,7 @@
     S.face = Face.mount(S.ui.faceBtn, { size: 118 });
 
     S.ui.faceBtn.addEventListener("click", toggleListening);
+    S.ui.wake.addEventListener("click", toggleHandsFree);
     S.ui.send.addEventListener("click", function () { submitTyped(); });
     S.ui.input.addEventListener("keydown", function (e) { if (e.key === "Enter") submitTyped(); });
   }
@@ -250,8 +260,27 @@
         if (event.results[i].isFinal) finalText += event.results[i][0].transcript;
         else interim += event.results[i][0].transcript;
       }
-      if (interim) { setStatus("“" + interim.trim() + "”"); stopSpeaking(); } // barge-in
-      if (finalText.trim()) ask(finalText.trim());
+      if (interim) {
+        setStatus("“" + interim.trim() + "”");
+        if (!S.handsFree) stopSpeaking(); // push-to-talk: any voice barges in
+      }
+      var text = finalText.trim();
+      if (!text) return;
+      if (S.handsFree) {
+        // Open mic hears Looper's own TTS — while speaking, only an
+        // explicit stop command interrupts (else it would cancel itself).
+        if (S.speaking) {
+          if (Router.route(text).intent === "stop") stopSpeaking();
+          return;
+        }
+        // Only utterances addressed to Looper act; everything else is
+        // ignored (never logged, never sent anywhere).
+        if (!WAKE_RE.test(Router.clean(text))) {
+          setStatus("Say “Hey Looper …” to ask");
+          return;
+        }
+      }
+      ask(text);
     };
     rec.onerror = function (event) {
       // gotcha fix: the old build had no onerror at all
@@ -281,17 +310,36 @@
     else startListening();
   }
 
+  // Wake-word mode: keep the mic open, act only on "Hey Looper …".
+  function toggleHandsFree() {
+    if (!S.speechSupported) {
+      setStatus("Voice needs Chrome/Safari");
+      return;
+    }
+    S.handsFree = !S.handsFree;
+    S.ui.wake.classList.toggle("on", S.handsFree);
+    if (S.handsFree) {
+      startListening();
+      setStatus("Hands-free — say “Hey Looper …”");
+    } else {
+      stopListening();
+    }
+  }
+
   function startListening() {
     if (!S.recognition) return;
     stopSpeaking();
     S.listening = true;
+    S.recognition.continuous = S.handsFree; // hands-free keeps the stream open
     S.face.setMood("listening");
-    setStatus("Listening… say “find me a café”");
+    setStatus(S.handsFree ? "Hands-free — say “Hey Looper …”" : "Listening… say “find me a café”");
     try { S.recognition.start(); } catch (e) { /* already started */ }
   }
 
   function stopListening() {
     S.listening = false;
+    S.handsFree = false;
+    if (S.ui.wake) S.ui.wake.classList.remove("on");
     if (S.recognition) { try { S.recognition.stop(); } catch (e) { /* not started */ } }
     S.face.setMood("idle");
     setStatus("Tap my face to talk");
@@ -384,6 +432,8 @@
       lng: center.lng,
       radius_km: radiusKm,
       limit: 5,
+      intent: cmd.intent, // telemetry only (F2.5) — never a ranking input
+      session: S.session,
     }).then(function (data) {
       var results = (data && data.results) || [];
       S.face.setMood("idle");
@@ -407,7 +457,7 @@
 
   function runBusiness(cmd) {
     S.face.setMood("thinking");
-    return api("/search", { q: cmd.businessName, limit: 3 }).then(function (data) {
+    return api("/search", { q: cmd.businessName, limit: 3, intent: "business", session: S.session }).then(function (data) {
       var results = (data && data.results) || [];
       S.face.setMood("idle");
       if (!results.length) {

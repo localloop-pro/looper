@@ -140,6 +140,22 @@ const toolSpecs = [
   },
   {
     type: "function",
+    name: "localloop_discover",
+    description: "Discover LocalLoop businesses around a suburb (Bondi, Bronte, Bondi Junction, Byron Bay, …) with optional category and radius. Anti-bias: ranked by community reviews, review recency, proximity only. Prefer this over localloop_search when Bill names a suburb.",
+    parameters: {
+      type: "object",
+      properties: {
+        suburb: { type: "string" },
+        category: { type: "string" },
+        radius_km: { type: "number", minimum: 0.1, maximum: 50 },
+        limit: { type: "number", minimum: 1, maximum: 50 },
+      },
+      required: ["suburb"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
     name: "localloop_businesses",
     description: "List LocalLoop businesses, optionally filtered by category (e.g. café, health, trades). Use when Bill wants a plain list rather than a search.",
     parameters: {
@@ -731,6 +747,10 @@ ipcMain.handle("tools:execute", async (_event, toolCall) => {
       return await localloopSearch(args);
     }
 
+    if (name === "localloop_discover") {
+      return await localloopDiscover(args);
+    }
+
     if (name === "localloop_businesses") {
       return await localloopBusinesses(args);
     }
@@ -987,6 +1007,33 @@ async function localloopSearch(args) {
         title: `Local Loop: ${args.query}`,
         kind: "markdown",
         content: `${data.message || ""}\n\n${businessesTable(results)}\n\n_Ranked by community reviews, recency and distance only — never by payment._`,
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error), message: "The LOOPER API is offline. Is the backend running?" };
+  }
+}
+
+async function localloopDiscover(args) {
+  try {
+    const data = await localloopApi("/api/discover", {
+      suburb: String(args.suburb || ""),
+      category: args.category,
+      radius_km: args.radius_km,
+      limit: Math.max(1, Math.min(50, Number(args.limit || 10))),
+      intent: "discover",
+      session: "looper-desktop",
+    });
+    const results = Array.isArray(data.results) ? data.results : [];
+    return {
+      ok: true,
+      engine: data.engine,
+      message: data.message,
+      results,
+      artifact: {
+        title: `Local Loop: ${args.suburb}${args.category ? ` · ${args.category}` : ""}`,
+        kind: "markdown",
+        content: `${data.message || ""}\n\n${businessesTable(results)}\n\n_Engine: ${data.engine} · ranked by community reviews, recency and distance only._`,
       },
     };
   } catch (error) {

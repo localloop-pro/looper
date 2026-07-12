@@ -120,8 +120,14 @@ python main.py          # serves API + demo
 
 Tap the face and say: *"find me a café"*, *"any deals near me"*,
 *"take me to Bronte"*, *"who can help me with my garden"*, *"zoom in"*,
-*"reset the map"*. Voice needs Chrome/Edge/Safari (Firefox falls back to
-typed input). Category chips fire the same grammar as the voice.
+*"reset the map"*. Or press **🎙 Hey Looper** for hands-free mode — the mic
+stays open and only utterances starting with "Hey Looper …" act (say "stop"
+to interrupt). Voice needs Chrome/Edge/Safari (Firefox falls back to typed
+input). Category chips fire the same grammar as the voice.
+
+Every search is logged to `training_log` (query + intent + anonymous
+session, emails/mobiles scrubbed) so `python training/export.py` now has
+real data.
 
 Verify without a mic or backend:
 
@@ -162,6 +168,7 @@ Deep links work out of the box: `/?cat=Food&q=coffee&fly=151.2743,-33.8908,16`.
 | POST | `/api/onboard` | User onboarding (name + mobile + interest) |
 | GET  | `/api/code/{code}` | Validate 6-digit join code |
 | GET  | `/api/search?q=&lat=&lng=&radius=` | Search businesses by query |
+| GET  | `/api/discover?suburb=&category=&radius_km=` | Suburb discovery (graph-ready, `engine: fallback` today) |
 | GET  | `/api/businesses?category=&lat=&lng=` | List businesses by category |
 | POST | `/api/reviews` | Submit a review |
 | GET  | `/api/reviews/{business_id}` | Get reviews for a business |

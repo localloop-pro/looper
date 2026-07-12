@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from models import Business, Deal, Review, fold_accents, get_db
 from schemas import SearchResponse, SearchResult
+from services import telemetry
 
 router = APIRouter(prefix="/api", tags=["search"])
 
@@ -42,6 +43,8 @@ def search_businesses(
     radius_km: float = Query(5.0, ge=0.1, le=50.0),
     category: str | None = Query(None),
     limit: int = Query(5, ge=1, le=20),
+    intent: str | None = Query(None, description="Caller-classified intent (telemetry only, never ranking)"),
+    session: str | None = Query(None, description="Anonymous session id (telemetry only)"),
     db: Session = Depends(get_db),
 ):
     """Search businesses by name, category, or description. Ranked by verifiable data ONLY:
@@ -181,6 +184,13 @@ def search_businesses(
             f"ranked by community experience (most reviewed first). "
             f"I don't pick favorites — you decide! ✨"
         )
+
+    # F2.5 telemetry: query + summary into training_log (PII-scrubbed,
+    # best-effort — see services/telemetry.py). Feeds training/export.py.
+    telemetry.log_query(
+        db, q, intent=intent or "search", session_id=session,
+        response_text=f"{message} [{', '.join(r.name for r in ranked[:5])}]",
+    )
 
     return SearchResponse(
         query=q,

@@ -109,3 +109,17 @@
   Playwright headless flow (web/tests/jarvis-smoke.playwright.js — search,
   suburb, zoom, reset, deep links, card links, zero console errors). Bill (or
   next agent with network): run both quality gates before merging.
+- 2026-07-12 (slice 2, same branch): F2.3 fallback half shipped —
+  `GET /api/discover` returns the frozen graph-era response shape with
+  `engine:"fallback"` (SQLite haversine; suburb seed table in
+  routes/discover.py MIRRORS web/jarvis/voice-command-router.js SUBURBS —
+  keep in sync until TypeDB F2.1 owns geography). F2.5 core shipped:
+  /api/search + /api/discover write training_log via services/telemetry.py
+  (intent + anonymous session id; emails + AU mobiles regex-scrubbed;
+  telemetry failures never break the request). Jarvis web dock gained a
+  hands-free "Hey Looper" wake mode (open mic acts only on wake-word
+  utterances; while Looper speaks, only a stop command interrupts — guards
+  against the mic hearing Looper's own TTS and cancelling itself). Desktop
+  Looper gained localloop_discover. Same verification regime as slice 1
+  (py_compile, node --check, 46 router tests, Playwright smoke — pytest and
+  npm gates still owed on a networked machine).
