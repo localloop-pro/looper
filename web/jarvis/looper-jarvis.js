@@ -618,6 +618,7 @@
         home: S.home,
         markerLib: opts.markerLib || root.maplibregl || root.mapboxgl,
         onCategory: opts.onCategory || cfg.onCategory || null,
+        claimCta: opts.claimCta || cfg.claimCta || null,
         resolveBusiness: function (name) {
           return api("/search", { q: name, limit: 1 }).then(function (d) {
             return (d.results && d.results[0]) || null;
