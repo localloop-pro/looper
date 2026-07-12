@@ -72,6 +72,7 @@
     recognition: null,
     listening: false,
     handsFree: false, // wake-word mode: always listening, only "hey looper …" acts
+    recErrorStreak: 0, // consecutive recognition errors — bail to typing at 4
     speaking: false,
     lastSearch: null, // {cmd} for set_radius re-runs (stale-closure fix: radius comes from the NEW command)
     lastRadiusM: 1500,
@@ -173,6 +174,18 @@
     });
   }
 
+  // Only http(s) links ever render — owner-supplied card_url/website could
+  // otherwise smuggle javascript:/data: URIs into the options panel.
+  function safeUrl(value) {
+    if (!value) return null;
+    try {
+      var u = new URL(String(value), root.location ? root.location.href : "https://localloop.ai");
+      return (u.protocol === "http:" || u.protocol === "https:") ? u.href : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // ------------------------------------------------------------- speech out
   // Old build: rate 0.9 / pitch 1.1, chunk >200 chars (Chrome cutoff bug),
   // cancel() on barge-in. Ported with .lang + onerror (gotcha fixes).
@@ -266,6 +279,7 @@
       }
       var text = finalText.trim();
       if (!text) return;
+      S.recErrorStreak = 0; // real speech arrived — the mic works
       if (S.handsFree) {
         // Open mic hears Looper's own TTS — while speaking, only an
         // explicit stop command interrupts (else it would cancel itself).
@@ -279,22 +293,44 @@
           setStatus("Say “Hey Looper …” to ask");
           return;
         }
+      } else {
+        // Push-to-talk is ONE utterance: don't let onend re-open the mic
+        // and keep transcribing ambient speech after the command.
+        S.listening = false;
       }
       ask(text);
     };
     rec.onerror = function (event) {
       // gotcha fix: the old build had no onerror at all
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      var err = String(event.error || "");
+      if (err === "not-allowed" || err === "service-not-allowed" ||
+          err === "audio-capture" || err === "network") {
+        // Fail closed: a dead mic or speech-service outage must not spin
+        // a restart loop — drop to typed input instead.
         stopListening();
         S.ui.inputRow.classList.add("lj-open");
-        setStatus("Mic blocked — type to ask Looper");
+        setStatus(err === "audio-capture" ? "No microphone found — type to ask Looper" : "Mic unavailable — type to ask Looper");
+        return;
       }
+      // Transient errors (no-speech, aborted): count them; onend bails out
+      // of restarting once the streak shows nothing is getting through.
+      S.recErrorStreak = (S.recErrorStreak || 0) + 1;
     };
     rec.onend = function () {
       if (S.listening) {
-        try { rec.start(); } catch (e) { /* already starting */ }
+        if ((S.recErrorStreak || 0) >= 4) {
+          stopListening();
+          S.ui.inputRow.classList.add("lj-open");
+          setStatus("Voice keeps dropping — type to ask Looper");
+          return;
+        }
+        // small delay so an erroring recognizer can't hot-loop restarts
+        setTimeout(function () {
+          if (!S.listening) return;
+          try { S.recognition.start(); } catch (e) { /* already starting */ }
+        }, 300);
       } else {
-        S.face.setMood("idle");
+        if (!S.speaking) S.face.setMood("idle");
       }
     };
     S.recognition = rec;
@@ -330,6 +366,7 @@
     if (!S.recognition) return;
     stopSpeaking();
     S.listening = true;
+    S.recErrorStreak = 0;
     S.recognition.continuous = S.handsFree; // hands-free keeps the stream open
     S.face.setMood("listening");
     setStatus(S.handsFree ? "Hands-free — say “Hey Looper …”" : "Listening… say “find me a café”");
@@ -365,7 +402,7 @@
   function cardUrl(r) {
     // HybridCard connection: prefer the API's card_url; else derive nothing —
     // never guess a slug (public-safe rule: only verifiable links).
-    return r.card_url || null;
+    return safeUrl(r.card_url);
   }
 
   function optionsHtml(results, headline) {
@@ -373,9 +410,10 @@
     results.forEach(function (r, i) {
       var stars = r.avg_rating ? "⭐ " + r.avg_rating : "no ratings yet";
       var dist = r.distance_km != null ? " · " + r.distance_km + " km" : "";
+      var siteHref = safeUrl(r.website);
       var link = cardUrl(r)
         ? '<a href="' + escapeHtml(cardUrl(r)) + '" target="_blank" rel="noopener">View card →</a>'
-        : (r.website ? '<a href="' + escapeHtml(r.website) + '" target="_blank" rel="noopener">Website →</a>' : "");
+        : (siteHref ? '<a href="' + escapeHtml(siteHref) + '" target="_blank" rel="noopener">Website →</a>' : "");
       html +=
         '<div class="lj-option" data-i="' + i + '">' +
         '<div><div class="lj-name">' + (i + 1) + ". " + escapeHtml(r.name) + "</div>" +
@@ -485,8 +523,10 @@
   function execute(cmd) {
     switch (cmd.intent) {
       case "stop":
+        // "stop" means stop everything: cancel speech AND close the mic
+        // ("hey looper stop listening" must actually stop listening).
         stopSpeaking();
-        setStatus("Tap my face to talk");
+        stopListening();
         return;
       case "greet":
         speak(pick(PERSONA.greetings).replace("{district}", S.district));

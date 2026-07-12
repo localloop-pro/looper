@@ -33,6 +33,9 @@ const route = (t, ctx) => router.route(t, ctx);
 check("plain stop", route("stop"), { intent: "stop" });
 check("stop talking", route("Stop talking!"), { intent: "stop" });
 check("hey looper stop", route("hey looper, stop"), { intent: "stop" });
+check("okay looper stop (wake variant)", route("OK Looper stop"), { intent: "stop" });
+check("okay looper cancel (wake variant)", route("okay looper cancel"), { intent: "stop" });
+check("hey looper stop listening", route("hey looper stop listening"), { intent: "stop" });
 check("shut up", route("shut up"), { intent: "stop" });
 check("MISFIRE: bus stop near me is NOT stop", route("bus stop near me"), { intent: "search", radiusM: 1000 });
 check("MISFIRE: stop inside sentence is NOT stop", route("find me a shop to stop at"), { intent: "search" });
@@ -73,6 +76,11 @@ check("take me to a business (not suburb)", route("take me to the health emporiu
 // ---- offers / anti-bias -------------------------------------------------------
 check("deals → offers intent", route("any deals around"), { intent: "offers", category: "Offers" });
 check("specials → offers", route("show me today's specials"), { intent: "offers", category: "Offers" });
+
+// ---- sales (own frozen pin category, distinct from Offers) ---------------------
+check("show me sales → Sales", route("show me sales"), { intent: "search", category: "Sales" });
+check("anything for sale → Sales", route("anything for sale nearby"), { intent: "search", category: "Sales", radiusM: 1000 });
+check("second hand → Sales", route("second hand furniture"), { intent: "search", category: "Sales" });
 check("best cafe → superlative flagged (anti-bias)", route("what's the best cafe"), { intent: "search", category: "Food", superlative: true });
 
 // ---- booking ------------------------------------------------------------------

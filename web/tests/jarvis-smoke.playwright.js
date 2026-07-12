@@ -28,6 +28,12 @@ const { chromium } = require("playwright");
   const cardLink = await page.$eval("#looper-jarvis .lj-option a", (a) => a.href + " | " + a.textContent);
   console.log("first link:", cardLink);
 
+  // XSS guard: owner-supplied javascript:/data: URLs must never render
+  const badLinks = await page.$$eval("#looper-jarvis a", (as) =>
+    as.map((a) => a.getAttribute("href") || "").filter((h) => /^(javascript|data):/i.test(h.trim())));
+  console.log("unsafe links rendered:", badLinks.length ? JSON.stringify(badLinks) : "none");
+  if (badLinks.length) { errors.push("unsafe scheme rendered: " + JSON.stringify(badLinks)); }
+
   // 3. Map bus effects (fitBounds from showResults; radius from command)
   let calls = await page.evaluate(() => window.__calls);
   console.log("map/API calls:", JSON.stringify(calls));

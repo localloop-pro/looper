@@ -62,8 +62,10 @@
     { re: /\b(hungry|eat|eating|food|meals?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|takeaway|take away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
     // accommodation (stay/sleep/hotel)
     { re: /\b(stay|sleep|hotels?|motels?|hostels?|accommodation|somewhere to stay|rooms?|airbnb|bnb)\b/, pin: "Accommodation", term: "accommodation hotel" },
-    // offers / deals
-    { re: /\b(deals?|offers?|discounts?|specials?|bargains?|sales?|vouchers?|cheap)\b/, pin: "Offers", term: "deals offers" },
+    // offers / deals (business discounts — distinct from Sales below)
+    { re: /\b(deals?|offers?|discounts?|specials?|bargains?|vouchers?|cheap)\b/, pin: "Offers", term: "deals offers" },
+    // sales (for-sale / second-hand items — their own frozen pin category)
+    { re: /\b(sales?|for sale|garage sales?|second ?hand|pre ?loved|marketplace)\b/, pin: "Sales", term: "for sale" },
     // jobs (job/work → jobs)
     { re: /\b(jobs?|work|hiring|employment|vacanc(?:y|ies)|careers?|gigs?)\b/, pin: "Job-Offers", term: "jobs" },
     // news
@@ -108,7 +110,9 @@
   // ---- parsers ------------------------------------------------------------
 
   // Whole-utterance stop command (misfire fix: "bus stop near me" ≠ stop).
-  var STOP_RE = /^(?:hey looper[,!]?\s*)?(?:please\s+)?(?:stop|cancel|pause|quiet|silence|shut up|be quiet|that's enough|thats enough|never mind|nevermind)(?:\s+(?:talking|listening|it|that|now|please))*$/;
+  // Prefix accepts every wake-word variant the orchestrator accepts
+  // (hey/ok/okay looper) so "okay looper stop" interrupts hands-free too.
+  var STOP_RE = /^(?:(?:hey|ok|okay)\s+looper[,!]?\s*)?(?:please\s+)?(?:stop|cancel|pause|quiet|silence|shut up|be quiet|that's enough|thats enough|never mind|nevermind)(?:\s+(?:talking|listening|it|that|now|please))*$/;
 
   var GREET_RE = /^(?:hey|hi|hello|yo|g'day|gday|good morning|good arvo|good afternoon|good evening)(?:\s+(?:looper|there|mate))*$/;
 

@@ -28,7 +28,26 @@
     activeCategory: null,
     resultMarkers: [],
     resultPopup: null,
+    // Unclaimed-business CTA — hosts override via init opts.claimCta.
+    // llx11 points this at its first-party claim funnel until the external
+    // hybrid-card handoff decision is resolved (its SETUP_TODO).
+    claimCta: {
+      url: "https://hybridcard.ai?src=localloop&district=bondi",
+      label: "Own this business? Get your Hybrid Card →",
+    },
   };
+
+  // Only http(s) links ever render — owner-supplied card_url/website could
+  // otherwise smuggle javascript:/data: URIs into popups.
+  function safeUrl(value) {
+    if (!value) return null;
+    try {
+      var u = new URL(String(value), typeof location !== "undefined" ? location.href : "https://localloop.ai");
+      return (u.protocol === "http:" || u.protocol === "https:") ? u.href : null;
+    } catch (e) {
+      return null;
+    }
+  }
 
   function ready() {
     if (!state.map) {
@@ -45,6 +64,7 @@
     if (opts.home) state.home = opts.home;
     if (opts.onCategory) state.onCategory = opts.onCategory;
     if (opts.resolveBusiness) state.resolveBusiness = opts.resolveBusiness;
+    if (opts.claimCta) state.claimCta = opts.claimCta;
     return bus;
   }
 
@@ -158,12 +178,15 @@
       '<span class="looper-popup-meta">' + stars + reviews + "</span>";
     // HybridCard connection: card link when the business has one, claim
     // funnel when it doesn't (F5.3 pattern; UTM for rev-share attribution).
-    if (r.card_url) {
-      html += '<br><a href="' + escapeHtml(r.card_url) + '" target="_blank" rel="noopener">View card →</a>';
-    } else if (r.website) {
-      html += '<br><a href="' + escapeHtml(r.website) + '" target="_blank" rel="noopener">Website →</a>';
-    } else {
-      html += '<br><a class="looper-popup-claim" href="https://hybridcard.ai?src=localloop&district=bondi" target="_blank" rel="noopener">Own this business? Get your Hybrid Card →</a>';
+    var cardHref = safeUrl(r.card_url);
+    var siteHref = safeUrl(r.website);
+    var ctaHref = safeUrl(state.claimCta && state.claimCta.url);
+    if (cardHref) {
+      html += '<br><a href="' + escapeHtml(cardHref) + '" target="_blank" rel="noopener">View card →</a>';
+    } else if (siteHref) {
+      html += '<br><a href="' + escapeHtml(siteHref) + '" target="_blank" rel="noopener">Website →</a>';
+    } else if (ctaHref) {
+      html += '<br><a class="looper-popup-claim" href="' + escapeHtml(ctaHref) + '" target="_blank" rel="noopener">' + escapeHtml(state.claimCta.label || "Own this business? Claim it →") + "</a>";
     }
     html += "</div>";
     return html;
