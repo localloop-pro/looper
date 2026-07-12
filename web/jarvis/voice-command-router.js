@@ -122,12 +122,14 @@
   var HELP_RE = /^(?:looper\s+)?(?:help(?: me)?|what can you do|what do you do|how do you work|what are you|who are you|show me the menu|menu)$/;
 
   // Radius: "within 2 km", "3 kilometres", "500 m", "near me" → 1000 m.
+  // Explicit distances beat the "near me" default — "cafes near me within
+  // 5 km" means 5 km, not 1 km.
   function parseRadiusM(t) {
-    if (/\b(near me|nearby|around me|close by|walking distance)\b/.test(t)) return 1000;
     var km = t.match(/\b(\d+(?:\.\d+)?)\s*(?:km|kilometre|kilometres|kilometer|kilometers|k)\b/);
     if (km) return Math.round(parseFloat(km[1]) * 1000);
     var m = t.match(/\b(\d+)\s*(?:m|metres|meters)\b/);
     if (m) return parseInt(m[1], 10);
+    if (/\b(near me|nearby|around me|close by|walking distance)\b/.test(t)) return 1000;
     return null;
   }
 
@@ -150,10 +152,10 @@
   // "take me to X" / "go to X" / "fly to X" — suburb first, else business.
   var GOTO_RE = /\b(?:take me to|go to|fly to|navigate to|head to|jump to)\s+(?:the\s+)?([\w\s'&-]+)$/;
 
-  // Naming verbs ALWAYS mean a specific business, even when the name
-  // contains a category word ("where is Bondi Pizza" is a lookup, not a
-  // Food search) — unlike find/show, which stay category-aware.
-  var NAMED_RE = /\b(?:where is|where's|tell me about|look up)\s+(?:the\s+)?([\w\s'&-]+)$/;
+  // Naming verbs mean a specific business, even when the name contains a
+  // category word ("where is Bondi Pizza" is a lookup, not a Food search) —
+  // unless an article/scope signal marks it generic ("where is A cafe").
+  var NAMED_RE = /\b(?:where is|where's|tell me about|look up)\s+(?:(a|an|some)\s+|the\s+)?([\w\s'&-]+)$/;
 
   var ZOOM_IN_RE = /\b(?:zoom in|closer|get closer)\b/;
   var ZOOM_OUT_RE = /\b(?:zoom out|further out|pull back|wider)\b/;
@@ -245,25 +247,21 @@
       return cmd;
     }
 
-    // Naming verbs win over category words (see NAMED_RE above).
-    var named = stripped.match(NAMED_RE);
-    if (named) {
-      var namedTarget = stripArticles(named[1].trim());
-      var namedSuburb = matchSuburb(namedTarget, suburbs, true);
-      if (namedSuburb) {
-        cmd.intent = "suburb";
-        cmd.suburb = namedSuburb;
-        cmd.coords = suburbs[namedSuburb];
-        return cmd;
-      }
-      cmd.intent = "business";
-      cmd.businessName = namedTarget;
-      return cmd;
+    // Suburb scope, computed ONCE so every category-style intent keeps it
+    // ("deals in Bronte" must not silently search the current map center).
+    var scopeSub = matchSuburb(stripped, suburbs, false);
+    function applyScope(c) {
+      if (scopeSub) { c.suburb = scopeSub; c.coords = suburbs[scopeSub]; }
+      return c;
     }
-
-    var category = matchCategory(stripped);
-    var booking = BOOKING_RE.test(stripped);
-
+    // The brain should see the user's actual noun, not just our broad
+    // bucket term ("find me a plumber" must send "plumber", not only
+    // "trades services") — prepend the matched synonym to the term.
+    function termFor(cat) {
+      var m = stripped.match(cat.re);
+      var noun = m && m[0] ? m[0] : "";
+      return noun && cat.term.indexOf(noun) === -1 ? noun + " " + cat.term : cat.term;
+    }
     // Strip location noise from a term the brain will receive: parsed
     // radius phrases, a matched suburb, then dangling prepositions —
     // "electrician near me" → "electrician", "plumber in bronte" → "plumber".
@@ -275,6 +273,38 @@
         .replace(/\s+/g, " ")
         .trim();
     }
+    // A locative tail ("… in bronte") means the suburb is WHERE, not part
+    // of a business name.
+    function hasLocativeTail(text) {
+      return !!scopeSub &&
+        new RegExp("\\b(?:in|at|around|near)\\s+" + scopeSub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$").test(text);
+    }
+
+    // Naming verbs win over category words (see NAMED_RE above) — but an
+    // article or scope signal means a generic discovery ("where is a cafe
+    // near me", "tell me about restaurants in Bronte"), not a name.
+    var named = stripped.match(NAMED_RE);
+    if (named) {
+      var namedTarget = stripArticles(named[2].trim());
+      var namedSuburb = matchSuburb(namedTarget, suburbs, true);
+      if (namedSuburb) {
+        cmd.intent = "suburb";
+        cmd.suburb = namedSuburb;
+        cmd.coords = suburbs[namedSuburb];
+        return cmd;
+      }
+      if (named[1] || cmd.radiusM != null || hasLocativeTail(namedTarget)) {
+        cmd.intent = "search";
+        cmd.searchTerm = cleanScopedTerm(namedTarget, scopeSub) || namedTarget;
+        return applyScope(cmd);
+      }
+      cmd.intent = "business";
+      cmd.businessName = namedTarget;
+      return cmd;
+    }
+
+    var category = matchCategory(stripped);
+    var booking = BOOKING_RE.test(stripped);
 
     // Connect intent (the mission): "connect me with a plumber",
     // "i need an electrician", "who can help me with my garden"
@@ -290,22 +320,6 @@
       }
       if (connectSuburb) { cmd.suburb = connectSuburb; cmd.coords = suburbs[connectSuburb]; }
       return cmd;
-    }
-
-    // Suburb scope, computed ONCE so every category-style intent keeps it
-    // ("deals in Bronte" must not silently search the current map center).
-    var scopeSub = matchSuburb(stripped, suburbs, false);
-    function applyScope(c) {
-      if (scopeSub) { c.suburb = scopeSub; c.coords = suburbs[scopeSub]; }
-      return c;
-    }
-    // The brain should see the user's actual noun, not just our broad
-    // bucket term ("find me a plumber" must send "plumber", not only
-    // "trades services") — prepend the matched synonym to the term.
-    function termFor(cat) {
-      var m = stripped.match(cat.re);
-      var noun = m && m[0] ? m[0] : "";
-      return noun && cat.term.indexOf(noun) === -1 ? noun + " " + cat.term : cat.term;
     }
 
     if (booking) {
@@ -358,9 +372,7 @@
       // Scope signals make this discovery even without an article:
       // "find florist in Bronte" / "search for accountant near me" must be
       // scoped searches — a business lookup would ignore radius/suburb.
-      var locative = scopeSub &&
-        new RegExp("\\b(?:in|at|around|near)\\s+" + scopeSub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$").test(name);
-      if (biz[1] || cmd.radiusM != null || locative) {
+      if (biz[1] || cmd.radiusM != null || hasLocativeTail(name)) {
         // "find me a florist" — indefinite article ⇒ discovery, not a name.
         // A named suburb scopes it AND leaves the search term clean
         // ("find me a florist in bronte" → term "florist", coords Bronte),

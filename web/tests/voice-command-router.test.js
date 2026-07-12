@@ -62,6 +62,7 @@ check("dentist noun reaches the brain", route("i want a dentist"), { intent: "se
 check("within 2 km", route("cafes within 2 km"), { intent: "search", category: "Food", radiusM: 2000 });
 check("3 kilometres", route("restaurants within 3 kilometres"), { intent: "search", radiusM: 3000 });
 check("near me → 1000", route("coffee near me"), { intent: "search", category: "Food", radiusM: 1000 });
+check("explicit radius beats near me", route("cafes near me within 5 km"), { intent: "search", category: "Food", radiusM: 5000 });
 check("radius-only utterance", route("within 1 km"), { intent: "set_radius", radiusM: 1000 });
 
 // ---- specific business regex (find|show|tell me about → flyTo) ---------------
@@ -79,6 +80,8 @@ check("show me Bondi Wholefoods stays a business (name contains suburb)", route(
 check("find me AN accountant → search", route("find me an accountant"), { intent: "search", searchTerm: "accountant" });
 check("where is Bondi Pizza → business (naming verb beats Food)", route("where is Bondi Pizza"), { intent: "business", businessName: "bondi pizza" });
 check("tell me about The Burger Shop → business", route("tell me about The Burger Shop"), { intent: "business", businessName: "burger shop" });
+check("where is A cafe near me → scoped search (article)", route("where is a cafe near me"), { intent: "search", searchTerm: "cafe", radiusM: 1000 });
+check("tell me about restaurants in Bronte → scoped search (locative)", route("tell me about restaurants in bronte"), { intent: "search", searchTerm: "restaurants", suburb: "bronte" });
 
 // ---- suburbs ----------------------------------------------------------------
 check("take me to suburb", route("take me to bondi junction"), { intent: "suburb", suburb: "bondi junction" });

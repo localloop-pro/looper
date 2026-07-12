@@ -342,6 +342,9 @@
       if (S.listening) {
         if ((S.recErrorStreak || 0) >= 4) {
           stopListening();
+          // this onend is the recognizer's LAST — no later one will run the
+          // release branch below, so let the host wake word back in here
+          if (S.onMicClose) { try { S.onMicClose(); } catch (e) { /* never block */ } }
           S.ui.inputRow.classList.add("lj-open");
           setStatus("Voice keeps dropping — type to ask Looper");
           return;
