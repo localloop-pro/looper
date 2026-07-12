@@ -73,6 +73,7 @@
     listening: false,
     handsFree: false, // wake-word mode: always listening, only "hey looper …" acts
     recErrorStreak: 0, // consecutive recognition errors — bail to typing at 4
+    reqSeq: 0, // request sequence: every new command invalidates in-flight fetch UI
     speaking: false,
     lastSearch: null, // {cmd} for set_radius re-runs (stale-closure fix: radius comes from the NEW command)
     lastRadiusM: 1500,
@@ -391,7 +392,13 @@
     Promise.resolve(opened).catch(function () { /* host hook failed — proceed */ }).then(function () {
       return new Promise(function (resolve) { setTimeout(resolve, S.onMicOpen ? 120 : 0); });
     }).then(function () {
-      if (!S.listening) return; // toggled off while the hand-off settled
+      if (!S.listening) {
+        // cancelled while the hand-off settled — recognition never started,
+        // so onend will never fire: release the host's wake-word mic here
+        // or it stays paused until a reload
+        if (S.onMicClose) { try { S.onMicClose(); } catch (e) { /* never block */ } }
+        return;
+      }
       try { S.recognition.start(); } catch (e) { /* already started */ }
     });
   }
@@ -502,6 +509,7 @@
     S.face.setMood("thinking");
     setStatus(pick(PERSONA.acks));
 
+    var seq = S.reqSeq; // a newer command supersedes this response
     var radiusKm = Math.max(0.1, Math.min(50, radiusM / 1000));
     return api("/search", {
       q: cmd.searchTerm || cmd.raw,
@@ -512,22 +520,28 @@
       intent: cmd.intent, // telemetry only (F2.5) — never a ranking input
       session: S.session,
     }).then(function (data) {
+      if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
       var results = (data && data.results) || [];
       S.face.setMood("idle");
       if (!results.length) {
         // clear the PREVIOUS search's pins — stale markers next to a
         // "nothing found" panel read as results for the new query
         Bus.clearResults();
+        if (cmd.coords) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
         showPanel('<p class="lj-msg">' + escapeHtml(data.message || pick(PERSONA.noResults)) + "</p>");
         speak(pick(PERSONA.noResults));
         return;
       }
       Bus.showResults(results);
-      if (cmd.coords) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
+      // showResults already fitted bounds over the pins — only fall back to
+      // the suburb's own camera when there was nothing to fit
+      var hasPins = results.some(function (r) { return r.lng != null && r.lat != null; });
+      if (cmd.coords && !hasPins) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
       showPanel(optionsHtml(results, data.message || "Here's what the loop knows:"));
       wireOptionClicks(results);
       speakResults(results, cmd, radiusKm);
     }).catch(function () {
+      if (seq !== S.reqSeq) return; // superseded — don't clobber the newer UI
       Bus.clearResults(); // stale pins next to "brain offline" read as results
       S.face.setMood("error");
       setStatus("Looper brain offline");
@@ -538,7 +552,9 @@
 
   function runBusiness(cmd) {
     S.face.setMood("thinking");
+    var seq = S.reqSeq; // a newer command supersedes this response
     return api("/search", { q: cmd.businessName, limit: 3, intent: "business", session: S.session }).then(function (data) {
+      if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
       var results = (data && data.results) || [];
       S.face.setMood("idle");
       if (!results.length) {
@@ -559,7 +575,10 @@
       if (top.top_review) line += " One local said: " + top.top_review;
       speak(line);
     }).catch(function () {
+      if (seq !== S.reqSeq) return; // superseded — don't clobber the newer UI
+      Bus.clearResults(); // stale marker next to "brain offline" reads as current
       S.face.setMood("idle");
+      showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.apiDown)) + "</p>");
       speak(pick(PERSONA.apiDown));
     });
   }
@@ -618,6 +637,7 @@
 
   function ask(text) {
     stopSpeaking(); // barge-in
+    S.reqSeq++; // newer command owns the UI — in-flight responses go stale
     setStatus("“" + text + "”");
     var cmd = Router.route(text, { radiusM: S.lastRadiusM });
     execute(cmd);
