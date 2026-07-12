@@ -79,6 +79,8 @@
     ui: {},
     map: null,
     speechSupported: false,
+    onMicOpen: null, // host hook: pause a coexisting wake-word mic (Porcupine)
+    onMicClose: null, // host hook: resume it when Jarvis lets go
     // anonymous per-page-load session id — telemetry only, never identity
     session: (root.crypto && root.crypto.randomUUID) ? root.crypto.randomUUID() : "s" + String(Math.random()).slice(2),
   };
@@ -330,6 +332,9 @@
           try { S.recognition.start(); } catch (e) { /* already starting */ }
         }, 300);
       } else {
+        // mic session truly over (covers both stopListening and the
+        // push-to-talk one-shot path) — let the host's wake word back in
+        if (S.onMicClose) { try { S.onMicClose(); } catch (e) { /* host hook — never block */ } }
         if (!S.speaking) S.face.setMood("idle");
       }
     };
@@ -365,6 +370,9 @@
   function startListening() {
     if (!S.recognition) return;
     stopSpeaking();
+    // hand-off: let the host pause its own always-on mic (e.g. the site's
+    // Porcupine wake word) so the two never contend for audio capture
+    if (S.onMicOpen) { try { S.onMicOpen(); } catch (e) { /* host hook — never block the mic */ } }
     S.listening = true;
     S.recErrorStreak = 0;
     S.recognition.continuous = S.handsFree; // hands-free keeps the stream open
@@ -476,6 +484,9 @@
       var results = (data && data.results) || [];
       S.face.setMood("idle");
       if (!results.length) {
+        // clear the PREVIOUS search's pins — stale markers next to a
+        // "nothing found" panel read as results for the new query
+        Bus.clearResults();
         showPanel('<p class="lj-msg">' + escapeHtml(data.message || pick(PERSONA.noResults)) + "</p>");
         speak(pick(PERSONA.noResults));
         return;
@@ -609,6 +620,8 @@
     S.district = opts.district || cfg.district || S.district;
     S.home = opts.home || cfg.home || S.home;
     S.map = opts.map || root.localloopMap || null;
+    S.onMicOpen = opts.onMicOpen || cfg.onMicOpen || null;
+    S.onMicClose = opts.onMicClose || cfg.onMicClose || null;
 
     buildUi();
     setupRecognition();
