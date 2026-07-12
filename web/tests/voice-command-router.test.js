@@ -69,12 +69,16 @@ check("where is X → business", route("where is speedos"), { intent: "business"
 check("show X → business", route("show me Bondi Wholefoods"), { intent: "business", businessName: "bondi wholefoods" });
 check("find me A florist → search (article = discovery)", route("find me a florist"), { intent: "search", searchTerm: "florist" });
 check("find me AN accountant → search", route("find me an accountant"), { intent: "search", searchTerm: "accountant" });
+check("where is Bondi Pizza → business (naming verb beats Food)", route("where is Bondi Pizza"), { intent: "business", businessName: "bondi pizza" });
+check("tell me about The Burger Shop → business", route("tell me about The Burger Shop"), { intent: "business", businessName: "burger shop" });
 
 // ---- suburbs ----------------------------------------------------------------
 check("take me to suburb", route("take me to bondi junction"), { intent: "suburb", suburb: "bondi junction" });
 check("go to bronte", route("go to Bronte"), { intent: "suburb", suburb: "bronte" });
 check("fly to byron bay", route("fly to Byron Bay"), { intent: "suburb", suburb: "byron bay" });
 check("bare suburb", route("rose bay"), { intent: "suburb", suburb: "rose bay" });
+check("florist in Bronte → scoped search, not just fly", route("florist in bronte"), { intent: "search", searchTerm: "florist", suburb: "bronte" });
+check("accountant bondi → scoped search", route("accountant bondi"), { intent: "search", searchTerm: "accountant", suburb: "bondi" });
 check("take me to a business (not suburb)", route("take me to the health emporium"), { intent: "business", businessName: "health emporium" });
 
 // ---- offers / anti-bias -------------------------------------------------------
@@ -82,6 +86,8 @@ check("deals → offers intent", route("any deals around"), { intent: "offers", 
 check("specials → offers", route("show me today's specials"), { intent: "offers", category: "Offers" });
 check("deals in Bronte keeps suburb scope", route("any deals in bronte"), { intent: "offers", category: "Offers", suburb: "bronte" });
 check("news in Byron Bay keeps suburb scope", route("news in byron bay"), { intent: "news", category: "News", suburb: "byron bay" });
+check("restaurant deals → Offers beats Food", route("restaurant deals near me"), { intent: "offers", category: "Offers", radiusM: 1000 });
+check("hotel offers → Offers beats Accommodation", route("hotel offers"), { intent: "offers", category: "Offers" });
 
 // ---- sales (own frozen pin category, distinct from Offers) ---------------------
 check("show me sales → Sales", route("show me sales"), { intent: "search", category: "Sales" });

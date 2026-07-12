@@ -91,10 +91,7 @@
     if (!ready() || !points || !points.length) return;
     // null coords must be excluded BEFORE coercion — Number(null) is 0,
     // which would drag the bounds to the Gulf of Guinea
-    var valid = points.filter(function (p) {
-      return p && p.lng != null && p.lat != null &&
-        isFinite(Number(p.lng)) && isFinite(Number(p.lat));
-    });
+    var valid = points.filter(hasValidCoords);
     if (!valid.length) return;
     var minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
     valid.forEach(function (p) {
@@ -137,6 +134,14 @@
     state.map.flyTo({ center: [state.home.lng, state.home.lat], zoom: state.home.zoom, essential: true });
   }
 
+  // Coordinates must be present AND finite — the API is data, and
+  // Number("N/A") is NaN while Number(null) is 0; neither may reach
+  // setLngLat/fitBounds.
+  function hasValidCoords(p) {
+    return p && p.lng != null && p.lat != null &&
+      isFinite(Number(p.lng)) && isFinite(Number(p.lat));
+  }
+
   // Drop/refresh result markers for a set of businesses
   // [{name, lng, lat, category?, review_count?, avg_rating?, card_url?, website?}]
   function showResults(results) {
@@ -144,7 +149,7 @@
     clearResults();
     var lib = state.lib;
     (results || []).forEach(function (r) {
-      if (r.lng == null || r.lat == null) return;
+      if (!hasValidCoords(r)) return;
       var el = document.createElement("div");
       el.className = "looper-result-marker";
       el.title = r.name || "";

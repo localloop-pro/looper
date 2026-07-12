@@ -58,14 +58,15 @@
   // Pin categories are FROZEN in Supabase: News, Sales, Offers, Events,
   // Accommodation, Job-Offers, Fetch_Deliveries, Food.
   var SYNONYMS = [
+    // offers / deals FIRST: a deal word beats co-occurring category nouns
+    // ("restaurant deals" is an Offers request, not a Food search)
+    { re: /\b(deals?|offers?|discounts?|specials?|bargains?|vouchers?|cheap)\b/, pin: "Offers", term: "deals offers" },
+    // sales (for-sale / second-hand items — their own frozen pin category)
+    { re: /\b(sales?|for sale|garage sales?|second ?hand|pre ?loved|marketplace)\b/, pin: "Sales", term: "for sale" },
     // food (old build: hungry/eat → food)
     { re: /\b(hungry|eat|eating|food|meals?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|takeaway|take away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
     // accommodation (stay/sleep/hotel)
     { re: /\b(stay|sleep|hotels?|motels?|hostels?|accommodation|somewhere to stay|rooms?|airbnb|bnb)\b/, pin: "Accommodation", term: "accommodation hotel" },
-    // offers / deals (business discounts — distinct from Sales below)
-    { re: /\b(deals?|offers?|discounts?|specials?|bargains?|vouchers?|cheap)\b/, pin: "Offers", term: "deals offers" },
-    // sales (for-sale / second-hand items — their own frozen pin category)
-    { re: /\b(sales?|for sale|garage sales?|second ?hand|pre ?loved|marketplace)\b/, pin: "Sales", term: "for sale" },
     // jobs (job/work → jobs)
     { re: /\b(jobs?|work|hiring|employment|vacanc(?:y|ies)|careers?|gigs?)\b/, pin: "Job-Offers", term: "jobs" },
     // news
@@ -138,6 +139,11 @@
 
   // "take me to X" / "go to X" / "fly to X" — suburb first, else business.
   var GOTO_RE = /\b(?:take me to|go to|fly to|navigate to|head to|jump to)\s+(?:the\s+)?([\w\s'&-]+)$/;
+
+  // Naming verbs ALWAYS mean a specific business, even when the name
+  // contains a category word ("where is Bondi Pizza" is a lookup, not a
+  // Food search) — unlike find/show, which stay category-aware.
+  var NAMED_RE = /\b(?:where is|where's|tell me about|look up)\s+(?:the\s+)?([\w\s'&-]+)$/;
 
   var ZOOM_IN_RE = /\b(?:zoom in|closer|get closer)\b/;
   var ZOOM_OUT_RE = /\b(?:zoom out|further out|pull back|wider)\b/;
@@ -219,6 +225,22 @@
       }
       cmd.intent = "business";
       cmd.businessName = stripArticles(goto_[1].trim());
+      return cmd;
+    }
+
+    // Naming verbs win over category words (see NAMED_RE above).
+    var named = stripped.match(NAMED_RE);
+    if (named) {
+      var namedTarget = stripArticles(named[1].trim());
+      var namedSuburb = matchSuburb(namedTarget, suburbs, true);
+      if (namedSuburb) {
+        cmd.intent = "suburb";
+        cmd.suburb = namedSuburb;
+        cmd.coords = suburbs[namedSuburb];
+        return cmd;
+      }
+      cmd.intent = "business";
+      cmd.businessName = namedTarget;
       return cmd;
     }
 
@@ -311,8 +333,22 @@
       return applyScope(cmd);
     }
 
-    // Bare suburb mention: "bondi junction please"
+    // Short suburb-scoped phrase: pure suburb ("bondi junction please")
+    // flies there; leftover words ("florist in bronte") are a SEARCH
+    // scoped to that suburb — flying without searching loses the request.
     if (scopeSub && stripped.split(" ").length <= 4) {
+      var leftover = stripped
+        .replace(scopeSub, " ")
+        .replace(/\b(?:in|at|around|near|the|please|now|thanks|thank you|mate)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (leftover) {
+        cmd.intent = "search";
+        cmd.searchTerm = leftover;
+        cmd.suburb = scopeSub;
+        cmd.coords = suburbs[scopeSub];
+        return cmd;
+      }
       cmd.intent = "suburb";
       cmd.suburb = scopeSub;
       cmd.coords = suburbs[scopeSub];
