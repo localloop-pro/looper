@@ -315,10 +315,19 @@
         return cmd;
       }
       if (biz[1]) {
-        // "find me a florist" — indefinite article ⇒ discovery, not a name
+        // "find me a florist" — indefinite article ⇒ discovery, not a name.
+        // A named suburb scopes it AND leaves the search term clean
+        // ("find me a florist in bronte" → term "florist", coords Bronte).
         cmd.intent = "search";
+        if (scopeSub) {
+          name = name
+            .replace(scopeSub, " ")
+            .replace(/\b(?:in|at|around|near)\b\s*$/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        }
         cmd.searchTerm = name;
-        return cmd;
+        return applyScope(cmd);
       }
       cmd.intent = "business";
       cmd.businessName = name;

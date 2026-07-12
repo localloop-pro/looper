@@ -68,6 +68,8 @@ check("tell me about X → business", route("tell me about Gertrude and Alice"),
 check("where is X → business", route("where is speedos"), { intent: "business", businessName: "speedos" });
 check("show X → business", route("show me Bondi Wholefoods"), { intent: "business", businessName: "bondi wholefoods" });
 check("find me A florist → search (article = discovery)", route("find me a florist"), { intent: "search", searchTerm: "florist" });
+check("find me a florist in Bronte → scoped search", route("find me a florist in bronte"), { intent: "search", searchTerm: "florist", suburb: "bronte" });
+check("search for an accountant bondi → scoped search", route("search for an accountant bondi"), { intent: "search", searchTerm: "accountant", suburb: "bondi" });
 check("find me AN accountant → search", route("find me an accountant"), { intent: "search", searchTerm: "accountant" });
 check("where is Bondi Pizza → business (naming verb beats Food)", route("where is Bondi Pizza"), { intent: "business", businessName: "bondi pizza" });
 check("tell me about The Burger Shop → business", route("tell me about The Burger Shop"), { intent: "business", businessName: "burger shop" });

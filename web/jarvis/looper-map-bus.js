@@ -78,6 +78,12 @@
 
   function flyTo(lng, lat, zoom) {
     if (!ready()) return;
+    // single choke point for camera moves: every caller passes API data,
+    // so validate here rather than trusting each call site
+    if (!hasValidCoords({ lng: lng, lat: lat })) {
+      console.warn("[LooperMapBus] flyTo ignored — invalid coordinates", lng, lat);
+      return;
+    }
     state.map.flyTo({
       center: [Number(lng), Number(lat)],
       zoom: typeof zoom === "number" ? zoom : Math.max(state.map.getZoom(), 14),
