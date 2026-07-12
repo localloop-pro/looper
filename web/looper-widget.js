@@ -1,7 +1,13 @@
 /* LOOPER Web Search Widget — embed on any page to add the "Hey Looper" search bar */
 
 (() => {
-  const API_BASE = 'http://localhost:8000/api';
+  // API base is configurable (F3.3): window.LocalLoopConfig.looperApi
+  // (e.g. "https://api.localloop.ai") — falls back to local dev.
+  const configured =
+    (window.LocalLoopConfig && window.LocalLoopConfig.looperApi) ||
+    (window.LooperJarvisConfig && window.LooperJarvisConfig.apiBase) ||
+    'http://localhost:8000';
+  const API_BASE = configured.replace(/\/$/, '').replace(/\/api$/, '') + '/api';
 
   // Create widget container
   const widget = document.createElement('div');

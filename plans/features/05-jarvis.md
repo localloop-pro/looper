@@ -13,6 +13,15 @@
 - [ ] **F4.2** — Map deep links (`?cat=…&q=…&fly=lng,lat,zoom`)
 - [ ] **F4.3** — Ricky bridge-ops cockpit (read-only v1)
 
+> **2026-07-12 progress (see `.SEED/decisions.md`):** F4.1 tools
+> (localloop_search/businesses/open_map/bridge_status) + LocalLoop persona
+> shipped in `looper-bot/electron/main.cjs`; F4.2 map-side deep-link parsing
+> shipped in `web/jarvis/looper-jarvis.js` (verified headless) and the
+> desktop side builds the same URLs; F4.3's backend read path
+> `GET /api/ingest/status` shipped. Boxes tick after Bill's manual voice
+> acceptance ("what's good for lunch in Bondi?") and, for F4.2, once llx11
+> embeds the Jarvis layer.
+
 ---
 
 

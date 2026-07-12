@@ -76,3 +76,36 @@
   looper-bot, LooperFace component); local data auto-migrates
   ricky-db.json → looper-db.json on first launch. Voice dock on the map was
   already "Hey Looper" — now consistent everywhere.
+- 2026-07-12: Jarvis map layer (Bill's ask: "make Looper a Jarvis that controls
+  my map") built as SELF-CONTAINED embeddables in `web/jarvis/` of THIS repo —
+  the llx11 repo was not writable from the build session, and one-script-tag
+  embeds respect ADR-0003 ("index.html is sacred") anyway. Four framework-free
+  modules: `voice-command-router.js` (F3.2 grammar port from explore-local.tsx,
+  46 node unit tests, stop-substring + stale-radius + accent bugs FIXED),
+  `looper-map-bus.js` (F3.4 control surface: setCategory/flyTo/fitCategory/
+  zoom/reset/showBusiness/showResults), `looper-face.js` (the LooperFace.tsx
+  face as a vanilla widget — same CSS-var mouth, blink/pupil animations),
+  `looper-jarvis.js` (orchestrator: Web Speech in, chunked TTS out with
+  barge-in cancel, persona, /api/search answers, F4.2 deep-link parsing
+  ?cat=&q=&fly=). Demo at `GET /demo` (MapLibre + OSM raster, zero keys —
+  production keeps Mapbox per ADR-0002). llx11 integration = 4 script tags +
+  LooperJarvis.init (snippet in README); F3.2/F3.4 acceptance boxes stay
+  unticked until wired into llx11 itself.
+- 2026-07-12: Backend search is now accent-folded via a registered SQLite
+  function `fold_accents` (models.py) — "cafe" finds "café" (the F3.x gotcha).
+  `/api/search` results gained `website` + `card_url` (HybridCard public card
+  link — surfaced as "View card →", NEVER a ranking input; test asserts a
+  carded business gains no rank). New read-only `GET /api/ingest/status`
+  (F4.3 cockpit read path). `web/` is now mounted by FastAPI at `/web`.
+- 2026-07-12: F4.1/F4.2 (looper-bot): Looper gained localloop_search /
+  localloop_businesses / localloop_open_map (deep link via shell.openExternal)
+  / localloop_bridge_status tools + LocalLoop persona block in
+  LOOPER_INSTRUCTIONS (desktop face of LOOPER, anti-bias, must-use-tools,
+  aggregate-counts privacy). Env: LOOPER_API_BASE, LOCALLOOP_MAP_URL.
+- 2026-07-12: Build-session gap: this cloud env blocks PyPI + npm, so
+  `pytest` and `npm run typecheck && npm run build` could NOT run here.
+  Verified instead: py_compile all touched backend files, stdlib-sqlite proof
+  of fold_accents, node --check all JS, 46/46 router unit tests, and a full
+  Playwright headless flow (web/tests/jarvis-smoke.playwright.js — search,
+  suburb, zoom, reset, deep links, card links, zero console errors). Bill (or
+  next agent with network): run both quality gates before merging.

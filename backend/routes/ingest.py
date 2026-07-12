@@ -189,3 +189,40 @@ async def ingest_hybridcard_card(request: Request, db: Session = Depends(get_db)
 
     event_type = "card.upserted" if payload.active else "card.removed"
     return _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
+
+
+@router.get("/status")
+def ingest_status(db: Session = Depends(get_db)):
+    """Read-only bridge cockpit (F4.3): last 20 events + counts by status
+    and type. Public-safe — no payload bodies, aggregate counts only."""
+    from sqlalchemy import func as sa_func
+
+    recent = (db.query(BridgeEvent)
+              .order_by(BridgeEvent.received_at.desc())
+              .limit(20).all())
+    by_status = dict(db.query(BridgeEvent.status, sa_func.count(BridgeEvent.id))
+                     .group_by(BridgeEvent.status).all())
+    by_type = dict(db.query(BridgeEvent.event_type, sa_func.count(BridgeEvent.id))
+                   .group_by(BridgeEvent.event_type).all())
+    active_deals = db.query(sa_func.count(Deal.id)).filter(Deal.active == True).scalar()
+    card_businesses = (db.query(sa_func.count(Business.id))
+                       .filter(Business.hybrid_card_id.is_not(None)).scalar())
+
+    return {
+        "counts": {
+            "total_events": sum(by_status.values()),
+            "by_status": by_status,
+            "by_type": by_type,
+            "active_deals": active_deals,
+            "card_businesses": card_businesses,
+        },
+        "recent_events": [
+            {
+                "event_id": e.event_id,
+                "event_type": e.event_type,
+                "status": e.status,
+                "received_at": e.received_at.isoformat() if e.received_at else None,
+            }
+            for e in recent
+        ],
+    }

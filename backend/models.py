@@ -1,13 +1,30 @@
 """LOOPER Database Models — SQLAlchemy ORM + SQLite"""
 import os
+import unicodedata
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import create_engine, event, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 DATABASE_URL = os.getenv("LOOPER_DB_URL", "sqlite:///data/looper.db")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+
+def fold_accents(value: str | None) -> str | None:
+    """Lowercase + strip diacritics so 'cafe' matches 'café' (voice
+    transcripts and widget users type ASCII; the seed data is accented)."""
+    if value is None:
+        return None
+    return "".join(
+        c for c in unicodedata.normalize("NFD", value) if not unicodedata.combining(c)
+    ).lower()
+
+
+if "sqlite" in DATABASE_URL:
+    @event.listens_for(engine, "connect")
+    def _register_sqlite_functions(dbapi_conn, _record):
+        dbapi_conn.create_function("fold_accents", 1, fold_accents, deterministic=True)
 
 
 class User(Base):

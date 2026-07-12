@@ -1,7 +1,10 @@
 """LOOPER Backend API — FastAPI Application"""
 import os
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from models import init_db
 from routes import users, search, map, reviews, ingest
 
@@ -35,6 +38,16 @@ app.include_router(search.router)
 app.include_router(map.router)
 app.include_router(reviews.router)
 app.include_router(ingest.router)
+
+# Serve the embeddable web layer (widget + Jarvis map demo) same-origin so
+# the demo needs zero CORS/config: http://localhost:8000/demo
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+if WEB_DIR.exists():
+    app.mount("/web", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
+
+    @app.get("/demo", include_in_schema=False)
+    def jarvis_demo():
+        return RedirectResponse("/web/jarvis/demo-map.html")
 
 
 @app.get("/")
