@@ -65,6 +65,8 @@ check("radius-only utterance", route("within 1 km"), { intent: "set_radius", rad
 check("tell me about X → business", route("tell me about Gertrude and Alice"), { intent: "business", businessName: "gertrude and alice" });
 check("where is X → business", route("where is speedos"), { intent: "business", businessName: "speedos" });
 check("show X → business", route("show me Bondi Wholefoods"), { intent: "business", businessName: "bondi wholefoods" });
+check("find me A florist → search (article = discovery)", route("find me a florist"), { intent: "search", searchTerm: "florist" });
+check("find me AN accountant → search", route("find me an accountant"), { intent: "search", searchTerm: "accountant" });
 
 // ---- suburbs ----------------------------------------------------------------
 check("take me to suburb", route("take me to bondi junction"), { intent: "suburb", suburb: "bondi junction" });

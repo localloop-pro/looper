@@ -131,7 +131,10 @@
   }
 
   // Old build's specific-business regex, widened verbs, greedy name capture.
-  var BUSINESS_RE = /\b(?:find|show me|show|tell me about|where is|where's|look up|search for)\s+(?:the\s+)?([\w\s'&-]+)$/;
+  // An indefinite article after the verb ("find me A florist") signals a
+  // category-style discovery, not a proper business name — captured
+  // separately so route() can send those to free-text search instead.
+  var BUSINESS_RE = /\b(?:find(?: me)?|show me|show|tell me about|where is|where's|look up|search for)\s+(?:(a|an|some)\s+|the\s+)?([\w\s'&-]+)$/;
 
   // "take me to X" / "go to X" / "fly to X" — suburb first, else business.
   var GOTO_RE = /\b(?:take me to|go to|fly to|navigate to|head to|jump to)\s+(?:the\s+)?([\w\s'&-]+)$/;
@@ -265,12 +268,18 @@
     // Category words win over the business regex ("find me a cafe" = search).
     var biz = stripped.match(BUSINESS_RE);
     if (biz && !category) {
-      var name = stripArticles(biz[1].trim());
+      var name = stripArticles(biz[2].trim());
       var asSuburb = matchSuburb(name, suburbs, true);
       if (asSuburb) {
         cmd.intent = "suburb";
         cmd.suburb = asSuburb;
         cmd.coords = suburbs[asSuburb];
+        return cmd;
+      }
+      if (biz[1]) {
+        // "find me a florist" — indefinite article ⇒ discovery, not a name
+        cmd.intent = "search";
+        cmd.searchTerm = name;
         return cmd;
       }
       cmd.intent = "business";

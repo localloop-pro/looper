@@ -79,8 +79,9 @@
     ui: {},
     map: null,
     speechSupported: false,
-    onMicOpen: null, // host hook: pause a coexisting wake-word mic (Porcupine)
+    onMicOpen: null, // host hook: pause a coexisting wake-word mic (Porcupine); may return a Promise
     onMicClose: null, // host hook: resume it when Jarvis lets go
+    beforeSpeak: null, // host hook: silence competing audio (news podcast) before TTS
     // anonymous per-page-load session id — telemetry only, never identity
     session: (root.crypto && root.crypto.randomUUID) ? root.crypto.randomUUID() : "s" + String(Math.random()).slice(2),
   };
@@ -207,6 +208,9 @@
 
   function speak(text, done) {
     if (!("speechSynthesis" in root)) { if (done) done(); return; }
+    // host hook: silence competing audio first (e.g. the site's news
+    // podcast player) so Looper doesn't talk over it
+    if (S.beforeSpeak) { try { S.beforeSpeak(); } catch (e) { /* never block speech */ } }
     stopSpeaking();
     var chunks = chunkText(text);
     if (!chunks.length) { if (done) done(); return; }
@@ -374,15 +378,22 @@
   function startListening() {
     if (!S.recognition) return;
     stopSpeaking();
-    // hand-off: let the host pause its own always-on mic (e.g. the site's
-    // Porcupine wake word) so the two never contend for audio capture
-    if (S.onMicOpen) { try { S.onMicOpen(); } catch (e) { /* host hook — never block the mic */ } }
     S.listening = true;
     S.recErrorStreak = 0;
     S.recognition.continuous = S.handsFree; // hands-free keeps the stream open
     S.face.setMood("listening");
     setStatus(S.handsFree ? "Hands-free — say “Hey Looper …”" : "Listening… say “find me a café”");
-    try { S.recognition.start(); } catch (e) { /* already started */ }
+    // hand-off: let the host pause its own always-on mic (Porcupine wake
+    // word) and WAIT for it — WebVoiceProcessor unsubscribe is async, and
+    // starting recognition mid-release can lose the race for the mic.
+    var opened = null;
+    if (S.onMicOpen) { try { opened = S.onMicOpen(); } catch (e) { opened = null; } }
+    Promise.resolve(opened).catch(function () { /* host hook failed — proceed */ }).then(function () {
+      return new Promise(function (resolve) { setTimeout(resolve, S.onMicOpen ? 120 : 0); });
+    }).then(function () {
+      if (!S.listening) return; // toggled off while the hand-off settled
+      try { S.recognition.start(); } catch (e) { /* already started */ }
+    });
   }
 
   function stopListening() {
@@ -517,6 +528,7 @@
       wireOptionClicks(results);
       speakResults(results, cmd, radiusKm);
     }).catch(function () {
+      Bus.clearResults(); // stale pins next to "brain offline" read as results
       S.face.setMood("error");
       setStatus("Looper brain offline");
       showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.apiDown)) + "</p>");
@@ -644,6 +656,7 @@
     S.map = opts.map || root.localloopMap || null;
     S.onMicOpen = opts.onMicOpen || cfg.onMicOpen || null;
     S.onMicClose = opts.onMicClose || cfg.onMicClose || null;
+    S.beforeSpeak = opts.beforeSpeak || cfg.beforeSpeak || null;
 
     buildUi();
     setupRecognition();
