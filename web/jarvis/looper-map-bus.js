@@ -89,17 +89,22 @@
   // padding 50, maxZoom 15.
   function fitPoints(points) {
     if (!ready() || !points || !points.length) return;
+    // null coords must be excluded BEFORE coercion — Number(null) is 0,
+    // which would drag the bounds to the Gulf of Guinea
+    var valid = points.filter(function (p) {
+      return p && p.lng != null && p.lat != null &&
+        isFinite(Number(p.lng)) && isFinite(Number(p.lat));
+    });
+    if (!valid.length) return;
     var minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
-    points.forEach(function (p) {
+    valid.forEach(function (p) {
       var lng = Number(p.lng), lat = Number(p.lat);
-      if (!isFinite(lng) || !isFinite(lat)) return;
       if (lng < minLng) minLng = lng;
       if (lat < minLat) minLat = lat;
       if (lng > maxLng) maxLng = lng;
       if (lat > maxLat) maxLat = lat;
     });
-    if (!isFinite(minLng)) return;
-    if (points.length === 1) return flyTo(minLng, minLat, 16);
+    if (valid.length === 1) return flyTo(minLng, minLat, 16);
     state.map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 50, maxZoom: 15 });
   }
 

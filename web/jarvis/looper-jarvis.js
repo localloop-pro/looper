@@ -553,7 +553,19 @@
   function runBusiness(cmd) {
     S.face.setMood("thinking");
     var seq = S.reqSeq; // a newer command supersedes this response
-    return api("/search", { q: cmd.businessName, limit: 3, intent: "business", session: S.session }).then(function (data) {
+    // Same-name businesses exist across suburbs — send the current map
+    // center so the brain proximity-ranks, with a wide radius so a named
+    // business just outside the view is still found.
+    var center = mapCenter();
+    return api("/search", {
+      q: cmd.businessName,
+      lat: center.lat,
+      lng: center.lng,
+      radius_km: 50,
+      limit: 3,
+      intent: "business",
+      session: S.session,
+    }).then(function (data) {
       if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
       var results = (data && data.results) || [];
       S.face.setMood("idle");
