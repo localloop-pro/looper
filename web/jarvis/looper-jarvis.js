@@ -286,7 +286,11 @@
         // Open mic hears Looper's own TTS — while speaking, only an
         // explicit stop command interrupts (else it would cancel itself).
         if (S.speaking) {
-          if (Router.route(text).intent === "stop") stopSpeaking();
+          if (Router.route(text).intent === "stop") {
+            stopSpeaking();
+            // "stop listening" mid-speech closes the mic too
+            if (/\blisten/i.test(text)) stopListening();
+          }
           return;
         }
         // Only utterances addressed to Looper act; everything else is
@@ -391,12 +395,22 @@
   }
 
   // ------------------------------------------------------------- the brain
+  var API_TIMEOUT_MS = 10000;
+
   function api(path, params) {
     var qs = new URLSearchParams(params).toString();
-    return fetch(S.apiBase + path + (qs ? "?" + qs : "")).then(function (r) {
-      if (!r.ok) throw new Error("API " + r.status);
-      return r.json();
-    });
+    var url = S.apiBase + path + (qs ? "?" + qs : "");
+    // Bounded: a brain that accepts the connection but stalls must not
+    // leave the face stuck in "thinking" forever — abort into the same
+    // offline path as a refused connection.
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, API_TIMEOUT_MS) : null;
+    return fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
+      .then(function (r) {
+        if (!r.ok) throw new Error("API " + r.status);
+        return r.json();
+      })
+      .finally(function () { if (timer) clearTimeout(timer); });
   }
 
   function mapCenter() {
@@ -416,8 +430,15 @@
   function optionsHtml(results, headline) {
     var html = '<p class="lj-msg">' + escapeHtml(headline) + "</p>";
     results.forEach(function (r, i) {
-      var stars = r.avg_rating ? "⭐ " + r.avg_rating : "no ratings yet";
-      var dist = r.distance_km != null ? " · " + r.distance_km + " km" : "";
+      // Metadata is API data too — coerce to numbers so a malformed or
+      // hostile response can't inject markup through rating fields.
+      var rating = Number(r.avg_rating);
+      var reviewCount = Number(r.review_count);
+      var distKm = Number(r.distance_km);
+      var stars = (r.avg_rating != null && isFinite(rating)) ? "⭐ " + rating : "no ratings yet";
+      var meta = (r.category || "") + " · " + stars + " · " +
+        (isFinite(reviewCount) ? reviewCount : 0) + " reviews" +
+        (r.distance_km != null && isFinite(distKm) ? " · " + distKm + " km" : "");
       var siteHref = safeUrl(r.website);
       var link = cardUrl(r)
         ? '<a href="' + escapeHtml(cardUrl(r)) + '" target="_blank" rel="noopener">View card →</a>'
@@ -425,8 +446,7 @@
       html +=
         '<div class="lj-option" data-i="' + i + '">' +
         '<div><div class="lj-name">' + (i + 1) + ". " + escapeHtml(r.name) + "</div>" +
-        '<div class="lj-meta">' + escapeHtml(r.category || "") + " · " + stars + " · " +
-        (r.review_count || 0) + " reviews" + dist + "</div></div>" +
+        '<div class="lj-meta">' + escapeHtml(meta) + "</div></div>" +
         "<div>" + link + "</div></div>";
     });
     return html;
@@ -510,13 +530,15 @@
       var results = (data && data.results) || [];
       S.face.setMood("idle");
       if (!results.length) {
+        Bus.clearResults(); // stale pins next to "no match" read as matches
         speak("I couldn't find " + cmd.businessName + " on the loop yet.");
         showPanel('<p class="lj-msg">No match for “' + escapeHtml(cmd.businessName) + '” yet.</p>');
         return;
       }
       var top = results[0];
       Bus.showResults([top]);
-      if (top.lng != null) Bus.flyTo(top.lng, top.lat, 17); // old build: zoom 17
+      // both coords or no flight — a null lat coerces to the equator
+      if (top.lng != null && top.lat != null) Bus.flyTo(top.lng, top.lat, 17); // old build: zoom 17
       showPanel(optionsHtml(results, "Closest matches:"));
       wireOptionClicks(results);
       var line = top.name;

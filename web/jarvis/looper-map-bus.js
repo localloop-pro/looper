@@ -170,12 +170,16 @@
   }
 
   function popupHtml(r) {
-    var stars = r.avg_rating ? "⭐ " + r.avg_rating + " · " : "";
-    var reviews = (r.review_count || 0) + " review" + (r.review_count === 1 ? "" : "s");
+    // Coerce metadata to numbers — API fields must never carry markup.
+    var rating = Number(r.avg_rating);
+    var reviewCount = Number(r.review_count);
+    if (!isFinite(reviewCount)) reviewCount = 0;
+    var stars = (r.avg_rating != null && isFinite(rating)) ? "⭐ " + rating + " · " : "";
+    var reviews = reviewCount + " review" + (reviewCount === 1 ? "" : "s");
     var html = '<div class="looper-popup">' +
       "<strong>" + escapeHtml(r.name) + "</strong><br>" +
       '<span class="looper-popup-cat">' + escapeHtml(r.category || "") + "</span><br>" +
-      '<span class="looper-popup-meta">' + stars + reviews + "</span>";
+      '<span class="looper-popup-meta">' + escapeHtml(stars + reviews) + "</span>";
     // HybridCard connection: card link when the business has one, claim
     // funnel when it doesn't (F5.3 pattern; UTM for rev-share attribution).
     var cardHref = safeUrl(r.card_url);
