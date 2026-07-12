@@ -58,7 +58,9 @@
   // Pin categories are FROZEN in Supabase: News, Sales, Offers, Events,
   // Accommodation, Job-Offers, Fetch_Deliveries, Food.
   var SYNONYMS = [
-    // offers / deals FIRST: a deal word beats co-occurring category nouns
+    // jobs before Offers: "job offers" is employment, not a deals request
+    { re: /\b(jobs?|work|hiring|employment|vacanc(?:y|ies)|careers?|gigs?)\b/, pin: "Job-Offers", term: "jobs" },
+    // offers / deals next: a deal word beats co-occurring category nouns
     // ("restaurant deals" is an Offers request, not a Food search)
     { re: /\b(deals?|offers?|discounts?|specials?|bargains?|vouchers?|cheap)\b/, pin: "Offers", term: "deals offers" },
     // sales (for-sale / second-hand items — their own frozen pin category)
@@ -67,8 +69,6 @@
     { re: /\b(hungry|eat|eating|food|meals?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|takeaway|take away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
     // accommodation (stay/sleep/hotel)
     { re: /\b(stay|sleep|hotels?|motels?|hostels?|accommodation|somewhere to stay|rooms?|airbnb|bnb)\b/, pin: "Accommodation", term: "accommodation hotel" },
-    // jobs (job/work → jobs)
-    { re: /\b(jobs?|work|hiring|employment|vacanc(?:y|ies)|careers?|gigs?)\b/, pin: "Job-Offers", term: "jobs" },
     // news
     { re: /\b(news|headlines|happening|going on|what's on|whats on)\b/, pin: "News", term: "news" },
     // events ("show" as a noun is deliberately absent — it collides with "show me X")
@@ -174,16 +174,23 @@
 
   var FILLER_RE = /\b(?:please|now|thanks|thank you|mate|for me)\b/g;
 
+  // Word-boundary regex for a suburb key — substring matching corrupts
+  // queries ("bonding therapist" must never match "bondi").
+  function suburbRe(key) {
+    return new RegExp("\\b" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b");
+  }
+
   // exact=true: the text must BE the suburb (plus filler words) — used for
   // goto/business-name candidates so "bondi wholefoods" isn't eaten by
-  // "bondi". exact=false: the suburb may appear anywhere ("cafes in bronte").
+  // "bondi". exact=false: the suburb may appear anywhere ("cafes in bronte")
+  // but only as whole words.
   function matchSuburb(name, suburbs, exact) {
     var n = clean(name).replace(FILLER_RE, "").replace(/\s+/g, " ").trim();
     if (!n) return null;
     // longest-key-first so "bondi junction" wins over "bondi"
     var keys = Object.keys(suburbs).sort(function (a, b) { return b.length - a.length; });
     for (var i = 0; i < keys.length; i++) {
-      if (exact ? n === keys[i] : n.indexOf(keys[i]) !== -1) return keys[i];
+      if (exact ? n === keys[i] : suburbRe(keys[i]).test(n)) return keys[i];
     }
     return null;
   }
@@ -262,7 +269,7 @@
     // "electrician near me" → "electrician", "plumber in bronte" → "plumber".
     function cleanScopedTerm(text, sub) {
       var t = stripRadiusPhrases(text);
-      if (sub) t = t.replace(sub, " ");
+      if (sub) t = t.replace(suburbRe(sub), " "); // boundary-safe: never eats "bonding"
       return t
         .replace(/\b(?:in|at|around|near)\b\s*$/g, " ")
         .replace(/\s+/g, " ")
@@ -354,15 +361,7 @@
         // ("find me a florist in bronte" → term "florist", coords Bronte),
         // and parsed radius phrases never reach the brain as literal text.
         cmd.intent = "search";
-        name = stripRadiusPhrases(name);
-        if (scopeSub) {
-          name = name
-            .replace(scopeSub, " ")
-            .replace(/\b(?:in|at|around|near)\b\s*$/g, " ")
-            .replace(/\s+/g, " ")
-            .trim();
-        }
-        cmd.searchTerm = name;
+        cmd.searchTerm = cleanScopedTerm(name, scopeSub) || name;
         return applyScope(cmd);
       }
       cmd.intent = "business";
@@ -383,7 +382,7 @@
     // scoped to that suburb — flying without searching loses the request.
     if (scopeSub && stripped.split(" ").length <= 4) {
       var leftover = stripped
-        .replace(scopeSub, " ")
+        .replace(suburbRe(scopeSub), " ")
         .replace(/\b(?:in|at|around|near|the|please|now|thanks|thank you|mate)\b/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -415,11 +414,12 @@
       return cmd;
     }
 
-    // Anything else with a few words → free-text search via the brain.
+    // Anything else with a few words → free-text search via the brain
+    // ("best dog wash in coogee" keeps its suburb scope here too).
     if (stripped.split(" ").length >= 2) {
       cmd.intent = "search";
-      cmd.searchTerm = stripped;
-      return cmd;
+      cmd.searchTerm = cleanScopedTerm(stripped, scopeSub) || stripped;
+      return applyScope(cmd);
     }
 
     return cmd;

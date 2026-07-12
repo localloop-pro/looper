@@ -52,6 +52,7 @@ check("cafe plain ascii", route("find me a cafe"), { intent: "search", category:
 check("somewhere to stay → Accommodation", route("I need somewhere to stay tonight"), { intent: "connect", category: "Accommodation" });
 check("hotel → Accommodation", route("show me hotels in bondi"), { intent: "search", category: "Accommodation", suburb: "bondi" });
 check("job → Job-Offers", route("any jobs going around here"), { intent: "search", category: "Job-Offers" });
+check("job offers → Job-Offers, not deals", route("job offers near me"), { intent: "search", category: "Job-Offers", radiusM: 1000 });
 check("delivery → Fetch_Deliveries", route("I need a courier"), { intent: "connect" });
 check("spa/relax → brain-only search (no pin category)", route("I want to relax at a spa"), { intent: "search", category: undefined });
 check("plumber noun reaches the brain", route("find me a plumber"), { intent: "search", searchTerm: "plumber trades services" });
@@ -84,6 +85,8 @@ check("bare suburb", route("rose bay"), { intent: "suburb", suburb: "rose bay" }
 check("florist in Bronte → scoped search, not just fly", route("florist in bronte"), { intent: "search", searchTerm: "florist", suburb: "bronte" });
 check("accountant bondi → scoped search", route("accountant bondi"), { intent: "search", searchTerm: "accountant", suburb: "bondi" });
 check("florist in bronte within 5 km → clean term + scope + radius", route("florist in bronte within 5 km"), { intent: "search", searchTerm: "florist", suburb: "bronte", radiusM: 5000 });
+check("bonding therapist is NOT bondi (word boundary)", route("bonding therapist near me"), { intent: "search", searchTerm: "bonding therapist", suburb: undefined, radiusM: 1000 });
+check("best dog wash in coogee → scoped free text", route("best dog wash in coogee"), { intent: "search", suburb: "coogee", superlative: true });
 check("take me to a business (not suburb)", route("take me to the health emporium"), { intent: "business", businessName: "health emporium" });
 
 // ---- offers / anti-bias -------------------------------------------------------

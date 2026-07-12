@@ -410,7 +410,21 @@
         if (S.onMicClose) { try { S.onMicClose(); } catch (e) { /* never block */ } }
         return;
       }
-      try { S.recognition.start(); } catch (e) { /* already started */ }
+      try {
+        S.recognition.start();
+      } catch (e) {
+        // "already started" (InvalidStateError) is fine; anything else
+        // means the mic never opened — onend won't fire, so fail closed
+        // here or the host wake word stays paused and the dock stays lit
+        if (e && e.name === "InvalidStateError") return;
+        S.listening = false;
+        S.handsFree = false;
+        if (S.ui.wake) S.ui.wake.classList.remove("on");
+        if (S.onMicClose) { try { S.onMicClose(); } catch (e2) { /* never block */ } }
+        S.face.setMood("idle");
+        S.ui.inputRow.classList.add("lj-open");
+        setStatus("Mic unavailable — type to ask Looper");
+      }
     });
   }
 
@@ -635,6 +649,10 @@
         return;
       case "reset":
         Bus.reset();
+        // stale cards would still fly to results that are no longer on the map
+        S.ui.panel.classList.remove("lj-open");
+        S.ui.panel.innerHTML = "";
+        S.lastSearch = null;
         S.face.setMood("idle");
         speak("Back to the whole " + S.district + " loop.");
         return;
