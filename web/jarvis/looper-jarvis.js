@@ -95,6 +95,9 @@
     // site's own fixed UI (mobile bottom nav, Mapbox bottom-right controls).
     "#looper-jarvis{position:fixed;right:var(--lj-right,18px);bottom:var(--lj-bottom,18px);z-index:9999;display:flex;flex-direction:column;align-items:flex-end;gap:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}",
     "@media (max-width:768px){#looper-jarvis{bottom:var(--lj-bottom-mobile,var(--lj-bottom,18px));right:var(--lj-right-mobile,var(--lj-right,12px));}}",
+    // narrow phones: the dock row (wake + status + face) must never exceed
+    // the viewport — wrap the pills above a smaller face
+    "@media (max-width:480px){#looper-jarvis{max-width:calc(100vw - 24px);}#looper-jarvis .lj-dock{flex-wrap:wrap;justify-content:flex-end;row-gap:6px;}#looper-jarvis .lj-status{max-width:140px;font-size:11px;padding:5px 10px;}#looper-jarvis .lj-wake{font-size:11px;padding:5px 9px;}}",
     "#looper-jarvis .lj-panel{width:min(340px,calc(100vw - 36px));max-height:46vh;overflow-y:auto;background:rgba(10,12,18,.94);color:#e8ecf4;border:1px solid rgba(86,189,255,.35);border-radius:16px;padding:12px 14px;backdrop-filter:blur(14px);box-shadow:0 12px 40px rgba(0,0,0,.45);display:none;}",
     "#looper-jarvis .lj-panel.lj-open{display:block;}",
     "#looper-jarvis .lj-msg{font-size:13.5px;line-height:1.45;margin:0 0 8px;}",
@@ -161,7 +164,9 @@
     S.ui.input = wrap.querySelector("#lj-input");
     S.ui.send = wrap.querySelector("#lj-send");
 
-    S.face = Face.mount(S.ui.faceBtn, { size: 118 });
+    // smaller face on narrow phones so the dock fits beside the map UI
+    var faceSize = (root.innerWidth && root.innerWidth <= 480) ? 88 : 118;
+    S.face = Face.mount(S.ui.faceBtn, { size: faceSize });
 
     S.ui.faceBtn.addEventListener("click", toggleListening);
     S.ui.wake.addEventListener("click", toggleHandsFree);

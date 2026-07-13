@@ -59,6 +59,20 @@ const { chromium } = require("playwright");
   await page.evaluate(() => { document.querySelector("#looper-jarvis .looper-face").className = "looper-face lf-speaking"; });
   await page.screenshot({ path: require("node:path").join(__dirname, "jarvis-smoke.png") });
 
+  // 7. Mobile fit: on a 320px phone the dock must stay inside the viewport
+  const mob = await browser.newPage({ viewport: { width: 320, height: 640 } });
+  mob.on("pageerror", (e) => errors.push("mobile pageerror: " + e.message));
+  await mob.goto("http://127.0.0.1:8088/tests/jarvis-harness.html");
+  await mob.waitForSelector("#looper-jarvis .lj-face-btn .looper-face");
+  const dockBox = await mob.$eval("#looper-jarvis", (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, right: r.right, width: r.width };
+  });
+  const fits = dockBox.left >= 0 && dockBox.right <= 320;
+  console.log("mobile dock fits 320px viewport:", fits, JSON.stringify(dockBox));
+  if (!fits) errors.push("dock overflows 320px viewport: " + JSON.stringify(dockBox));
+  await mob.close();
+
   console.log("errors:", errors.length ? errors : "none");
   await browser.close();
   process.exit(errors.length ? 1 : 0);
