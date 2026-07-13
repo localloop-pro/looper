@@ -393,6 +393,9 @@
   function startListening() {
     if (!S.recognition) return;
     stopSpeaking();
+    // silence the host's competing audio too (news podcast audio_url
+    // playback) — an open mic would transcribe it instead of the user
+    if (S.beforeSpeak) { try { S.beforeSpeak(); } catch (e) { /* never block the mic */ } }
     S.listening = true;
     S.recErrorStreak = 0;
     S.recognition.continuous = S.handsFree; // hands-free keeps the stream open

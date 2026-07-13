@@ -205,10 +205,16 @@
     var ctaHref = safeUrl(state.claimCta && state.claimCta.url);
     if (cardHref) {
       html += '<br><a href="' + escapeHtml(cardHref) + '" target="_blank" rel="noopener">View card →</a>';
-    } else if (siteHref) {
-      html += '<br><a href="' + escapeHtml(siteHref) + '" target="_blank" rel="noopener">Website →</a>';
-    } else if (ctaHref) {
-      html += '<br><a class="looper-popup-claim" href="' + escapeHtml(ctaHref) + '" target="_blank" rel="noopener">' + escapeHtml(state.claimCta.label || "Own this business? Claim it →") + "</a>";
+    } else {
+      // no card: the website link (when any) AND the claim funnel — an
+      // ordinary directory row with a website is exactly who the
+      // "own this business?" CTA is for
+      if (siteHref) {
+        html += '<br><a href="' + escapeHtml(siteHref) + '" target="_blank" rel="noopener">Website →</a>';
+      }
+      if (ctaHref) {
+        html += '<br><a class="looper-popup-claim" href="' + escapeHtml(ctaHref) + '" target="_blank" rel="noopener">' + escapeHtml(state.claimCta.label || "Own this business? Claim it →") + "</a>";
+      }
     }
     html += "</div>";
     return html;
