@@ -265,6 +265,16 @@
       return !!scopeSub &&
         new RegExp("\\b(?:in|at|around|near)\\s+" + scopeSub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$").test(text);
     }
+    // Category term PLUS the user's remaining subject words — "pizza deals"
+    // must send "pizza" to the brain, not just the generic bucket term.
+    function subjectPlus(cat) {
+      var subject = cleanScopedTerm(stripped.replace(new RegExp(cat.re.source, "gi"), " "), scopeSub)
+        .replace(/\b(?:any|some|whats|what's|on|the|a|an|me|my|show|find|search for|are there|around|here|there|this|weekend|today|tonight|going)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      var base = termFor(cat);
+      return subject ? subject + " " + base : base;
+    }
 
     // "take me to bronte" → suburb; "take me to gertrude and alice" →
     // business; article/scope signals mean navigation-style DISCOVERY
@@ -350,26 +360,28 @@
       return applyScope(cmd);
     }
 
-    // Offers/deals get their own intent (anti-bias handling downstream).
+    // Offers/deals get their own intent (anti-bias handling downstream);
+    // the subject rides along ("pizza deals" → "pizza deals offers").
     if (category && category.pin === "Offers") {
       cmd.intent = "offers";
       cmd.category = "Offers";
-      cmd.searchTerm = category.term;
+      cmd.searchTerm = subjectPlus(category);
       return applyScope(cmd);
     }
 
-    // News/events phrasing like "what's happening"
+    // News/events phrasing like "what's happening" — qualifiers preserved
+    // ("sports news" → "sports news", "concerts" → "concerts events").
     if (category && (category.pin === "News" || category.pin === "Events")) {
       cmd.intent = "news";
       cmd.category = category.pin;
-      cmd.searchTerm = category.term;
+      cmd.searchTerm = subjectPlus(category);
       return applyScope(cmd);
     }
 
     // Specific business: old build's /(?:find|show|tell me about) X/ regex.
     // Category words win over the business regex ("find me a cafe" = search).
     var biz = stripped.match(BUSINESS_RE);
-    if (biz && !category) {
+    if (biz) {
       var name = stripArticles(biz[2].trim());
       var asSuburb = matchSuburb(name, suburbs, true);
       if (asSuburb) {
@@ -386,13 +398,38 @@
         // A named suburb scopes it AND leaves the search term clean
         // ("find me a florist in bronte" → term "florist", coords Bronte),
         // and parsed radius phrases never reach the brain as literal text.
+        // A matched category keeps its pin + search vocabulary ("find me a
+        // cafe" filters Food and searches the café terms).
         cmd.intent = "search";
-        cmd.searchTerm = cleanScopedTerm(name, scopeSub) || name;
+        if (category) {
+          if (category.pin) cmd.category = category.pin;
+          cmd.searchTerm = subjectPlus(category);
+        } else {
+          cmd.searchTerm = cleanScopedTerm(name, scopeSub) || name;
+        }
         return applyScope(cmd);
       }
-      cmd.intent = "business";
-      cmd.businessName = name;
-      return cmd;
+      if (!category) {
+        cmd.intent = "business";
+        cmd.businessName = name;
+        return cmd;
+      }
+      // A category word inside a LARGER unscoped target is a named business
+      // ("find Pizza Hut", "show me Totti's restaurant") — the generic
+      // category path would drop the name. Superlatives stay discovery
+      // ("find the best pizza place"), Sales words stay qualifiers.
+      if (category.pin !== "Sales" && !cmd.superlative) {
+        var catNoun = (stripped.match(category.re) || [""])[0];
+        var extraWords = catNoun
+          ? name.replace(new RegExp("\\b" + catNoun.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b"), " ").replace(/\s+/g, " ").trim()
+          : name;
+        if (extraWords) {
+          cmd.intent = "business";
+          cmd.businessName = name;
+          return cmd;
+        }
+      }
+      // bare category target ("find pizza") — fall through to category search
     }
 
     if (category) {

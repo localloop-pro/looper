@@ -100,6 +100,8 @@ check("go to plumber within 2 km → scoped search", route("go to plumber within
 
 // ---- offers / anti-bias -------------------------------------------------------
 check("deals → offers intent", route("any deals around"), { intent: "offers", category: "Offers" });
+check("pizza deals keeps subject", route("pizza deals near me"), { intent: "offers", category: "Offers", searchTerm: "pizza deals offers", radiusM: 1000 });
+check("hairdresser discounts in coogee keeps subject + scope", route("hairdresser discounts in coogee"), { intent: "offers", suburb: "coogee", searchTerm: "hairdresser discounts deals offers" });
 check("specials → offers", route("show me today's specials"), { intent: "offers", category: "Offers" });
 check("deals in Bronte keeps suburb scope", route("any deals in bronte"), { intent: "offers", category: "Offers", suburb: "bronte" });
 check("news in Byron Bay keeps suburb scope", route("news in byron bay"), { intent: "news", category: "News", suburb: "byron bay" });
@@ -129,6 +131,10 @@ check("who can help with garden", route("who can help me with my garden"), { int
 // ---- news / events ---------------------------------------------------------------
 check("what's happening → news", route("what's happening around here"), { intent: "news", category: "News" });
 check("markets → events", route("any markets on this weekend"), { intent: "news", category: "Events" });
+check("sports news keeps qualifier", route("sports news in bondi"), { intent: "news", category: "News", suburb: "bondi", searchTerm: "sports news" });
+check("concerts near me keeps noun", route("concerts near me"), { intent: "news", category: "Events", searchTerm: "concerts events", radiusM: 1000 });
+check("find Pizza Hut → business despite category word", route("find pizza hut"), { intent: "business", businessName: "pizza hut" });
+check("find pizza (bare category) → category search", route("find pizza"), { intent: "search", category: "Food" });
 
 // ---- zoom / reset (new verbs) ------------------------------------------------------
 check("zoom in", route("zoom in"), { intent: "zoom", zoomDelta: 1 });
