@@ -352,7 +352,7 @@
         // small delay so an erroring recognizer can't hot-loop restarts
         setTimeout(function () {
           if (!S.listening) return;
-          try { S.recognition.start(); } catch (e) { /* already starting */ }
+          tryStartRecognition();
         }, 300);
       } else {
         // mic session truly over (covers both stopListening and the
@@ -413,22 +413,27 @@
         if (S.onMicClose) { try { S.onMicClose(); } catch (e) { /* never block */ } }
         return;
       }
-      try {
-        S.recognition.start();
-      } catch (e) {
-        // "already started" (InvalidStateError) is fine; anything else
-        // means the mic never opened — onend won't fire, so fail closed
-        // here or the host wake word stays paused and the dock stays lit
-        if (e && e.name === "InvalidStateError") return;
-        S.listening = false;
-        S.handsFree = false;
-        if (S.ui.wake) S.ui.wake.classList.remove("on");
-        if (S.onMicClose) { try { S.onMicClose(); } catch (e2) { /* never block */ } }
-        S.face.setMood("idle");
-        S.ui.inputRow.classList.add("lj-open");
-        setStatus("Mic unavailable — type to ask Looper");
-      }
+      tryStartRecognition();
     });
+  }
+
+  // Start the recognizer, failing CLOSED on anything but "already started"
+  // (InvalidStateError): a swallowed start() failure — initial OR auto-
+  // restart — leaves S.listening true with no recognizer running, so no
+  // onend would ever release the host's wake-word mic or the dock UI.
+  function tryStartRecognition() {
+    try {
+      S.recognition.start();
+    } catch (e) {
+      if (e && e.name === "InvalidStateError") return;
+      S.listening = false;
+      S.handsFree = false;
+      if (S.ui.wake) S.ui.wake.classList.remove("on");
+      if (S.onMicClose) { try { S.onMicClose(); } catch (e2) { /* never block */ } }
+      S.face.setMood("idle");
+      S.ui.inputRow.classList.add("lj-open");
+      setStatus("Mic unavailable — type to ask Looper");
+    }
   }
 
   function stopListening() {
