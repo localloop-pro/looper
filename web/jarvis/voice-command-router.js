@@ -277,8 +277,11 @@
     }
     // Category term PLUS the user's remaining subject words — "pizza deals"
     // must send "pizza" to the brain, not just the generic bucket term.
-    function subjectPlus(cat) {
-      var subject = cleanScopedTerm(stripped.replace(new RegExp(cat.re.source, "gi"), " "), scopeSub)
+    // Pass `text` to scope the subject to a captured target instead of the
+    // whole utterance (keeps goto/connect verbs out of the term).
+    function subjectPlus(cat, text) {
+      var src = text || stripped;
+      var subject = cleanScopedTerm(src.replace(new RegExp(cat.re.source, "gi"), " "), scopeSub)
         // temporal words (weekend/today/tonight/tomorrow) are NOT filler —
         // "events tonight" must send its time window to the brain
         .replace(/\b(?:anything|something|any|some|all|everything|what|whats|what's|on|the|a|an|i|i'm|im|we|us|to|for|me|my|show|find|want|need|search for|are|are there|is|around|here|there|this|going|happening|somewhere|anywhere|please|best|greatest|top)\b/g, " ")
@@ -302,9 +305,34 @@
         return cmd;
       }
       if (goto_[1] || cmd.radiusM != null || hasLocativeTail(gotoTarget)) {
+        // navigation-style discovery keeps its category ("take me to a
+        // cafe near me" filters Food; "navigate to delivery" must reach
+        // the Fetch_Deliveries flow, not an uncategorized search)
         cmd.intent = "search";
-        cmd.searchTerm = cleanScopedTerm(gotoTarget, scopeSub) || gotoTarget;
+        var gotoCat = matchCategory(gotoTarget);
+        if (gotoCat) {
+          if (gotoCat.pin) cmd.category = gotoCat.pin;
+          cmd.searchTerm = subjectPlus(gotoCat, gotoTarget);
+        } else {
+          cmd.searchTerm = cleanScopedTerm(gotoTarget, scopeSub) || gotoTarget;
+        }
         return applyScope(cmd);
+      }
+      // A bare target built entirely of category vocabulary ("take me to
+      // food delivery", "go to job offers") is a category request, not a
+      // business name — same rule the find/show path applies.
+      var gotoExtra = gotoTarget;
+      for (var gi = 0; gi < SYNONYMS.length; gi++) {
+        gotoExtra = gotoExtra.replace(new RegExp(SYNONYMS[gi].re.source, "gi"), " ");
+      }
+      if (!gotoExtra.replace(/\s+/g, " ").trim()) {
+        var gotoBareCat = matchCategory(gotoTarget);
+        if (gotoBareCat) {
+          cmd.intent = "search";
+          if (gotoBareCat.pin) cmd.category = gotoBareCat.pin;
+          cmd.searchTerm = subjectPlus(gotoBareCat, gotoTarget);
+          return applyScope(cmd);
+        }
       }
       cmd.intent = "business";
       cmd.businessName = gotoTarget;
@@ -341,8 +369,16 @@
         return cmd;
       }
       if (named[1] || cmd.radiusM != null || hasLocativeTail(namedTarget)) {
+        // generic discovery via a naming verb keeps its category too
+        // ("where is a cafe near me" filters Food like "find me a cafe")
         cmd.intent = "search";
-        cmd.searchTerm = cleanScopedTerm(namedTarget, scopeSub) || namedTarget;
+        var namedCat = matchCategory(namedTarget);
+        if (namedCat) {
+          if (namedCat.pin) cmd.category = namedCat.pin;
+          cmd.searchTerm = subjectPlus(namedCat, namedTarget);
+        } else {
+          cmd.searchTerm = cleanScopedTerm(namedTarget, scopeSub) || namedTarget;
+        }
         return applyScope(cmd);
       }
       cmd.intent = "business";
@@ -363,7 +399,10 @@
       cmd.searchTerm = cleanScopedTerm(connectTarget, connectSuburb) || connectTarget;
       if (category) {
         cmd.category = category.pin || undefined;
-        if (connectTarget.split(" ").length > 4) cmd.searchTerm = termFor(category);
+        // long targets keep the user's qualifier words AND the category
+        // vocabulary — "dog friendly accommodation in bondi" must send
+        // "dog friendly", not just the bucket term
+        if (connectTarget.split(" ").length > 4) cmd.searchTerm = subjectPlus(category, connectTarget);
       }
       if (connectSuburb) { cmd.suburb = connectSuburb; cmd.coords = suburbs[connectSuburb]; }
       return cmd;

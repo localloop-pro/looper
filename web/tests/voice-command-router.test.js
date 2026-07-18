@@ -87,8 +87,8 @@ check("find Bondi Pizza near me stays a business", route("find bondi pizza near 
 check("where is Bondi Pizza near me stays a business", route("where is bondi pizza near me"), { intent: "business", businessName: "bondi pizza" });
 check("find bondi near me → suburb fly", route("find bondi near me"), { intent: "suburb", suburb: "bondi" });
 check("tell me about The Burger Shop → business", route("tell me about The Burger Shop"), { intent: "business", businessName: "burger shop" });
-check("where is A cafe near me → scoped search (article)", route("where is a cafe near me"), { intent: "search", searchTerm: "cafe", radiusM: 1000 });
-check("tell me about restaurants in Bronte → scoped search (locative)", route("tell me about restaurants in bronte"), { intent: "search", searchTerm: "restaurants", suburb: "bronte" });
+check("where is A cafe near me → scoped Food search (article)", route("where is a cafe near me"), { intent: "search", category: "Food", searchTerm: "cafe café restaurant food", radiusM: 1000 });
+check("tell me about restaurants in Bronte → scoped Food search", route("tell me about restaurants in bronte"), { intent: "search", category: "Food", searchTerm: "restaurants café restaurant food", suburb: "bronte" });
 
 // ---- suburbs ----------------------------------------------------------------
 check("take me to suburb", route("take me to bondi junction"), { intent: "suburb", suburb: "bondi junction" });
@@ -101,9 +101,14 @@ check("florist in bronte within 5 km → clean term + scope + radius", route("fl
 check("bonding therapist is NOT bondi (word boundary)", route("bonding therapist near me"), { intent: "search", searchTerm: "bonding therapist", suburb: undefined, radiusM: 1000 });
 check("best dog wash in coogee → scoped free text", route("best dog wash in coogee"), { intent: "search", suburb: "coogee", superlative: true });
 check("take me to a business (not suburb)", route("take me to the health emporium"), { intent: "business", businessName: "health emporium" });
-check("take me to A cafe near me → scoped search", route("take me to a cafe near me"), { intent: "search", searchTerm: "cafe", radiusM: 1000 });
-check("navigate to restaurants in Bronte → scoped search", route("navigate to restaurants in bronte"), { intent: "search", searchTerm: "restaurants", suburb: "bronte" });
-check("go to plumber within 2 km → scoped search", route("go to plumber within 2 km"), { intent: "search", searchTerm: "plumber", radiusM: 2000 });
+check("take me to A cafe near me → scoped Food search", route("take me to a cafe near me"), { intent: "search", category: "Food", searchTerm: "cafe café restaurant food", radiusM: 1000 });
+check("navigate to restaurants in Bronte → scoped Food search", route("navigate to restaurants in bronte"), { intent: "search", category: "Food", searchTerm: "restaurants café restaurant food", suburb: "bronte" });
+check("go to plumber within 2 km → scoped search", route("go to plumber within 2 km"), { intent: "search", searchTerm: "plumber trades services", radiusM: 2000 });
+check("go to a hotel in bondi → Accommodation", route("go to a hotel in bondi"), { intent: "search", category: "Accommodation", searchTerm: "accommodation hotel", suburb: "bondi" });
+check("navigate to delivery in bronte → Fetch_Deliveries", route("navigate to delivery in bronte"), { intent: "search", category: "Fetch_Deliveries", suburb: "bronte" });
+check("take me to food delivery → Fetch_Deliveries (bare)", route("take me to food delivery"), { intent: "search", category: "Fetch_Deliveries", searchTerm: "food delivery courier" });
+check("go to job offers → Job-Offers (bare)", route("go to job offers"), { intent: "search", category: "Job-Offers" });
+check("navigate to hotel rooms → Accommodation (bare)", route("navigate to hotel rooms"), { intent: "search", category: "Accommodation" });
 
 // ---- offers / anti-bias -------------------------------------------------------
 check("deals → offers intent", route("any deals around"), { intent: "offers", category: "Offers" });
@@ -154,6 +159,8 @@ check("i need an electrician", route("I need an electrician"), { intent: "connec
 check("i need an electrician near me → clean term", route("I need an electrician near me"), { intent: "connect", searchTerm: "electrician", radiusM: 1000 });
 check("connect me with a plumber in bronte → clean + scoped", route("connect me with a plumber in bronte"), { intent: "connect", searchTerm: "plumber", suburb: "bronte" });
 check("who can help with garden", route("who can help me with my garden"), { intent: "connect" });
+check("connect long target keeps qualifiers", route("connect me with dog friendly accommodation in bondi"), { intent: "connect", category: "Accommodation", searchTerm: "dog friendly accommodation hotel", suburb: "bondi" });
+check("i need vegan gluten free cafe near me keeps qualifiers", route("i need vegan gluten free cafe near me"), { intent: "connect", category: "Food", searchTerm: "vegan gluten free cafe café restaurant food", radiusM: 1000 });
 
 // ---- news / events ---------------------------------------------------------------
 check("what's happening → news", route("what's happening around here"), { intent: "news", category: "News" });
