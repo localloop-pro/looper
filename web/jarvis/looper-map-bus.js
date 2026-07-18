@@ -148,6 +148,9 @@
   // Mapbox throw inside setLngLat/fitBounds.
   function hasValidCoords(p) {
     if (!p || p.lng == null || p.lat == null) return false;
+    // '' and whitespace coerce to 0 — a blank string is a MISSING
+    // coordinate, not a pin in the Gulf of Guinea
+    if (String(p.lng).trim() === "" || String(p.lat).trim() === "") return false;
     var lng = Number(p.lng), lat = Number(p.lat);
     return isFinite(lng) && isFinite(lat) &&
       lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90;

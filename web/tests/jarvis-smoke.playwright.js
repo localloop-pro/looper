@@ -37,6 +37,12 @@ const { chromium } = require("playwright");
   // 3. Map bus effects (fitBounds from showResults; radius from command)
   let calls = await page.evaluate(() => window.__calls);
   console.log("map/API calls:", JSON.stringify(calls));
+  // Ghost Listing has blank-string coords — a marker/bounds at [0,0]
+  // (Gulf of Guinea) means the coordinate guard let '' coerce to 0
+  const fit = calls.find((c) => c[0] === "fitBounds");
+  if (fit && (Math.abs(fit[1][0][0]) < 100 || Math.abs(fit[1][0][1]) < 20)) {
+    errors.push("blank-coord result dragged fitBounds toward [0,0]: " + JSON.stringify(fit[1]));
+  }
 
   // 4. Suburb + zoom + reset via voice grammar
   await page.evaluate(() => LooperJarvis.ask("take me to bronte"));
@@ -68,6 +74,11 @@ const { chromium } = require("playwright");
   if (dlCat !== "Offers") errors.push("deep-link cat overridden by routed q: " + dlCat);
   if (!/lat=-28.6474/.test(dlFetch) || !/lng=153.612/.test(dlFetch)) {
     errors.push("deep-link search ignored fly centre: " + dlFetch);
+  }
+  // explicit cat owns the layer AND the query: the parser must not swap
+  // in another category's vocabulary (q=pizza is NOT a Food search here)
+  if (!/[?&]q=pizza&/.test(dlFetch)) {
+    errors.push("deep-link q was rewritten by the parser: " + dlFetch);
   }
 
   // 6. Screenshot the dock with results open

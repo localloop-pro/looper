@@ -764,7 +764,13 @@
     if (!searchIntents[cmd.intent]) {
       cmd = { intent: "search", raw: q, searchTerm: cmd.searchTerm || cmd.businessName || q };
     }
-    if (cat) cmd.category = cat;
+    if (cat) {
+      cmd.category = cat;
+      // the parser may have enriched the term with ANOTHER category's
+      // vocabulary (q=pizza → Food words) — with an explicit cat the
+      // link's own words are the query
+      cmd.searchTerm = Router.clean(q) || q;
+    }
     if (flyCoords && !cmd.coords) cmd.coords = flyCoords;
     runSearch(cmd);
   }
