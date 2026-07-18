@@ -40,6 +40,10 @@ const { chromium } = require("playwright");
 
   // 4. Suburb + zoom + reset via voice grammar
   await page.evaluate(() => LooperJarvis.ask("take me to bronte"));
+  // suburb navigation must clear the previous search's cards/markers —
+  // stale results would read as belonging to the destination
+  const staleOptions = await page.$$("#looper-jarvis .lj-option");
+  if (staleOptions.length) errors.push("suburb fly left stale result cards: " + staleOptions.length);
   await page.evaluate(() => LooperJarvis.ask("zoom in"));
   await page.evaluate(() => LooperJarvis.ask("reset the map"));
   calls = await page.evaluate(() => window.__calls.slice(-4));

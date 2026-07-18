@@ -558,8 +558,9 @@
 
     // No pin category clears the host filter — "show cafes" then "find a
     // plumber" must not leave the map filtered to Food while the panel
-    // shows plumbers.
-    Bus.setCategory(cmd.category || null);
+    // shows plumbers. fromSearch tells the host to skip its own camera
+    // moves: this search fits its results itself.
+    Bus.setCategory(cmd.category || null, { fromSearch: true });
     S.face.setMood("thinking");
     setStatus(pick(PERSONA.acks));
 
@@ -667,6 +668,12 @@
         speak(PERSONA.help);
         return;
       case "suburb":
+        // plain navigation: stale result markers/cards would read as
+        // belonging to the destination — clear them like reset does
+        Bus.clearResults();
+        S.ui.panel.classList.remove("lj-open");
+        S.ui.panel.innerHTML = "";
+        S.lastSearch = null;
         if (cmd.coords) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
         speak("Taking you to " + cmd.suburb + ".");
         return;

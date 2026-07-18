@@ -68,11 +68,14 @@
     return bus;
   }
 
-  function setCategory(category) {
+  // meta is passed through to the host hook untouched — e.g. {fromSearch:
+  // true} lets a host skip its own camera choreography when the search is
+  // about to fit its results itself.
+  function setCategory(category, meta) {
     if (!ready()) return;
     state.activeCategory = category || null;
     if (state.onCategory) {
-      try { state.onCategory(state.activeCategory); } catch (e) { console.warn("[LooperMapBus] onCategory hook failed", e); }
+      try { state.onCategory(state.activeCategory, meta || null); } catch (e) { console.warn("[LooperMapBus] onCategory hook failed", e); }
     }
   }
 
