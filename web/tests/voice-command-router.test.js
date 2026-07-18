@@ -140,6 +140,22 @@ check("show shops near me → Offers pin", route("show shops near me"), { intent
 check("find boutiques → Offers pin", route("find boutiques"), { intent: "offers", category: "Offers" });
 check("rentals near me → Accommodation", route("rentals near me"), { intent: "search", category: "Accommodation", radiusM: 1000 });
 check("flatmate in bondi → Accommodation + scope", route("flatmate in bondi"), { intent: "search", category: "Accommodation", suburb: "bondi" });
+check("updates in bondi → News", route("updates in bondi"), { intent: "news", category: "News", suburb: "bondi" });
+check("reports today → News", route("reports today"), { intent: "news", category: "News" });
+check("promotions near me → Offers", route("promotions near me"), { intent: "offers", category: "Offers", radiusM: 1000 });
+check("coupons in bondi → Offers + scope", route("coupons in bondi"), { intent: "offers", category: "Offers", suburb: "bondi" });
+check("live music tonight → Events", route("live music tonight"), { intent: "news", category: "Events" });
+check("shows in bondi → Events + scope", route("shows in bondi"), { intent: "news", category: "Events", suburb: "bondi" });
+check("shifts near me → Job-Offers", route("shifts near me"), { intent: "search", category: "Job-Offers", radiusM: 1000 });
+check("roles in bondi → Job-Offers + scope", route("roles in bondi"), { intent: "search", category: "Job-Offers", suburb: "bondi" });
+check("menus near me → Food", route("menus near me"), { intent: "search", category: "Food", radiusM: 1000 });
+check("take-away near me → Food (hyphen)", route("take-away near me"), { intent: "search", category: "Food", radiusM: 1000 });
+
+// ---- qualified category phrases are discovery, not names -----------------------
+check("find vegan cafes → Food search", route("find vegan cafes"), { intent: "search", category: "Food", searchTerm: "vegan cafes café restaurant food" });
+check("show gluten free restaurants → Food search", route("show gluten free restaurants"), { intent: "search", category: "Food", searchTerm: "gluten free restaurants café restaurant food" });
+check("find dog friendly accommodation → Accommodation search", route("find dog friendly accommodation"), { intent: "search", category: "Accommodation", searchTerm: "dog friendly accommodation hotel" });
+check("find Pizza Hut still a business", route("find pizza hut"), { intent: "business", businessName: "pizza hut" });
 check("best cafe → superlative flagged (anti-bias)", route("what's the best cafe"), { intent: "search", category: "Food", superlative: true });
 
 // ---- qualifiers survive generic category searches ------------------------------

@@ -65,10 +65,10 @@
     // jobs before Offers: "job offers" is employment, not a deals request.
     // Bare "gigs" is an Events word (host table agrees) — "gig work" still
     // lands here via "work".
-    { re: /\b(jobs?|work|hiring|employment|vacanc(?:y|ies)|careers?)\b/, pin: "Job-Offers", term: "jobs" },
+    { re: /\b(jobs?|work|hiring|employment|vacanc(?:y|ies)|careers?|shifts?|roles?)\b/, pin: "Job-Offers", term: "jobs" },
     // offers / deals next: a deal word beats co-occurring category nouns
     // ("restaurant deals" is an Offers request, not a Food search)
-    { re: /\b(deals?|offers?|discounts?|specials?|bargains?|vouchers?|cheap)\b/, pin: "Offers", term: "deals offers" },
+    { re: /\b(deals?|offers?|discounts?|specials?|bargains?|vouchers?|cheap|promot(?:ions?|es?|ed)|coupons?)\b/, pin: "Offers", term: "deals offers" },
     // sales (for-sale / second-hand items — their own frozen pin category;
     // sell/selling/etsy and hyphenated forms mirror the host voice table)
     { re: /\b(sales?|for sale|garage sales?|sell(?:ing)?|second[ -]?hand|pre[ -]?loved|marketplace|etsy)\b/, pin: "Sales", term: "for sale" },
@@ -79,17 +79,18 @@
     // voice table.
     { re: /\b(deliver(?:y|ies)|couriers?|pick[ -]?ups?|drop[ -]?offs?|fetch|hangry|drivers?)\b/, pin: "Fetch_Deliveries", term: "delivery courier" },
     // food (old build: hungry/eat → food)
-    { re: /\b(hungry|eat|eating|food|meals?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|takeaway|take away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
+    { re: /\b(hungry|eat|eating|eater(?:y|ies)|dining|food|meals?|menus?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|take[ -]?away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
     // accommodation (stay/sleep/hotel; rentals/flatmates/sublets mirror the
     // host voice table)
-    { re: /\b(stay|sleep|hotels?|motels?|hostels?|accommodation|somewhere to stay|rooms?|airbnb|bnb|rentals?|flat[ -]?mates?|sublets?)\b/, pin: "Accommodation", term: "accommodation hotel" },
+    { re: /\b(stay|sleep|hotels?|motels?|hostels?|resorts?|accommodation|somewhere to stay|rooms?|airbnb|bnb|rentals?|flat[ -]?mates?|sublets?)\b/, pin: "Accommodation", term: "accommodation hotel" },
     // events BEFORE news: an explicit event noun beats the broad happening
     // words ("what events are happening" is an Events request). "what's on"
     // and bare "gigs" are Events per the host voice table. "show" as a
     // noun is deliberately absent — it collides with "show me X".
-    { re: /\b(events?|concerts?|markets?|festivals?|exhibitions?|gigs?|what's on|whats on)\b/, pin: "Events", term: "events" },
+    // "shows" is plural-only — singular "show" is the verb in "show me X"
+    { re: /\b(events?|concerts?|markets?|festivals?|exhibitions?|gigs?|what's on|whats on|entertainment|live (?:music|streams?|shows?)|shows)\b/, pin: "Events", term: "events" },
     // news
-    { re: /\b(news|headlines|happening|going on)\b/, pin: "News", term: "news" },
+    { re: /\b(news|headlines?|happening|going on|stor(?:y|ies)|updates?|reports?|bulletins?)\b/, pin: "News", term: "news" },
     // health & wellbeing (spa/relax/fitness — no fixed pin category; brain-only)
     { re: /\b(spas?|relax|massage|fitness|gyms?|yoga|pilates|doctors?|dentists?|physio|chemist|pharmac(?:y|ies)|health|wellness|hair|barbers?|beauty)\b/, pin: null, term: "health fitness wellness" },
     // shopping → the Offers pin (host voice table maps shops/shopping to
@@ -558,7 +559,13 @@
           extraWords = extraWords.replace(new RegExp(SYNONYMS[si].re.source, "gi"), " ");
         }
         extraWords = extraWords.replace(/\s+/g, " ").trim();
-        if (extraWords) {
+        // Qualifier words before a category noun are DISCOVERY, not a name
+        // ("find vegan cafes", "show gluten free restaurants", "find dog
+        // friendly accommodation") — only unknown words like "hut" or
+        // "totti's" mark a proper business name.
+        var isQualifier = /^(?:dog|pet|kid|kids|family|child|baby|friendly|vegan|vegetarian|gluten|dairy|free|halal|kosher|organic|budget|luxury|licensed|byo|outdoor|indoor|waterfront|beachfront|local|late|night|open|24|hour|hours|new|good|nice|fancy|quiet|healthy)$/;
+        var allQualifiers = extraWords !== "" && extraWords.split(" ").every(function (w) { return isQualifier.test(w); });
+        if (extraWords && !allQualifiers) {
           cmd.intent = "business";
           cmd.businessName = name;
           return cmd;
