@@ -67,6 +67,8 @@ check("radius-only utterance", route("within 1 km"), { intent: "set_radius", rad
 check("set radius to 5 km → set_radius", route("set radius to 5 km"), { intent: "set_radius", radiusM: 5000 });
 check("change radius to 2 km → set_radius", route("change radius to 2 km"), { intent: "set_radius", radiusM: 2000 });
 check("make the search radius 500 m → set_radius", route("make the search radius 500 m"), { intent: "set_radius", radiusM: 500 });
+check("decimal radius 1.5 km survives cleaning", route("restaurants within 1.5 km"), { intent: "search", category: "Food", radiusM: 1500 });
+check("decimal radius 0.5 km survives cleaning", route("cafes within 0.5 km"), { intent: "search", category: "Food", radiusM: 500 });
 
 // ---- specific business regex (find|show|tell me about → flyTo) ---------------
 check("tell me about X → business", route("tell me about Gertrude and Alice"), { intent: "business", businessName: "gertrude and alice" });
@@ -155,6 +157,8 @@ check("book a haircut keeps its noun", route("book a haircut"), { intent: "booki
 check("book Pizza Hut keeps the name", route("book pizza hut"), { intent: "booking", category: "Food", searchTerm: "pizza hut" });
 check("reserve tottis restaurant keeps the name", route("reserve tottis restaurant"), { intent: "booking", searchTerm: "tottis restaurant" });
 check("book a table at tottis restaurant for two → name", route("book a table at tottis restaurant for two"), { intent: "booking", searchTerm: "tottis restaurant" });
+check("table for 2 at tottis → venue name (no category word)", route("table for 2 at tottis"), { intent: "booking", searchTerm: "tottis" });
+check("book a table at icebergs → venue name", route("book a table at icebergs"), { intent: "booking", searchTerm: "icebergs" });
 
 // ---- connect (the mission) ------------------------------------------------------
 check("connect me with a plumber", route("connect me with a plumber"), { intent: "connect", searchTerm: "plumber" });

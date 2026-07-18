@@ -48,7 +48,11 @@
 
   function clean(text) {
     return fold(text)
+      // protect decimal points ("within 1.5 km") from punctuation folding --
+      // stripping them would parse the radius as "5 km" and leave junk text
+      .replace(/(\d)\.(\d)/g, "$1\u0000$2")
       .replace(/[.,!?;:]+/g, " ")
+      .replace(/\u0000/g, ".")
       .replace(/\s+/g, " ")
       .trim();
   }
@@ -452,7 +456,9 @@
         // scope and filler is just table-talk, and the brain would treat it
         // literally; generic table bookings default to restaurants.
         var bookTerm = cleanScopedTerm(stripped.replace(BOOKING_RE, " "), scopeSub)
-          .replace(/\b(?:a|an|the|for|me|us|please|tonight|today|tomorrow)\b/g, " ")
+          // same table-size/time filler the category branch strips —
+          // "table for 2 at Tottis" must send "tottis", not "2 at tottis"
+          .replace(/\b(?:a|an|the|for|me|us|please|tonight|today|tomorrow|at|table|\d+|two|three|four|five|six|seven|eight|pm|am)\b/g, " ")
           .replace(/\s+/g, " ")
           .trim();
         if (!bookTerm || /^table(?: \w+)?$/.test(bookTerm) || /^(?:two|three|four|five|six|\d+)$/.test(bookTerm)) {
