@@ -38,7 +38,7 @@ check("okay looper cancel (wake variant)", route("okay looper cancel"), { intent
 check("hey looper stop listening", route("hey looper stop listening"), { intent: "stop" });
 check("shut up", route("shut up"), { intent: "stop" });
 check("MISFIRE: bus stop near me is NOT stop", route("bus stop near me"), { intent: "search", radiusM: 1000 });
-check("MISFIRE: stop inside sentence is NOT stop", route("find me a shop to stop at"), { intent: "search" });
+check("MISFIRE: stop inside sentence is NOT stop", route("find me a shop to stop at"), { intent: "offers", category: "Offers" });
 
 // ---- greetings / help -------------------------------------------------------
 check("greeting", route("hey looper"), { intent: "greet" });
@@ -131,6 +131,15 @@ check("anything for sale → Sales", route("anything for sale nearby"), { intent
 check("second hand → Sales", route("second hand furniture"), { intent: "search", category: "Sales" });
 check("bike for sale near me keeps item", route("bike for sale near me"), { intent: "search", category: "Sales", searchTerm: "bike for sale", radiusM: 1000 });
 check("second hand couch in coogee keeps item + scope", route("second hand couch in coogee"), { intent: "search", category: "Sales", searchTerm: "couch second hand for sale", suburb: "coogee" });
+check("sell my bike → Sales", route("sell my bike"), { intent: "search", category: "Sales" });
+check("second-hand board in bondi → Sales (hyphen)", route("second-hand board in bondi"), { intent: "search", category: "Sales", suburb: "bondi" });
+check("etsy near me → Sales", route("etsy near me"), { intent: "search", category: "Sales", radiusM: 1000 });
+
+// ---- host voice-table parity: shopping → Offers, rentals → Accommodation -------
+check("show shops near me → Offers pin", route("show shops near me"), { intent: "offers", category: "Offers", radiusM: 1000 });
+check("find boutiques → Offers pin", route("find boutiques"), { intent: "offers", category: "Offers" });
+check("rentals near me → Accommodation", route("rentals near me"), { intent: "search", category: "Accommodation", radiusM: 1000 });
+check("flatmate in bondi → Accommodation + scope", route("flatmate in bondi"), { intent: "search", category: "Accommodation", suburb: "bondi" });
 check("best cafe → superlative flagged (anti-bias)", route("what's the best cafe"), { intent: "search", category: "Food", superlative: true });
 
 // ---- qualifiers survive generic category searches ------------------------------
@@ -178,6 +187,9 @@ check("what events are happening → Events beats News", route("what events are 
 check("events tonight keeps time window", route("events tonight"), { intent: "news", category: "Events", searchTerm: "tonight events" });
 check("markets this weekend keeps time window", route("markets this weekend"), { intent: "news", category: "Events", searchTerm: "weekend markets events" });
 check("news today keeps time window", route("news today"), { intent: "news", category: "News", searchTerm: "today news" });
+check("gigs tonight → Events, not Jobs", route("gigs tonight"), { intent: "news", category: "Events" });
+check("what's on tonight → Events, not News", route("what's on tonight"), { intent: "news", category: "Events" });
+check("whats on in bondi → Events + scope", route("whats on in bondi"), { intent: "news", category: "Events", suburb: "bondi" });
 check("concerts happening near me → Events beats News", route("concerts happening near me"), { intent: "news", category: "Events", searchTerm: "concerts events", radiusM: 1000 });
 check("find Pizza Hut → business despite category word", route("find pizza hut"), { intent: "business", businessName: "pizza hut" });
 check("find pizza (bare category) → category search", route("find pizza"), { intent: "search", category: "Food" });

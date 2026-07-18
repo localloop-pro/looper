@@ -62,32 +62,37 @@
   // Pin categories are FROZEN in Supabase: News, Sales, Offers, Events,
   // Accommodation, Job-Offers, Fetch_Deliveries, Food.
   var SYNONYMS = [
-    // jobs before Offers: "job offers" is employment, not a deals request
-    { re: /\b(jobs?|work|hiring|employment|vacanc(?:y|ies)|careers?|gigs?)\b/, pin: "Job-Offers", term: "jobs" },
+    // jobs before Offers: "job offers" is employment, not a deals request.
+    // Bare "gigs" is an Events word (host table agrees) — "gig work" still
+    // lands here via "work".
+    { re: /\b(jobs?|work|hiring|employment|vacanc(?:y|ies)|careers?)\b/, pin: "Job-Offers", term: "jobs" },
     // offers / deals next: a deal word beats co-occurring category nouns
     // ("restaurant deals" is an Offers request, not a Food search)
     { re: /\b(deals?|offers?|discounts?|specials?|bargains?|vouchers?|cheap)\b/, pin: "Offers", term: "deals offers" },
-    // sales (for-sale / second-hand items — their own frozen pin category)
-    { re: /\b(sales?|for sale|garage sales?|second ?hand|pre ?loved|marketplace)\b/, pin: "Sales", term: "for sale" },
+    // sales (for-sale / second-hand items — their own frozen pin category;
+    // sell/selling/etsy and hyphenated forms mirror the host voice table)
+    { re: /\b(sales?|for sale|garage sales?|sell(?:ing)?|second[ -]?hand|pre[ -]?loved|marketplace|etsy)\b/, pin: "Sales", term: "for sale" },
     // deliveries BEFORE food: a delivery word marks the fetch flow even
     // when a food word rides along ("food delivery near me", "pick up
     // food") — the host only opens the delivery sheet for this pin.
     { re: /\b(deliver(?:y|ies)|couriers?|pick up|pickup|drop off|fetch)\b/, pin: "Fetch_Deliveries", term: "delivery courier" },
     // food (old build: hungry/eat → food)
     { re: /\b(hungry|eat|eating|food|meals?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|takeaway|take away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
-    // accommodation (stay/sleep/hotel)
-    { re: /\b(stay|sleep|hotels?|motels?|hostels?|accommodation|somewhere to stay|rooms?|airbnb|bnb)\b/, pin: "Accommodation", term: "accommodation hotel" },
-    // events BEFORE news: an explicit event noun beats the broad
-    // happening/what's-on words ("what events are happening" is an Events
-    // request). "show" as a noun is deliberately absent — it collides
-    // with "show me X".
-    { re: /\b(events?|concerts?|markets?|festivals?|exhibitions?)\b/, pin: "Events", term: "events" },
+    // accommodation (stay/sleep/hotel; rentals/flatmates/sublets mirror the
+    // host voice table)
+    { re: /\b(stay|sleep|hotels?|motels?|hostels?|accommodation|somewhere to stay|rooms?|airbnb|bnb|rentals?|flat[ -]?mates?|sublets?)\b/, pin: "Accommodation", term: "accommodation hotel" },
+    // events BEFORE news: an explicit event noun beats the broad happening
+    // words ("what events are happening" is an Events request). "what's on"
+    // and bare "gigs" are Events per the host voice table. "show" as a
+    // noun is deliberately absent — it collides with "show me X".
+    { re: /\b(events?|concerts?|markets?|festivals?|exhibitions?|gigs?|what's on|whats on)\b/, pin: "Events", term: "events" },
     // news
-    { re: /\b(news|headlines|happening|going on|what's on|whats on)\b/, pin: "News", term: "news" },
+    { re: /\b(news|headlines|happening|going on)\b/, pin: "News", term: "news" },
     // health & wellbeing (spa/relax/fitness — no fixed pin category; brain-only)
     { re: /\b(spas?|relax|massage|fitness|gyms?|yoga|pilates|doctors?|dentists?|physio|chemist|pharmac(?:y|ies)|health|wellness|hair|barbers?|beauty)\b/, pin: null, term: "health fitness wellness" },
-    // shopping (no fixed pin category; brain-only)
-    { re: /\b(shops?|shopping|stores?|boutiques?|clothes|clothing|gifts?|surf shop|bookshop|book store)\b/, pin: null, term: "shop retail" },
+    // shopping → the Offers pin (host voice table maps shops/shopping to
+    // Offers, so Jarvis and the visible map agree)
+    { re: /\b(shops?|shopping|stores?|boutiques?|clothes|clothing|gifts?|surf shop|bookshop|book store)\b/, pin: "Offers", term: "shop retail" },
     // trades & services (brain-only)
     { re: /\b(plumbers?|electricians?|builders?|carpenters?|painters?|hand(?:y|i)m(?:a|e)n|mechanics?|locksmiths?|cleaners?|gardeners?|tradies?|trades)\b/, pin: null, term: "trades services" },
     // pets (brain-only)

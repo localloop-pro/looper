@@ -300,6 +300,10 @@
     rec.interimResults = true;
 
     rec.onresult = function (event) {
+      // results that land AFTER the user canceled the turn (tap-to-stop)
+      // must not act — the mic was closed deliberately, and a late final
+      // would launch the very command the user tried to cancel
+      if (!S.listening) return;
       var finalText = "";
       var interim = "";
       for (var i = event.resultIndex; i < event.results.length; i++) {
@@ -663,6 +667,10 @@
         // ("hey looper stop listening" must actually stop listening).
         stopSpeaking();
         stopListening();
+        // a superseded in-flight search can no longer restore the mood —
+        // stop settles the whole dock back to idle
+        S.face.setMood("idle");
+        setStatus("Tap my face to talk");
         return;
       case "greet":
         speak(pick(PERSONA.greetings).replace("{district}", S.district));
