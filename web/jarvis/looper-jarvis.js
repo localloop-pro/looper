@@ -223,6 +223,12 @@
     return out;
   }
 
+  // Barge-in guard: cancel() doesn't stop a dead utterance's async
+  // onend/onerror from firing later — each speak() takes a new generation
+  // and stale callbacks no-op instead of speaking old chunks or flipping
+  // S.speaking under the new answer.
+  var speakGen = 0;
+
   function speak(text, done) {
     if (!("speechSynthesis" in root)) { if (done) done(); return; }
     // host hook: silence competing audio first (e.g. the site's news
@@ -231,10 +237,12 @@
     stopSpeaking();
     var chunks = chunkText(text);
     if (!chunks.length) { if (done) done(); return; }
+    var gen = ++speakGen;
     S.speaking = true;
     S.face.startTalking();
     var i = 0;
     function next() {
+      if (gen !== speakGen) return; // canceled: a newer speak()/stop owns the state
       if (!S.speaking || i >= chunks.length) { finish(); return; }
       var u = new SpeechSynthesisUtterance(chunks[i++]);
       u.lang = "en-AU";
@@ -247,6 +255,7 @@
       root.speechSynthesis.speak(u);
     }
     function finish() {
+      if (gen !== speakGen) return; // stale callback from a canceled utterance
       if (!S.speaking) return;
       S.speaking = false;
       S.face.stopTalking();
@@ -270,6 +279,7 @@
   }
 
   function stopSpeaking() {
+    speakGen++; // invalidate in-flight utterance callbacks
     if ("speechSynthesis" in root) root.speechSynthesis.cancel();
     if (S.speaking) { S.speaking = false; S.face.stopTalking(); }
   }

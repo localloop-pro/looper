@@ -124,6 +124,11 @@ check("vegan cafe near me keeps qualifier", route("vegan cafe near me"), { inten
 check("dog friendly accommodation in bondi keeps qualifier", route("dog friendly accommodation in bondi"), { intent: "search", category: "Accommodation", searchTerm: "dog friendly accommodation hotel", suburb: "bondi" });
 check("plumber jobs near me keeps trade", route("plumber jobs near me"), { intent: "search", category: "Job-Offers", searchTerm: "plumber jobs", radiusM: 1000 });
 
+// ---- deliveries beat food (fetch flow owns delivery words) ---------------------
+check("food delivery near me → Fetch_Deliveries", route("food delivery near me"), { intent: "search", category: "Fetch_Deliveries", searchTerm: "food delivery courier", radiusM: 1000 });
+check("pick up food → Fetch_Deliveries", route("pick up food"), { intent: "search", category: "Fetch_Deliveries" });
+check("fetch food → Fetch_Deliveries", route("fetch food"), { intent: "search", category: "Fetch_Deliveries" });
+
 // ---- booking ------------------------------------------------------------------
 check("booking intent", route("book a table for two"), { intent: "booking", searchTerm: "restaurant" });
 check("booking + category", route("book me a restaurant"), { intent: "booking", category: "Food" });

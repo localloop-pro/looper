@@ -65,6 +65,10 @@
     { re: /\b(deals?|offers?|discounts?|specials?|bargains?|vouchers?|cheap)\b/, pin: "Offers", term: "deals offers" },
     // sales (for-sale / second-hand items — their own frozen pin category)
     { re: /\b(sales?|for sale|garage sales?|second ?hand|pre ?loved|marketplace)\b/, pin: "Sales", term: "for sale" },
+    // deliveries BEFORE food: a delivery word marks the fetch flow even
+    // when a food word rides along ("food delivery near me", "pick up
+    // food") — the host only opens the delivery sheet for this pin.
+    { re: /\b(deliver(?:y|ies)|couriers?|pick up|pickup|drop off|fetch)\b/, pin: "Fetch_Deliveries", term: "delivery courier" },
     // food (old build: hungry/eat → food)
     { re: /\b(hungry|eat|eating|food|meals?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|takeaway|take away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
     // accommodation (stay/sleep/hotel)
@@ -76,8 +80,6 @@
     { re: /\b(events?|concerts?|markets?|festivals?|exhibitions?)\b/, pin: "Events", term: "events" },
     // news
     { re: /\b(news|headlines|happening|going on|what's on|whats on)\b/, pin: "News", term: "news" },
-    // deliveries / couriers
-    { re: /\b(deliver(?:y|ies)|couriers?|pick up|pickup|drop off|fetch)\b/, pin: "Fetch_Deliveries", term: "delivery courier" },
     // health & wellbeing (spa/relax/fitness — no fixed pin category; brain-only)
     { re: /\b(spas?|relax|massage|fitness|gyms?|yoga|pilates|doctors?|dentists?|physio|chemist|pharmac(?:y|ies)|health|wellness|hair|barbers?|beauty)\b/, pin: null, term: "health fitness wellness" },
     // shopping (no fixed pin category; brain-only)
