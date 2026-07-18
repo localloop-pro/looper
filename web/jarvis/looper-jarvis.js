@@ -725,16 +725,34 @@
   function applyDeepLinks() {
     var params = new URLSearchParams(root.location.search);
     var fly = params.get("fly");
+    var flyCoords = null;
     if (fly) {
       var parts = fly.split(",").map(Number);
-      if (parts.length >= 2 && isFinite(parts[0]) && isFinite(parts[1])) {
-        Bus.flyTo(parts[0], parts[1], isFinite(parts[2]) ? parts[2] : undefined);
+      if (parts.length >= 2 && isFinite(parts[0]) && isFinite(parts[1]) &&
+          Math.abs(parts[0]) <= 180 && Math.abs(parts[1]) <= 90) {
+        flyCoords = { lng: parts[0], lat: parts[1], zoom: isFinite(parts[2]) ? parts[2] : undefined };
+        Bus.flyTo(flyCoords.lng, flyCoords.lat, flyCoords.zoom);
       }
     }
     var cat = params.get("cat");
     if (cat) Bus.setCategory(cat);
     var q = params.get("q");
-    if (q) ask(q);
+    if (!q) return;
+    // The link's explicit cat/fly ARE the contract — reparsing q must not
+    // override them. "?cat=Offers&q=pizza" is an Offers search for pizza
+    // centred on the fly target, not a Food search at the old map centre,
+    // and a q the grammar can't classify still searches as free text.
+    stopSpeaking();
+    S.reqSeq++;
+    setStatus("“" + q + "”");
+    var cmd = Router.route(q, { radiusM: S.lastRadiusM });
+    var searchIntents = { search: 1, connect: 1, offers: 1, booking: 1, news: 1 };
+    if (!searchIntents[cmd.intent]) {
+      cmd = { intent: "search", raw: q, searchTerm: cmd.searchTerm || cmd.businessName || q };
+    }
+    if (cat) cmd.category = cat;
+    if (flyCoords && !cmd.coords) cmd.coords = flyCoords;
+    runSearch(cmd);
   }
 
   // ------------------------------------------------------------------- init

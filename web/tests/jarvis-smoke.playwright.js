@@ -53,6 +53,18 @@ const { chromium } = require("playwright");
   const activeCat = await page.evaluate(() => LooperMapBus.getActiveCategory());
   console.log("deep-link category:", activeCat);
 
+  // 5b. Deep-link with explicit cat + q + fly (F4.2 contract): the routed
+  // q must not override cat, and the search must centre on the fly target.
+  await page.goto("http://127.0.0.1:8088/tests/jarvis-harness.html?cat=Offers&q=pizza&fly=153.6120,-28.6474,14");
+  await page.waitForSelector("#looper-jarvis .lj-option");
+  const dlCat = await page.evaluate(() => LooperMapBus.getActiveCategory());
+  const dlFetch = await page.evaluate(() => (window.__calls.find((c) => c[0] === "fetch") || [])[1] || "");
+  console.log("deep-link q category:", dlCat);
+  if (dlCat !== "Offers") errors.push("deep-link cat overridden by routed q: " + dlCat);
+  if (!/lat=-28.6474/.test(dlFetch) || !/lng=153.612/.test(dlFetch)) {
+    errors.push("deep-link search ignored fly centre: " + dlFetch);
+  }
+
   // 6. Screenshot the dock with results open
   await page.evaluate(() => LooperJarvis.ask("find me a cafe"));
   await page.waitForSelector("#looper-jarvis .lj-option");

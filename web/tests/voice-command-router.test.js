@@ -156,7 +156,10 @@ check("what's happening → news", route("what's happening around here"), { inte
 check("markets → events", route("any markets on this weekend"), { intent: "news", category: "Events" });
 check("sports news keeps qualifier", route("sports news in bondi"), { intent: "news", category: "News", suburb: "bondi", searchTerm: "sports news" });
 check("concerts near me keeps noun", route("concerts near me"), { intent: "news", category: "Events", searchTerm: "concerts events", radiusM: 1000 });
-check("what events are happening → Events beats News", route("what events are happening this weekend"), { intent: "news", category: "Events", searchTerm: "events" });
+check("what events are happening → Events beats News", route("what events are happening this weekend"), { intent: "news", category: "Events", searchTerm: "weekend events" });
+check("events tonight keeps time window", route("events tonight"), { intent: "news", category: "Events", searchTerm: "tonight events" });
+check("markets this weekend keeps time window", route("markets this weekend"), { intent: "news", category: "Events", searchTerm: "weekend markets events" });
+check("news today keeps time window", route("news today"), { intent: "news", category: "News", searchTerm: "today news" });
 check("concerts happening near me → Events beats News", route("concerts happening near me"), { intent: "news", category: "Events", searchTerm: "concerts events", radiusM: 1000 });
 check("find Pizza Hut → business despite category word", route("find pizza hut"), { intent: "business", businessName: "pizza hut" });
 check("find pizza (bare category) → category search", route("find pizza"), { intent: "search", category: "Food" });

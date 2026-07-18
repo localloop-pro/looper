@@ -279,7 +279,9 @@
     // must send "pizza" to the brain, not just the generic bucket term.
     function subjectPlus(cat) {
       var subject = cleanScopedTerm(stripped.replace(new RegExp(cat.re.source, "gi"), " "), scopeSub)
-        .replace(/\b(?:anything|something|any|some|all|everything|what|whats|what's|on|the|a|an|i|i'm|im|we|us|to|for|me|my|show|find|want|need|search for|are|are there|is|around|here|there|this|weekend|today|tonight|going|happening|somewhere|anywhere|please|best|greatest|top)\b/g, " ")
+        // temporal words (weekend/today/tonight/tomorrow) are NOT filler —
+        // "events tonight" must send its time window to the brain
+        .replace(/\b(?:anything|something|any|some|all|everything|what|whats|what's|on|the|a|an|i|i'm|im|we|us|to|for|me|my|show|find|want|need|search for|are|are there|is|around|here|there|this|going|happening|somewhere|anywhere|please|best|greatest|top)\b/g, " ")
         .replace(/\s+/g, " ")
         .trim();
       var base = termFor(cat);
