@@ -745,7 +745,10 @@
         Bus.flyTo(flyCoords.lng, flyCoords.lat, flyCoords.zoom);
       }
     }
-    var cat = params.get("cat");
+    // "category" is the host's own query-param spelling (llx11 writes it
+    // via syncCategoryQueryParam) — accept it as an alias of "cat" so
+    // existing category links with a Jarvis q aren't reset by the search.
+    var cat = params.get("cat") || params.get("category");
     if (cat) Bus.setCategory(cat);
     var q = params.get("q");
     if (!q) return;

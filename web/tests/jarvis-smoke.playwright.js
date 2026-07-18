@@ -59,7 +59,8 @@ const { chromium } = require("playwright");
 
   // 5b. Deep-link with explicit cat + q + fly (F4.2 contract): the routed
   // q must not override cat, and the search must centre on the fly target.
-  await page.goto("http://127.0.0.1:8088/tests/jarvis-harness.html?cat=Offers&q=pizza&fly=153.6120,-28.6474,14");
+  // uses the host's "category" spelling — the alias must behave like "cat"
+  await page.goto("http://127.0.0.1:8088/tests/jarvis-harness.html?category=Offers&q=pizza&fly=153.6120,-28.6474,14");
   await page.waitForSelector("#looper-jarvis .lj-option");
   const dlCat = await page.evaluate(() => LooperMapBus.getActiveCategory());
   const dlFetch = await page.evaluate(() => (window.__calls.find((c) => c[0] === "fetch") || [])[1] || "");

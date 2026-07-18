@@ -185,6 +185,11 @@
 
   var SUPERLATIVE_RE = /\b(?:best|greatest|top|number one|no 1)\b/;
 
+  // Category pins that are REQUESTS rather than THINGS — these words
+  // ("deals", "events", "jobs") essentially never appear as a business
+  // name, so a naming verb in front of them is still a category ask.
+  var REQUEST_PINS = { Offers: 1, News: 1, Events: 1, Sales: 1, "Job-Offers": 1, Fetch_Deliveries: 1 };
+
   var FILLER_RE = /\b(?:please|now|thanks|thank you|mate|for me)\b/g;
 
   // Word-boundary regex for a suburb key — substring matching corrupts
@@ -284,7 +289,7 @@
       var subject = cleanScopedTerm(src.replace(new RegExp(cat.re.source, "gi"), " "), scopeSub)
         // temporal words (weekend/today/tonight/tomorrow) are NOT filler —
         // "events tonight" must send its time window to the brain
-        .replace(/\b(?:anything|something|any|some|all|everything|what|whats|what's|on|the|a|an|i|i'm|im|we|us|to|for|me|my|show|find|want|need|search for|are|are there|is|around|here|there|this|going|happening|somewhere|anywhere|please|best|greatest|top)\b/g, " ")
+        .replace(/\b(?:anything|something|any|some|all|everything|what|whats|what's|on|the|a|an|i|i'm|im|we|us|to|for|me|my|show|find|tell|about|look|up|want|need|search for|are|are there|is|around|here|there|this|going|happening|somewhere|anywhere|please|best|greatest|top)\b/g, " ")
         .replace(/\s+/g, " ")
         .trim();
       var base = termFor(cat);
@@ -381,9 +386,26 @@
         }
         return applyScope(cmd);
       }
-      cmd.intent = "business";
-      cmd.businessName = namedTarget;
-      return cmd;
+      // A target made of request-type category vocabulary ("tell me about
+      // deals", "tell me about events this weekend") is a category ask,
+      // not a proper name — fall through to the offers/news logic below.
+      // Thing-type vocabulary (Food, shops) stays a name: "The Burger
+      // Shop" is a venue, "deals" never is.
+      var namedRest = namedTarget;
+      for (var ni = 0; ni < SYNONYMS.length; ni++) {
+        namedRest = namedRest.replace(new RegExp(SYNONYMS[ni].re.source, "gi"), " ");
+      }
+      namedRest = cleanScopedTerm(namedRest, scopeSub)
+        .replace(/\b(?:this|the|a|an|on|now|here|today|tonight|tomorrow|weekend|week)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      var namedCatAll = matchCategory(namedTarget);
+      if (namedRest || !namedCatAll || !REQUEST_PINS[namedCatAll.pin]) {
+        cmd.intent = "business";
+        cmd.businessName = namedTarget;
+        return cmd;
+      }
+      // pure category request — the branches below own it
     }
 
     var category = matchCategory(stripped);

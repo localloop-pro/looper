@@ -118,6 +118,9 @@ check("specials → offers", route("show me today's specials"), { intent: "offer
 check("deals in Bronte keeps suburb scope", route("any deals in bronte"), { intent: "offers", category: "Offers", suburb: "bronte" });
 check("news in Byron Bay keeps suburb scope", route("news in byron bay"), { intent: "news", category: "News", suburb: "byron bay" });
 check("restaurant deals → Offers beats Food", route("restaurant deals near me"), { intent: "offers", category: "Offers", radiusM: 1000 });
+check("tell me about deals → Offers, not a business", route("tell me about deals"), { intent: "offers", category: "Offers", searchTerm: "deals offers" });
+check("tell me about restaurant deals → Offers", route("tell me about restaurant deals"), { intent: "offers", category: "Offers", searchTerm: "restaurant deals offers" });
+check("tell me about events this weekend → Events", route("tell me about events this weekend"), { intent: "news", category: "Events", searchTerm: "weekend events" });
 check("hotel offers → Offers beats Accommodation", route("hotel offers"), { intent: "offers", category: "Offers" });
 
 // ---- sales (own frozen pin category, distinct from Offers) ---------------------
