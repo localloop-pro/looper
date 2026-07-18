@@ -69,10 +69,13 @@
     { re: /\b(hungry|eat|eating|food|meals?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|takeaway|take away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
     // accommodation (stay/sleep/hotel)
     { re: /\b(stay|sleep|hotels?|motels?|hostels?|accommodation|somewhere to stay|rooms?|airbnb|bnb)\b/, pin: "Accommodation", term: "accommodation hotel" },
+    // events BEFORE news: an explicit event noun beats the broad
+    // happening/what's-on words ("what events are happening" is an Events
+    // request). "show" as a noun is deliberately absent — it collides
+    // with "show me X".
+    { re: /\b(events?|concerts?|markets?|festivals?|exhibitions?)\b/, pin: "Events", term: "events" },
     // news
     { re: /\b(news|headlines|happening|going on|what's on|whats on)\b/, pin: "News", term: "news" },
-    // events ("show" as a noun is deliberately absent — it collides with "show me X")
-    { re: /\b(events?|concerts?|markets?|festivals?|exhibitions?)\b/, pin: "Events", term: "events" },
     // deliveries / couriers
     { re: /\b(deliver(?:y|ies)|couriers?|pick up|pickup|drop off|fetch)\b/, pin: "Fetch_Deliveries", term: "delivery courier" },
     // health & wellbeing (spa/relax/fitness — no fixed pin category; brain-only)
@@ -269,7 +272,7 @@
     // must send "pizza" to the brain, not just the generic bucket term.
     function subjectPlus(cat) {
       var subject = cleanScopedTerm(stripped.replace(new RegExp(cat.re.source, "gi"), " "), scopeSub)
-        .replace(/\b(?:anything|something|any|some|whats|what's|on|the|a|an|me|my|show|find|search for|are there|around|here|there|this|weekend|today|tonight|going)\b/g, " ")
+        .replace(/\b(?:anything|something|any|some|what|whats|what's|on|the|a|an|i|i'm|im|we|us|to|for|me|my|show|find|want|need|search for|are|are there|is|around|here|there|this|weekend|today|tonight|going|happening|somewhere|anywhere|please|best|greatest|top)\b/g, " ")
         .replace(/\s+/g, " ")
         .trim();
       var base = termFor(cat);
@@ -343,7 +346,21 @@
 
     if (booking) {
       cmd.intent = "booking";
-      if (category) { cmd.category = category.pin || undefined; cmd.searchTerm = termFor(category); }
+      if (category) {
+        cmd.category = category.pin || undefined;
+        // "book Pizza Hut" / "reserve Totti's restaurant" — words beyond
+        // the category noun are a venue NAME; send the name to the brain,
+        // not just the generic bucket term.
+        var bookTarget = cleanScopedTerm(stripped.replace(BOOKING_RE, " "), scopeSub)
+          .replace(/\b(?:a|an|the|for|me|us|please|tonight|today|tomorrow|at|table|\d+|two|three|four|five|six|seven|eight|pm|am)\b/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        var bookCatNoun = (stripped.match(category.re) || [""])[0];
+        var bookNameWords = bookCatNoun
+          ? bookTarget.replace(new RegExp("\\b" + bookCatNoun.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b"), " ").replace(/\s+/g, " ").trim()
+          : bookTarget;
+        cmd.searchTerm = bookNameWords ? bookTarget : termFor(category);
+      }
       else {
         // "book a table in Bronte" — the leftover after removing the verb,
         // scope and filler is just table-talk, and the brain would treat it
@@ -435,10 +452,11 @@
     if (category) {
       cmd.intent = "search";
       if (category.pin) cmd.category = category.pin;
-      // Sales keeps the item words like Offers/News do — the pin is only a
-      // map filter, so "bike for sale" must send "bike" to the brain, not
-      // just the generic bucket term.
-      cmd.searchTerm = category.pin === "Sales" ? subjectPlus(category) : termFor(category);
+      // Every category keeps the user's qualifier words ("vegan cafe",
+      // "dog friendly accommodation", "bike for sale") — the pin is only
+      // a map filter, so the brain needs the constraint, not just the
+      // generic bucket term.
+      cmd.searchTerm = subjectPlus(category);
       // a mentioned suburb scopes the search ("cafes in bronte")
       return applyScope(cmd);
     }

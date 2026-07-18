@@ -119,12 +119,20 @@ check("bike for sale near me keeps item", route("bike for sale near me"), { inte
 check("second hand couch in coogee keeps item + scope", route("second hand couch in coogee"), { intent: "search", category: "Sales", searchTerm: "couch second hand for sale", suburb: "coogee" });
 check("best cafe → superlative flagged (anti-bias)", route("what's the best cafe"), { intent: "search", category: "Food", superlative: true });
 
+// ---- qualifiers survive generic category searches ------------------------------
+check("vegan cafe near me keeps qualifier", route("vegan cafe near me"), { intent: "search", category: "Food", searchTerm: "vegan cafe café restaurant food", radiusM: 1000 });
+check("dog friendly accommodation in bondi keeps qualifier", route("dog friendly accommodation in bondi"), { intent: "search", category: "Accommodation", searchTerm: "dog friendly accommodation hotel", suburb: "bondi" });
+check("plumber jobs near me keeps trade", route("plumber jobs near me"), { intent: "search", category: "Job-Offers", searchTerm: "plumber jobs", radiusM: 1000 });
+
 // ---- booking ------------------------------------------------------------------
 check("booking intent", route("book a table for two"), { intent: "booking", searchTerm: "restaurant" });
 check("booking + category", route("book me a restaurant"), { intent: "booking", category: "Food" });
 check("book a table in Bronte → restaurant + scope", route("book a table in bronte"), { intent: "booking", searchTerm: "restaurant", suburb: "bronte" });
 check("table for two near me → restaurant + radius", route("table for two near me"), { intent: "booking", searchTerm: "restaurant", radiusM: 1000 });
 check("book a haircut keeps its noun", route("book a haircut"), { intent: "booking", searchTerm: "haircut" });
+check("book Pizza Hut keeps the name", route("book pizza hut"), { intent: "booking", category: "Food", searchTerm: "pizza hut" });
+check("reserve tottis restaurant keeps the name", route("reserve tottis restaurant"), { intent: "booking", searchTerm: "tottis restaurant" });
+check("book a table at tottis restaurant for two → name", route("book a table at tottis restaurant for two"), { intent: "booking", searchTerm: "tottis restaurant" });
 
 // ---- connect (the mission) ------------------------------------------------------
 check("connect me with a plumber", route("connect me with a plumber"), { intent: "connect", searchTerm: "plumber" });
@@ -138,6 +146,8 @@ check("what's happening → news", route("what's happening around here"), { inte
 check("markets → events", route("any markets on this weekend"), { intent: "news", category: "Events" });
 check("sports news keeps qualifier", route("sports news in bondi"), { intent: "news", category: "News", suburb: "bondi", searchTerm: "sports news" });
 check("concerts near me keeps noun", route("concerts near me"), { intent: "news", category: "Events", searchTerm: "concerts events", radiusM: 1000 });
+check("what events are happening → Events beats News", route("what events are happening this weekend"), { intent: "news", category: "Events", searchTerm: "events" });
+check("concerts happening near me → Events beats News", route("concerts happening near me"), { intent: "news", category: "Events", searchTerm: "concerts events", radiusM: 1000 });
 check("find Pizza Hut → business despite category word", route("find pizza hut"), { intent: "business", businessName: "pizza hut" });
 check("find pizza (bare category) → category search", route("find pizza"), { intent: "search", category: "Food" });
 
