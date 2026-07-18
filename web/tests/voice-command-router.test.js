@@ -129,6 +129,11 @@ check("food delivery near me → Fetch_Deliveries", route("food delivery near me
 check("pick up food → Fetch_Deliveries", route("pick up food"), { intent: "search", category: "Fetch_Deliveries" });
 check("fetch food → Fetch_Deliveries", route("fetch food"), { intent: "search", category: "Fetch_Deliveries" });
 
+// ---- multi-word category phrases are searches, not business names --------------
+check("show job offers → Job-Offers category", route("show job offers"), { intent: "search", category: "Job-Offers" });
+check("find hotel rooms → Accommodation", route("find hotel rooms"), { intent: "search", category: "Accommodation" });
+check("show food delivery → Fetch_Deliveries", route("show food delivery"), { intent: "search", category: "Fetch_Deliveries" });
+
 // ---- booking ------------------------------------------------------------------
 check("booking intent", route("book a table for two"), { intent: "booking", searchTerm: "restaurant" });
 check("booking + category", route("book me a restaurant"), { intent: "booking", category: "Food" });
@@ -160,6 +165,10 @@ check("find pizza (bare category) → category search", route("find pizza"), { i
 check("zoom in", route("zoom in"), { intent: "zoom", zoomDelta: 1 });
 check("zoom out", route("zoom out a bit"), { intent: "zoom", zoomDelta: -1 });
 check("reset view", route("reset the view"), { intent: "reset" });
+check("show all → reset", route("show all"), { intent: "reset" });
+check("show me everything → reset", route("show me everything"), { intent: "reset" });
+check("clear the filters → reset", route("clear the filters"), { intent: "reset" });
+check("show all the cafes in bondi stays a search", route("show all the cafes in bondi"), { intent: "search", category: "Food", suburb: "bondi" });
 
 // ---- wake word stripping ------------------------------------------------------------
 check("hey looper prefix stripped", route("hey looper find me a coffee"), { intent: "search", category: "Food" });

@@ -556,7 +556,10 @@
     if (cmd.radiusM) S.lastRadiusM = cmd.radiusM;
     S.lastSearch = cmd;
 
-    if (cmd.category) Bus.setCategory(cmd.category);
+    // No pin category clears the host filter — "show cafes" then "find a
+    // plumber" must not leave the map filtered to Food while the panel
+    // shows plumbers.
+    Bus.setCategory(cmd.category || null);
     S.face.setMood("thinking");
     setStatus(pick(PERSONA.acks));
 

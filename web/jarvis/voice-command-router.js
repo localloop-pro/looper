@@ -167,6 +167,11 @@
   var ZOOM_OUT_RE = /\b(?:zoom out|further out|pull back|wider)\b/;
   var RESET_RE = /\b(?:reset(?: the)?(?: view| map)?|start over|show everything|whole map|zoom to fit)\b/;
 
+  // Whole-utterance filter-clear phrasings ("show all", "show me
+  // everything", "clear filters") — anchored so "show all the cafes in
+  // bondi" stays a search, not a reset.
+  var CLEAR_RE = /^(?:show (?:me )?(?:everything|all(?: categories| pins)?)|clear (?:the |all )?filters?|remove (?:the |all )?filters?|all categories)(?:\s+(?:please|now|thanks|thank you|mate))*$/;
+
   var BOOKING_RE = /\b(?:book|booking|reserve|reservation|table for)\b/;
 
   // The connect-people mission: "connect me with…", "who can help me with…",
@@ -234,7 +239,7 @@
 
     if (ZOOM_IN_RE.test(stripped)) { cmd.intent = "zoom"; cmd.zoomDelta = 1; return cmd; }
     if (ZOOM_OUT_RE.test(stripped)) { cmd.intent = "zoom"; cmd.zoomDelta = -1; return cmd; }
-    if (RESET_RE.test(stripped)) { cmd.intent = "reset"; return cmd; }
+    if (RESET_RE.test(stripped) || CLEAR_RE.test(stripped)) { cmd.intent = "reset"; return cmd; }
 
     if (SUPERLATIVE_RE.test(stripped)) cmd.superlative = true;
 
@@ -274,7 +279,7 @@
     // must send "pizza" to the brain, not just the generic bucket term.
     function subjectPlus(cat) {
       var subject = cleanScopedTerm(stripped.replace(new RegExp(cat.re.source, "gi"), " "), scopeSub)
-        .replace(/\b(?:anything|something|any|some|what|whats|what's|on|the|a|an|i|i'm|im|we|us|to|for|me|my|show|find|want|need|search for|are|are there|is|around|here|there|this|weekend|today|tonight|going|happening|somewhere|anywhere|please|best|greatest|top)\b/g, " ")
+        .replace(/\b(?:anything|something|any|some|all|everything|what|whats|what's|on|the|a|an|i|i'm|im|we|us|to|for|me|my|show|find|want|need|search for|are|are there|is|around|here|there|this|weekend|today|tonight|going|happening|somewhere|anywhere|please|best|greatest|top)\b/g, " ")
         .replace(/\s+/g, " ")
         .trim();
       var base = termFor(cat);
@@ -435,13 +440,16 @@
       }
       // A category word inside a LARGER unscoped target is a named business
       // ("find Pizza Hut", "show me Totti's restaurant") — the generic
-      // category path would drop the name. Superlatives stay discovery
-      // ("find the best pizza place"), Sales words stay qualifiers.
+      // category path would drop the name. But a target built ENTIRELY of
+      // category vocabulary ("show job offers", "find hotel rooms", "show
+      // food delivery") is a category request, not a name. Superlatives
+      // stay discovery, Sales words stay qualifiers.
       if (category.pin !== "Sales" && !cmd.superlative) {
-        var catNoun = (stripped.match(category.re) || [""])[0];
-        var extraWords = catNoun
-          ? name.replace(new RegExp("\\b" + catNoun.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b"), " ").replace(/\s+/g, " ").trim()
-          : name;
+        var extraWords = name;
+        for (var si = 0; si < SYNONYMS.length; si++) {
+          extraWords = extraWords.replace(new RegExp(SYNONYMS[si].re.source, "gi"), " ");
+        }
+        extraWords = extraWords.replace(/\s+/g, " ").trim();
         if (extraWords) {
           cmd.intent = "business";
           cmd.businessName = name;
