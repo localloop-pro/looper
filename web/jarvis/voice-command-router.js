@@ -184,7 +184,10 @@
   // bondi" stays a search, not a reset.
   var CLEAR_RE = /^(?:show (?:me )?(?:everything|all(?: categories| pins)?)|clear (?:the |all )?filters?|remove (?:the |all )?filters?|all categories)(?:\s+(?:please|now|thanks|thank you|mate))*$/;
 
-  var BOOKING_RE = /\b(?:book|booking|reserve|reservation|table for)\b/;
+  // "book" followed by store/shop is a NOUN ("book store near me" is a
+  // shopping search, not a reservation) — the lookahead keeps it out of
+  // booking detection.
+  var BOOKING_RE = /\b(?:book(?!\s+(?:stores?|shops?)\b)|booking|reserve|reservation|table for)\b/;
 
   // The connect-people mission: "connect me with…", "who can help me with…",
   // "i need a plumber", "put me in touch with…". ("find me a X" is plain

@@ -187,6 +187,8 @@ check("reserve tottis restaurant keeps the name", route("reserve tottis restaura
 check("book a table at tottis restaurant for two → name", route("book a table at tottis restaurant for two"), { intent: "booking", searchTerm: "tottis restaurant" });
 check("table for 2 at tottis → venue name (no category word)", route("table for 2 at tottis"), { intent: "booking", searchTerm: "tottis" });
 check("book a table at icebergs → venue name", route("book a table at icebergs"), { intent: "booking", searchTerm: "icebergs" });
+check("book store near me is shopping, NOT booking", route("book store near me"), { intent: "offers", category: "Offers", radiusM: 1000 });
+check("find book shop near me is shopping, NOT booking", route("find book shop near me"), { intent: "offers", category: "Offers", radiusM: 1000 });
 
 // ---- connect (the mission) ------------------------------------------------------
 check("connect me with a plumber", route("connect me with a plumber"), { intent: "connect", searchTerm: "plumber" });
