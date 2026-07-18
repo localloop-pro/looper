@@ -82,6 +82,10 @@ check("search for accountant near me (no article) → scoped search", route("sea
 check("show me Bondi Wholefoods stays a business (name contains suburb)", route("show me Bondi Wholefoods"), { intent: "business", businessName: "bondi wholefoods" });
 check("find me AN accountant → search", route("find me an accountant"), { intent: "search", searchTerm: "accountant" });
 check("where is Bondi Pizza → business (naming verb beats Food)", route("where is Bondi Pizza"), { intent: "business", businessName: "bondi pizza" });
+check("find Bondi Vet near me stays a business", route("find bondi vet near me"), { intent: "business", businessName: "bondi vet" });
+check("find Bondi Pizza near me stays a business", route("find bondi pizza near me"), { intent: "business", businessName: "bondi pizza" });
+check("where is Bondi Pizza near me stays a business", route("where is bondi pizza near me"), { intent: "business", businessName: "bondi pizza" });
+check("find bondi near me → suburb fly", route("find bondi near me"), { intent: "suburb", suburb: "bondi" });
 check("tell me about The Burger Shop → business", route("tell me about The Burger Shop"), { intent: "business", businessName: "burger shop" });
 check("where is A cafe near me → scoped search (article)", route("where is a cafe near me"), { intent: "search", searchTerm: "cafe", radiusM: 1000 });
 check("tell me about restaurants in Bronte → scoped search (locative)", route("tell me about restaurants in bronte"), { intent: "search", searchTerm: "restaurants", suburb: "bronte" });

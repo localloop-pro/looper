@@ -606,6 +606,10 @@
   }
 
   function runBusiness(cmd) {
+    // a leftover category filter from a previous search would contradict
+    // the named business about to be shown — clear chips/layers (the host
+    // skips its camera: the lookup flies to the business itself)
+    Bus.setCategory(null, { fromSearch: true });
     S.face.setMood("thinking");
     var seq = S.reqSeq; // a newer command supersedes this response
     // Same-name businesses exist across suburbs — send the current map

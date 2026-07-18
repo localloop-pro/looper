@@ -324,6 +324,22 @@
         cmd.coords = suburbs[namedSuburb];
         return cmd;
       }
+      // A suburb INSIDE the target that isn't an "in bondi" locative tail
+      // is part of a proper name ("where is Bondi Pizza near me") — the
+      // radius must not dissolve the name into a generic scoped search.
+      var namedSans = stripRadiusPhrases(namedTarget).replace(/\s+/g, " ").trim();
+      var namedSubIn = matchSuburb(namedSans, suburbs, false);
+      if (!named[1] && namedSubIn && !hasLocativeTail(namedSans)) {
+        if (namedSans === namedSubIn) {
+          cmd.intent = "suburb";
+          cmd.suburb = namedSubIn;
+          cmd.coords = suburbs[namedSubIn];
+          return cmd;
+        }
+        cmd.intent = "business";
+        cmd.businessName = namedSans;
+        return cmd;
+      }
       if (named[1] || cmd.radiusM != null || hasLocativeTail(namedTarget)) {
         cmd.intent = "search";
         cmd.searchTerm = cleanScopedTerm(namedTarget, scopeSub) || namedTarget;
@@ -414,6 +430,22 @@
         cmd.intent = "suburb";
         cmd.suburb = asSuburb;
         cmd.coords = suburbs[asSuburb];
+        return cmd;
+      }
+      // A suburb INSIDE the target that isn't an "in bondi" locative tail
+      // is part of a proper name ("find Bondi Vet near me" — Bondi Vet is
+      // the business, near me is noise) — scope must not dissolve it.
+      var nameSansRadius = stripRadiusPhrases(name).replace(/\s+/g, " ").trim();
+      var subInName = matchSuburb(nameSansRadius, suburbs, false);
+      if (!biz[1] && subInName && !hasLocativeTail(nameSansRadius)) {
+        if (nameSansRadius === subInName) {
+          cmd.intent = "suburb";
+          cmd.suburb = subInName;
+          cmd.coords = suburbs[subInName];
+          return cmd;
+        }
+        cmd.intent = "business";
+        cmd.businessName = nameSansRadius;
         return cmd;
       }
       // Scope signals make this discovery even without an article:
