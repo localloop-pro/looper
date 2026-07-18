@@ -594,7 +594,10 @@
       Bus.showResults(results);
       // showResults already fitted bounds over the pins — only fall back to
       // the suburb's own camera when there was nothing to fit
-      var hasPins = results.some(function (r) { return r.lng != null && r.lat != null; });
+      // same validity rules the bus's markers use — rows with blank or
+      // out-of-range coords drew no pin, so they must not suppress the
+      // suburb fly ("cafes in Bronte" with unmappable rows still flies)
+      var hasPins = results.some(function (r) { return Bus.hasValidCoords(r); });
       if (cmd.coords && !hasPins) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
       showPanel(optionsHtml(results, data.message || "Here's what the loop knows:"));
       wireOptionClicks(results);

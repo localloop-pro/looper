@@ -151,6 +151,9 @@ check("plumber jobs near me keeps trade", route("plumber jobs near me"), { inten
 check("food delivery near me → Fetch_Deliveries", route("food delivery near me"), { intent: "search", category: "Fetch_Deliveries", searchTerm: "food delivery courier", radiusM: 1000 });
 check("pick up food → Fetch_Deliveries", route("pick up food"), { intent: "search", category: "Fetch_Deliveries" });
 check("fetch food → Fetch_Deliveries", route("fetch food"), { intent: "search", category: "Fetch_Deliveries" });
+check("drivers near me → Fetch_Deliveries", route("drivers near me"), { intent: "search", category: "Fetch_Deliveries", radiusM: 1000 });
+check("pick-ups in bondi → Fetch_Deliveries (hyphen)", route("pick-ups in bondi"), { intent: "search", category: "Fetch_Deliveries", suburb: "bondi" });
+check("i'm hangry → Fetch_Deliveries", route("i'm hangry"), { intent: "search", category: "Fetch_Deliveries" });
 
 // ---- multi-word category phrases are searches, not business names --------------
 check("show job offers → Job-Offers category", route("show job offers"), { intent: "search", category: "Job-Offers" });

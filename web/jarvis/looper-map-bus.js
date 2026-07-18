@@ -260,6 +260,9 @@
     clearResults: clearResults,
     openNews: openNews,
     getActiveCategory: function () { return state.activeCategory; },
+    // exported so consumers judge "mappable" by the SAME rules markers use
+    // (presence, non-blank, finite, in range) — a != null check diverges
+    hasValidCoords: hasValidCoords,
   };
 
   root.LooperMapBus = bus;

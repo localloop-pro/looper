@@ -75,7 +75,9 @@
     // deliveries BEFORE food: a delivery word marks the fetch flow even
     // when a food word rides along ("food delivery near me", "pick up
     // food") — the host only opens the delivery sheet for this pin.
-    { re: /\b(deliver(?:y|ies)|couriers?|pick up|pickup|drop off|fetch)\b/, pin: "Fetch_Deliveries", term: "delivery courier" },
+    // hangry/drivers and hyphenated pick-ups/drop-offs mirror the host
+    // voice table.
+    { re: /\b(deliver(?:y|ies)|couriers?|pick[ -]?ups?|drop[ -]?offs?|fetch|hangry|drivers?)\b/, pin: "Fetch_Deliveries", term: "delivery courier" },
     // food (old build: hungry/eat → food)
     { re: /\b(hungry|eat|eating|food|meals?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|takeaway|take away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
     // accommodation (stay/sleep/hotel; rentals/flatmates/sublets mirror the
