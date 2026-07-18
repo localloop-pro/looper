@@ -64,6 +64,9 @@ check("3 kilometres", route("restaurants within 3 kilometres"), { intent: "searc
 check("near me → 1000", route("coffee near me"), { intent: "search", category: "Food", radiusM: 1000 });
 check("explicit radius beats near me", route("cafes near me within 5 km"), { intent: "search", category: "Food", radiusM: 5000 });
 check("radius-only utterance", route("within 1 km"), { intent: "set_radius", radiusM: 1000 });
+check("set radius to 5 km → set_radius", route("set radius to 5 km"), { intent: "set_radius", radiusM: 5000 });
+check("change radius to 2 km → set_radius", route("change radius to 2 km"), { intent: "set_radius", radiusM: 2000 });
+check("make the search radius 500 m → set_radius", route("make the search radius 500 m"), { intent: "set_radius", radiusM: 500 });
 
 // ---- specific business regex (find|show|tell me about → flyTo) ---------------
 check("tell me about X → business", route("tell me about Gertrude and Alice"), { intent: "business", businessName: "gertrude and alice" });
@@ -112,6 +115,8 @@ check("hotel offers → Offers beats Accommodation", route("hotel offers"), { in
 check("show me sales → Sales", route("show me sales"), { intent: "search", category: "Sales" });
 check("anything for sale → Sales", route("anything for sale nearby"), { intent: "search", category: "Sales", radiusM: 1000 });
 check("second hand → Sales", route("second hand furniture"), { intent: "search", category: "Sales" });
+check("bike for sale near me keeps item", route("bike for sale near me"), { intent: "search", category: "Sales", searchTerm: "bike for sale", radiusM: 1000 });
+check("second hand couch in coogee keeps item + scope", route("second hand couch in coogee"), { intent: "search", category: "Sales", searchTerm: "couch second hand for sale", suburb: "coogee" });
 check("best cafe → superlative flagged (anti-bias)", route("what's the best cafe"), { intent: "search", category: "Food", superlative: true });
 
 // ---- booking ------------------------------------------------------------------

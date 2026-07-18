@@ -269,7 +269,7 @@
     // must send "pizza" to the brain, not just the generic bucket term.
     function subjectPlus(cat) {
       var subject = cleanScopedTerm(stripped.replace(new RegExp(cat.re.source, "gi"), " "), scopeSub)
-        .replace(/\b(?:any|some|whats|what's|on|the|a|an|me|my|show|find|search for|are there|around|here|there|this|weekend|today|tonight|going)\b/g, " ")
+        .replace(/\b(?:anything|something|any|some|whats|what's|on|the|a|an|me|my|show|find|search for|are there|around|here|there|this|weekend|today|tonight|going)\b/g, " ")
         .replace(/\s+/g, " ")
         .trim();
       var base = termFor(cat);
@@ -435,7 +435,10 @@
     if (category) {
       cmd.intent = "search";
       if (category.pin) cmd.category = category.pin;
-      cmd.searchTerm = termFor(category);
+      // Sales keeps the item words like Offers/News do — the pin is only a
+      // map filter, so "bike for sale" must send "bike" to the brain, not
+      // just the generic bucket term.
+      cmd.searchTerm = category.pin === "Sales" ? subjectPlus(category) : termFor(category);
       // a mentioned suburb scopes the search ("cafes in bronte")
       return applyScope(cmd);
     }
@@ -467,6 +470,14 @@
     // a bare radius ("within 2 km") re-runs the last search with it.
     if (radiusM !== null) {
       var leftover = cleanScopedTerm(stripped, scopeSub);
+      // "set radius to 5 km" — once the distance is stripped, what remains
+      // is command boilerplate, not a search subject. Route it as
+      // set_radius so the orchestrator re-runs the last search with the
+      // new radius instead of querying the brain for "set radius to".
+      if (/^(?:(?:set|change|update|make|adjust|increase|expand|widen|decrease|shrink|reduce)\s+)?(?:the\s+|my\s+)?(?:search\s+)?(?:radius|range|distance|area)(?:\s+(?:to|at|of|by))?$/.test(leftover)) {
+        cmd.intent = "set_radius";
+        return cmd;
+      }
       if (leftover) {
         // "florist in bronte within 5 km" → term "florist", coords Bronte
         cmd.intent = "search";
