@@ -13,7 +13,7 @@
 - [x] **F1.2** — Looper card-ingest receiver (`POST /api/ingest/hybridcard-card`)
 - [x] **F1.3** — LocalLoop `/pin` receiver (looper-gateway worker)
 - [x] **F1.4** — HybridCard pins render on the Explore map
-- [ ] **F1.5** — End-to-end bridge dry run (staging)
+- [x] **F1.5** — End-to-end bridge dry run (staging) — online upsert+pin draft green 2026-07-21 (`plans/evidence/F9.1/`); Bill still approves/removes TEST pin in Supabase
 
 ---
 

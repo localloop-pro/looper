@@ -123,3 +123,9 @@
   Looper gained localloop_discover. Same verification regime as slice 1
   (py_compile, node --check, 46 router tests, Playwright smoke — pytest and
   npm gates still owed on a networked machine).
+- 2026-07-21: Online bridge go-live path shipped without Coolify UI access.
+  `api.localloop.ai` is a Cloudflare Worker (`workers/looper-api-proxy`) that
+  reverse-proxies to a cloudflared ORIGIN (local FastAPI :8001) until Coolify
+  login is reset and a durable Docker origin is attached. Gateway
+  `looper.localloop.ai` redeployed with BRIDGE_EVENTS_KV +
+  LOCALLOOP_BRIDGE_SECRET. Evidence: `plans/evidence/F9.1/`.

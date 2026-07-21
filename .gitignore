@@ -34,4 +34,4 @@ Thumbs.db
 
 # Training
 training/output/
-training/checkpoints/
+training/checkpoints/workers/**/.wrangler/
