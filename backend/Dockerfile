@@ -7,6 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+RUN mkdir -p /app/data
+
 EXPOSE 8000
 
 # slim image has no curl — use python for the healthcheck

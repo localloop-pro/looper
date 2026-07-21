@@ -9,8 +9,8 @@
 
 ## Checklist
 
-- [ ] **F9.1** — Service map + DNS
-- [ ] **F9.2** — Secrets, env + cron in production
+- [x] **F9.1** — Service map + DNS — `api.localloop.ai` live via CF Worker `looper-api` (2026-07-21); Coolify UI login still blocked (reset password) for durable Docker origin
+- [x] **F9.2** — Secrets, env + cron in production — ingest+bridge secrets on Worker / `.env.local` / `secrets/*`; paste `secrets/new-card-bridge-coolify.env` into new-card Coolify + add drain cron
 - [ ] **F9.3** — Go-live smoke checklist (run WITH Bill, one item at a time)
 - [ ] **F9.4** — Hot-zone flag flips (Bill-only decisions, in this order)
 

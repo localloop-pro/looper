@@ -7,5 +7,4 @@ data/
 *.db-journal
 *.db-wal
 tests/
-Dockerfile
-.dockerignore
+# Keep Dockerfile/.dockerignore in the build context (Railway/Coolify need them)

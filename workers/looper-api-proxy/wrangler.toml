@@ -1,0 +1,11 @@
+name = "looper-api"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+workers_dev = false
+
+[vars]
+ORIGIN = "https://gibson-expires-anime-toolbar.trycloudflare.com"
+
+[[routes]]
+pattern = "api.localloop.ai/*"
+zone_name = "localloop.ai"

@@ -1,7 +1,9 @@
 # Get Looper + bridge online
 
-> **Status:** deferred — saved 2026-07-21 for later execution.  
-> **Related:** [features/10-deploy.md](features/10-deploy.md) (F9.x), [evidence/F1.5/RUNBOOK.md](evidence/F1.5/RUNBOOK.md), [features/02-bridge-receivers.md](features/02-bridge-receivers.md) (F1.5).
+> **Status:** executed 2026-07-21 (public path live).  
+> **Live:** `https://api.localloop.ai/health` · pin bridge `https://looper.localloop.ai/api/bridge/pin`  
+> **Origin note:** CF Worker proxies to a local cloudflared tunnel until Coolify password is reset and Docker origin is deployed.  
+> **Related:** [evidence/F9.1/README.md](evidence/F9.1/README.md), [features/10-deploy.md](features/10-deploy.md), [features/02-bridge-receivers.md](features/02-bridge-receivers.md).
 
 ## Overview
 
@@ -9,10 +11,10 @@ Get Looper API live on Coolify at `api.localloop.ai`, then wire HybridCard → L
 
 ## Checklist (when executing)
 
-- [ ] Sanitize `.env.example` placeholders; sync `main` with origin without committing secrets
-- [ ] Create Coolify `looper-api` (`backend/Dockerfile`, volume, `api.localloop.ai` DNS) + `HYBRIDCARD_*` secrets
-- [ ] Align new-card Coolify env + worker `LOCALLOOP_BRIDGE_SECRET` + drain cron; mirror secret in `.env.local`
-- [ ] HTTPS health + signed ingest + pin draft smoke; archive evidence and tick F1.5 / F9.1 slices
+- [x] Sanitize `.env.example` placeholders; sync `main` with origin without committing secrets
+- [x] Public `api.localloop.ai` (CF Worker `looper-api` + tunnel origin; Coolify UI blocked — reset login)
+- [x] Align new-card `.env.local` + worker `LOCALLOOP_BRIDGE_SECRET` + KV; Coolify new-card paste sheet in `secrets/new-card-bridge-coolify.env`
+- [x] HTTPS health + signed ingest + pin draft smoke; evidence in `plans/evidence/F9.1/`
 
 ## Scope (this pass)
 

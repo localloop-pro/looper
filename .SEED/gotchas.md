@@ -45,3 +45,13 @@
   insert AND update — PATCHing `expires_at` directly is silently clobbered.
   To expire a pin, set `heartbeat_duration` to `'0 hours'`. Also means a
   1-hour-heartbeat draft dies before moderation — bridge pins use `1 month`.
+- Coolify at `167.86.79.151:8000`: password in `secrets/looper-coolify.env`
+  was rejected (2026-07-21) for several emails including `dev@localloop.pro`
+  and `bminglis@icloud.com` — reset before assuming Coolify deploys work.
+- `backend/.dockerignore` must NOT exclude `Dockerfile` — Railway/Coolify
+  uploads fail silently if the Dockerfile is omitted from context.
+- Cloudflare quick tunnels (`*.trycloudflare.com`) change hostname on every
+  restart — update Worker `ORIGIN` var (`wrangler deploy` in
+  `workers/looper-api-proxy`) whenever the tunnel is recreated.
+- urllib/python default UA gets Cloudflare 1010 on `looper.localloop.ai`;
+  use curl with a browser User-Agent for pin smoke tests.
