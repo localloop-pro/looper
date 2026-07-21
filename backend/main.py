@@ -17,15 +17,21 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# CORS — allow web widget and local dev
+# CORS — every live host that embeds the Jarvis dock or Looper widget.
+# localloop.ai serves the map (Jarvis dock calls api.localloop.ai from the
+# browser); hybridcard.ai embeds the read-only search widget.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
+        "https://localloop.ai",
+        "https://www.localloop.ai",
         "https://localloop.pro",
         "https://www.localloop.pro",
         "https://explorer.localloop.ai",
+        "https://hybridcard.ai",
+        "https://www.hybridcard.ai",
     ],
     allow_credentials=True,
     allow_methods=["*"],
