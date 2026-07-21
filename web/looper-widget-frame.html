@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Looper</title>
+  <!-- Embeddable IFRAME wrapper for the Looper widget. Third-party sites
+       (hybridcard.ai) embed THIS page instead of loading looper-widget.js
+       as first-party script — cross-origin isolation means the widget can
+       never read the host page's storage, cookies, or DOM. -->
+  <link rel="stylesheet" href="looper-widget.css">
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <script>
+    // Same-origin as the LOOPER API that serves this page.
+    window.LocalLoopConfig = { looperApi: location.origin };
+  </script>
+  <script src="looper-widget.js"></script>
+  <script>
+    // Tell the embedding page whether the panel is open so it can size the
+    // iframe (collapsed button vs full panel). The message carries ONLY the
+    // open/closed flag — nothing sensitive — so a wildcard target is fine;
+    // the frame is embeddable from any host.
+    (function () {
+      function report() {
+        var panel = document.getElementById("looper-panel");
+        var open = !!panel && panel.style.display !== "none";
+        parent.postMessage({ type: "looper-widget-size", open: open }, "*");
+      }
+      var mo = new MutationObserver(report);
+      function arm() {
+        var panel = document.getElementById("looper-panel");
+        if (!panel) { setTimeout(arm, 100); return; }
+        mo.observe(panel, { attributes: true, attributeFilter: ["style"] });
+        report();
+      }
+      arm();
+    })();
+  </script>
+</body>
+</html>
