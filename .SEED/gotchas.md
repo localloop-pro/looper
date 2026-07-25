@@ -55,3 +55,8 @@
   `workers/looper-api-proxy`) whenever the tunnel is recreated.
 - urllib/python default UA gets Cloudflare 1010 on `looper.localloop.ai`;
   use curl with a browser User-Agent for pin smoke tests.
+- CF Worker `looper-api` must be re-deployed (`npx wrangler deploy` in
+  `workers/looper-api-proxy/`) whenever the `ORIGIN` env var changes in
+  `wrangler.toml`. Without a re-deploy, Cloudflare falls through to the raw
+  DNS record (which may be an expired tunnel CNAME) instead of invoking the
+  Worker — manifests as CF Error 1016 on `api.localloop.ai`.

@@ -4,7 +4,8 @@ compatibility_date = "2026-07-01"
 workers_dev = false
 
 [vars]
-ORIGIN = "https://postcards-spoke-excess-maybe.trycloudflare.com"
+# Coolify Traefik origin (HTTP sslip). DNS for api.localloop.ai stays on this Worker until CF A→167.86.79.151.
+ORIGIN = "http://looper-api.167.86.79.151.sslip.io"
 
 [[routes]]
 pattern = "api.localloop.ai/*"
