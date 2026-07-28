@@ -29,6 +29,8 @@ app.add_middleware(
         "https://www.localloop.ai",
         "https://localloop.pro",
         "https://www.localloop.pro",
+        "https://localloop.ai",
+        "https://www.localloop.ai",
         "https://explorer.localloop.ai",
         "https://hybridcard.ai",
         "https://www.hybridcard.ai",

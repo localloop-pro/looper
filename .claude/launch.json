@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "llx11-static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "serve",
+        "/Users/user/Qikflo GIT/02_Web_Builds/localloop.pro/localloop.pro-main/llx11/localloop.pro-main",
+        "-l",
+        "tcp://127.0.0.1:3111"
+      ],
+      "port": 3111
+    }
+  ]
+}
