@@ -129,3 +129,10 @@
   login is reset and a durable Docker origin is attached. Gateway
   `looper.localloop.ai` redeployed with BRIDGE_EVENTS_KV +
   LOCALLOOP_BRIDGE_SECRET. Evidence: `plans/evidence/F9.1/`.
+- 2026-07-28: "Brain offline" on live map diagnosed: CORS (backend allowlist
+  lacked localloop.ai — fixed, committed 7c6753b on main, Coolify looper-api
+  redeployed via API, verified: `access-control-allow-origin:
+  https://localloop.ai` now returned) + missing `LOOPER_API_URL` env on the
+  llx11 Coolify app (site's looperApi still localhost:8000). Bill to set
+  `LOOPER_API_URL=https://api.localloop.ai` on app zl9s2tebckbu9zgzkdy2en4t
+  and redeploy (agent's env-write was permission-blocked).

@@ -1,5 +1,16 @@
 # .SEED/gotchas.md — mistakes to never repeat
 
+- "The Looper brain is offline" on localloop.ai has TWO independent causes —
+  check both: (1) backend CORS allowlist must include `https://localloop.ai`
+  + `https://www.localloop.ai` (fixed 2026-07-28 in `backend/main.py`; curl
+  works even when browsers are blocked, so always test with an `Origin`
+  header); (2) the map site's `LocalLoopConfig.looperApi` comes from the
+  `LOOPER_API_URL` env on the llx11 Coolify app (`zl9s2tebckbu9zgzkdy2en4t`)
+  via `inject-env.js` → `config.js` — if unset it falls back to
+  `http://localhost:8000` in prod and every fetch fails.
+- `secrets/looper-coolify.env` is NOT `source`-safe (unquoted values with
+  spaces) — extract single values with grep/cut, never `source` it.
+
 - BRIDGE-CONTRACT-v1 payloads are FROZEN. Receivers verify HMAC over the RAW
   body (`timestamp + "." + body`, constant-time compare, ±5-min window) and
   upsert idempotently on `eventId`. The sender retries ALL non-2xx (even 4xx)
