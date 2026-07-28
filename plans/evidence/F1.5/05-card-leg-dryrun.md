@@ -11,8 +11,14 @@ deal leg). Run against a real local Looper backend (not the CF Worker proxy).
 ## Setup
 
 ```bash
+# One concrete scratch path, reused by BOTH the backend env and the sqlite3
+# verification queries below — a bare relative filename would silently open
+# (or create) a different, empty DB and the queries would find no tables.
+export SCRATCH="$HOME/looper-dryrun-scratch"
+mkdir -p "$SCRATCH"
+
 cd "/Users/user/Qikflo GIT/02_Web_Builds/looper/backend"
-LOOPER_PORT=8011 LOOPER_DB_URL="sqlite:///<scratch>/looper-card-dryrun.db" \
+LOOPER_PORT=8011 LOOPER_DB_URL="sqlite:///$SCRATCH/looper-card-dryrun.db" \
   HYBRIDCARD_INGEST_SECRET="<secret>" \
   python3 -m uvicorn main:app --host 127.0.0.1 --port 8011
 ```
@@ -34,7 +40,7 @@ Result: `1 passed | 1 skipped (2)` — the deal-leg describe block skips
 
 SQLite after upsert:
 ```
-sqlite3 looper-card-dryrun.db "SELECT hybrid_card_id, name, category, is_active FROM businesses;"
+sqlite3 "$SCRATCH/looper-card-dryrun.db" "SELECT hybrid_card_id, name, category, is_active FROM businesses;"
 f150000000000000000000c2|F1.5 Dry Run Card (TEST)|café|1
 ```
 
@@ -51,7 +57,7 @@ Result: `1 passed | 1 skipped (2)` — `type:'card.removed'`, `status:'sent'`.
 
 SQLite after removed:
 ```
-sqlite3 looper-card-dryrun.db "SELECT hybrid_card_id, is_active FROM businesses;"
+sqlite3 "$SCRATCH/looper-card-dryrun.db" "SELECT hybrid_card_id, is_active FROM businesses;"
 f150000000000000000000c2|0
 ```
 
