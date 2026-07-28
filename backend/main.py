@@ -25,6 +25,8 @@ app.add_middleware(
         "http://localhost:5173",
         "https://localloop.pro",
         "https://www.localloop.pro",
+        "https://localloop.ai",
+        "https://www.localloop.ai",
         "https://explorer.localloop.ai",
     ],
     allow_credentials=True,
