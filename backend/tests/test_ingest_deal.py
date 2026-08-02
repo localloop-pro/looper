@@ -29,6 +29,19 @@ def test_valid_payload_creates_rows(client, db):
     assert db.query(BridgeEvent).filter(BridgeEvent.event_id == "evt-1").count() == 1
 
 
+def test_localhost_public_card_url_pass_through(client, db):
+    """Deal ingest stores local HybridCard path URLs unchanged for search."""
+    local = "http://localhost:3000/c/bondi-cafe"
+    resp = signed_post(client, PATH, sample_deal_payload(public_card_url=local))
+    assert resp.status_code == 200
+    deal = db.query(Deal).one()
+    assert deal.public_card_url == local
+    biz = db.query(Business).one()
+    assert biz.website == local
+    result = client.get("/api/search", params={"q": "Bondi Cafe"}).json()["results"][0]
+    assert result["card_url"] == local
+
+
 def test_event_replay_is_idempotent(client, db):
     assert signed_post(client, PATH, sample_deal_payload()).status_code == 200
     resp = signed_post(client, PATH, sample_deal_payload())  # same eventId again

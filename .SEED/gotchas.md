@@ -11,6 +11,20 @@
 - `secrets/looper-coolify.env` is NOT `source`-safe (unquoted values with
   spaces) — extract single values with grep/cut, never `source` it.
 
+- **Card URL contract (env-aware):** HybridCard is the sole URL builder.
+  Non-production emits path-form
+  `{NEXT_PUBLIC_APP_URL|http://localhost:3000}/c/{slug}`; production emits
+  `https://{slug}.hybridcard.ai`. Receivers (Looper ingest/search, LocalLoop
+  bridge pin + markers/Jarvis) MUST store and return absolute
+  `claimUrl` / `public_card_url` / `card_url` as-is for allowed hosts
+  (`*.hybridcard.ai`, `localhost`, `127.0.0.1`, `[::1]`). Do not rewrite
+  localhost path cards onto tenant subdomains. Never gate on `.hybridcard.ai`
+  in Looper search/discover, never rebuild from slug in Looper, never use
+  `card_url` for ranking. Slug→prod rebuild is LocalLoop markers last-resort
+  only when no allowed absolute URL exists. After URL-shape changes, re-drain
+  (`POST /api/internal/bridge/drain`) / re-ingest — stale `*.hybridcard.ai`
+  rows stay until the next upsert. Checklist:
+  `hybridcard.ai/new-card/docs/BUG_SOLUTIONS.md` (local View-card entry).
 - BRIDGE-CONTRACT-v1 payloads are FROZEN. Receivers verify HMAC over the RAW
   body (`timestamp + "." + body`, constant-time compare, ±5-min window) and
   upsert idempotently on `eventId`. The sender retries ALL non-2xx (even 4xx)
