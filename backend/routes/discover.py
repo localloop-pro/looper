@@ -18,7 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models import Business, Review, fold_accents, get_db
-from routes.search import get_top_review, haversine_km
+from routes.search import get_top_review, haversine_km, resolve_card_url
 from schemas import SearchResult
 from services import telemetry
 
@@ -144,7 +144,8 @@ def discover(
             top_review=get_top_review(biz.id, db),
             distance_km=r["distance_km"],
             website=biz.website,
-            card_url=biz.website if (biz.hybrid_card_id and biz.website and ".hybridcard.ai" in biz.website) else None,
+            # Pass-through stored URL (localhost /c/{slug} or *.hybridcard.ai) — never rewrite.
+            card_url=resolve_card_url(biz, db),
         ))
 
     where = suburb_key or suburb or "this area"

@@ -35,6 +35,28 @@ def get_top_review(business_id: int, db: Session) -> str | None:
     return None
 
 
+def resolve_card_url(biz: Business, db: Session) -> str | None:
+    """Pass-through HybridCard public URL for "View card →" (never a ranking input).
+
+    Prefer an active deal's public_card_url, else the business website set by
+    bridge ingest (which IS public_card_url). Accept any host — prod
+    ``*.hybridcard.ai`` and local/dev ``http://localhost:3000/c/{slug}`` alike.
+    Never rebuild from slug and never rewrite the stored URL.
+    """
+    if not biz.hybrid_card_id:
+        return None
+    deal = (db.query(Deal)
+            .filter(Deal.business_id == biz.id,
+                    Deal.active == True,
+                    Deal.public_card_url.is_not(None))
+            .first())
+    if deal and deal.public_card_url:
+        return deal.public_card_url
+    if biz.website:
+        return biz.website
+    return None
+
+
 @router.get("/search", response_model=SearchResponse)
 def search_businesses(
     q: str = Query(..., min_length=1, description="Search query"),
@@ -139,19 +161,7 @@ def search_businesses(
     ranked = []
     for r in results[:limit]:
         biz = r["business"]
-        # HybridCard connection: expose the public card URL when the business
-        # has one (informational link only — NEVER a ranking input, §7).
-        card_url = None
-        if biz.hybrid_card_id:
-            deal = (db.query(Deal)
-                    .filter(Deal.business_id == biz.id,
-                            Deal.active == True,
-                            Deal.public_card_url.is_not(None))
-                    .first())
-            if deal:
-                card_url = deal.public_card_url
-            elif biz.website and ".hybridcard.ai" in biz.website:
-                card_url = biz.website
+        # HybridCard connection: informational link only — NEVER a ranking input (§7).
         ranked.append(SearchResult(
             business_id=biz.id,
             name=biz.name,
@@ -164,7 +174,7 @@ def search_businesses(
             top_review=r["top_review"],
             distance_km=r["distance_km"],
             website=biz.website,
-            card_url=card_url,
+            card_url=resolve_card_url(biz, db),
         ))
 
     # Contextual message from LOOPER (neutral, informative)

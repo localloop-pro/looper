@@ -60,6 +60,10 @@
   in-browser via `LocalLoopHybridcardDemoRows` hook: approved renders at
   48px, pending/removed never render, popup fields + link correct, console
   clean. Residual for F1.5: live-Supabase seeded pin + Lighthouse >90 check.
+  **Update 2026-08-02:** LocalLoop markers/Jarvis now keep bridge-supplied
+  localhost path-form claim URLs (`http://localhost:3000/c/{slug}`) as-is;
+  `*.hybridcard.ai`-only rewrite was the local/dev View-card failure mode.
+  See Card URL contract in BRIDGE-CONTRACT-v1 + `.SEED/gotchas.md`.
 - 2026-07-12: F1.5 dry run PHASE 1 executed locally (the plan's "minimal
   staging"): real new-card outbox → drainOutbox → both real receivers →
   SQLite rows + REAL Supabase draft pin (pending_review, premium, invisible
@@ -97,6 +101,12 @@
   link — surfaced as "View card →", NEVER a ranking input; test asserts a
   carded business gains no rank). New read-only `GET /api/ingest/status`
   (F4.3 cockpit read path). `web/` is now mounted by FastAPI at `/web`.
+- 2026-08-02: `card_url` is a pure pass-through of stored
+  `Deal.public_card_url` / bridge `Business.website`. Removed the
+  `.hybridcard.ai` host gate so local HybridCard path URLs
+  (`http://localhost:3000/c/{slug}`) survive search + discover. Shared helper:
+  `resolve_card_url()` in `backend/routes/search.py`. No slug rebuild in looper;
+  Jarvis already uses `r.card_url` only.
 - 2026-07-12: F4.1/F4.2 (looper-bot): Looper gained localloop_search /
   localloop_businesses / localloop_open_map (deep link via shell.openExternal)
   / localloop_bridge_status tools + LocalLoop persona block in
