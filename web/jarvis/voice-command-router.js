@@ -48,7 +48,11 @@
 
   function clean(text) {
     return fold(text)
+      // protect decimal points ("within 1.5 km") from punctuation folding --
+      // stripping them would parse the radius as "5 km" and leave junk text
+      .replace(/(\d)\.(\d)/g, "$1\u0000$2")
       .replace(/[.,!?;:]+/g, " ")
+      .replace(/\u0000/g, ".")
       .replace(/\s+/g, " ")
       .trim();
   }
@@ -58,24 +62,40 @@
   // Pin categories are FROZEN in Supabase: News, Sales, Offers, Events,
   // Accommodation, Job-Offers, Fetch_Deliveries, Food.
   var SYNONYMS = [
+    // jobs before Offers: "job offers" is employment, not a deals request.
+    // Bare "gigs" is an Events word (host table agrees) — "gig work" still
+    // lands here via "work".
+    { re: /\b(jobs?|work|hiring|employment|vacanc(?:y|ies)|careers?|shifts?|roles?)\b/, pin: "Job-Offers", term: "jobs" },
+    // offers / deals next: a deal word beats co-occurring category nouns
+    // ("restaurant deals" is an Offers request, not a Food search)
+    { re: /\b(deals?|offers?|discounts?|specials?|bargains?|vouchers?|cheap|promot(?:ions?|es?|ed)|coupons?)\b/, pin: "Offers", term: "deals offers" },
+    // sales (for-sale / second-hand items — their own frozen pin category;
+    // sell/selling/etsy and hyphenated forms mirror the host voice table)
+    { re: /\b(sales?|for sale|garage sales?|sell(?:ing)?|second[ -]?hand|pre[ -]?loved|marketplace|etsy)\b/, pin: "Sales", term: "for sale" },
+    // deliveries BEFORE food: a delivery word marks the fetch flow even
+    // when a food word rides along ("food delivery near me", "pick up
+    // food") — the host only opens the delivery sheet for this pin.
+    // hangry/drivers and hyphenated pick-ups/drop-offs mirror the host
+    // voice table.
+    { re: /\b(deliver(?:y|ies)|couriers?|pick[ -]?ups?|drop[ -]?offs?|fetch|hangry|drivers?)\b/, pin: "Fetch_Deliveries", term: "delivery courier" },
     // food (old build: hungry/eat → food)
-    { re: /\b(hungry|eat|eating|food|meals?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|takeaway|take away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
-    // accommodation (stay/sleep/hotel)
-    { re: /\b(stay|sleep|hotels?|motels?|hostels?|accommodation|somewhere to stay|rooms?|airbnb|bnb)\b/, pin: "Accommodation", term: "accommodation hotel" },
-    // offers / deals
-    { re: /\b(deals?|offers?|discounts?|specials?|bargains?|sales?|vouchers?|cheap)\b/, pin: "Offers", term: "deals offers" },
-    // jobs (job/work → jobs)
-    { re: /\b(jobs?|work|hiring|employment|vacanc(?:y|ies)|careers?|gigs?)\b/, pin: "Job-Offers", term: "jobs" },
+    { re: /\b(hungry|eat|eating|eater(?:y|ies)|dining|food|meals?|menus?|restaurants?|cafes?|coffees?|brunch|breakfast|lunch|dinner|pizzas?|burgers?|sushi|baker(?:y|ies)|take[ -]?away|feed me|bars?|pubs?|drinks?|wine|beer)\b/, pin: "Food", term: "café restaurant food" },
+    // accommodation (stay/sleep/hotel; rentals/flatmates/sublets mirror the
+    // host voice table)
+    { re: /\b(stay|sleep|hotels?|motels?|hostels?|resorts?|accommodation|somewhere to stay|rooms?|airbnb|bnb|rentals?|flat[ -]?mates?|sublets?)\b/, pin: "Accommodation", term: "accommodation hotel" },
+    // events BEFORE news: an explicit event noun beats the broad happening
+    // words ("what events are happening" is an Events request). "what's on"
+    // and bare "gigs" are Events per the host voice table. "show" as a
+    // noun is deliberately absent — it collides with "show me X".
+    // "shows" is plural-only — singular "show" is the verb in "show me X"
+    { re: /\b(events?|concerts?|markets?|festivals?|exhibitions?|gigs?|what's on|whats on|entertainment|live (?:music|streams?|shows?)|shows)\b/, pin: "Events", term: "events" },
     // news
-    { re: /\b(news|headlines|happening|going on|what's on|whats on)\b/, pin: "News", term: "news" },
-    // events ("show" as a noun is deliberately absent — it collides with "show me X")
-    { re: /\b(events?|concerts?|markets?|festivals?|exhibitions?)\b/, pin: "Events", term: "events" },
-    // deliveries / couriers
-    { re: /\b(deliver(?:y|ies)|couriers?|pick up|pickup|drop off|fetch)\b/, pin: "Fetch_Deliveries", term: "delivery courier" },
+    { re: /\b(news|headlines?|happening|going on|stor(?:y|ies)|updates?|reports?|bulletins?)\b/, pin: "News", term: "news" },
     // health & wellbeing (spa/relax/fitness — no fixed pin category; brain-only)
     { re: /\b(spas?|relax|massage|fitness|gyms?|yoga|pilates|doctors?|dentists?|physio|chemist|pharmac(?:y|ies)|health|wellness|hair|barbers?|beauty)\b/, pin: null, term: "health fitness wellness" },
-    // shopping (no fixed pin category; brain-only)
-    { re: /\b(shops?|shopping|stores?|boutiques?|clothes|clothing|gifts?|surf shop|bookshop|book store)\b/, pin: null, term: "shop retail" },
+    // shopping → the Offers pin (host voice table maps shops/shopping to
+    // Offers, so Jarvis and the visible map agree)
+    { re: /\b(shops?|shopping|stores?|boutiques?|clothes|clothing|gifts?|surf shop|bookshop|book store)\b/, pin: "Offers", term: "shop retail" },
     // trades & services (brain-only)
     { re: /\b(plumbers?|electricians?|builders?|carpenters?|painters?|hand(?:y|i)m(?:a|e)n|mechanics?|locksmiths?|cleaners?|gardeners?|tradies?|trades)\b/, pin: null, term: "trades services" },
     // pets (brain-only)
@@ -108,7 +128,9 @@
   // ---- parsers ------------------------------------------------------------
 
   // Whole-utterance stop command (misfire fix: "bus stop near me" ≠ stop).
-  var STOP_RE = /^(?:hey looper[,!]?\s*)?(?:please\s+)?(?:stop|cancel|pause|quiet|silence|shut up|be quiet|that's enough|thats enough|never mind|nevermind)(?:\s+(?:talking|listening|it|that|now|please))*$/;
+  // Prefix accepts every wake-word variant the orchestrator accepts
+  // (hey/ok/okay looper) so "okay looper stop" interrupts hands-free too.
+  var STOP_RE = /^(?:(?:hey|ok|okay)\s+looper[,!]?\s*)?(?:please\s+)?(?:stop|cancel|pause|quiet|silence|shut up|be quiet|that's enough|thats enough|never mind|nevermind)(?:\s+(?:talking|listening|it|that|now|please))*$/;
 
   var GREET_RE = /^(?:hey|hi|hello|yo|g'day|gday|good morning|good arvo|good afternoon|good evening)(?:\s+(?:looper|there|mate))*$/;
 
@@ -117,26 +139,55 @@
   var HELP_RE = /^(?:looper\s+)?(?:help(?: me)?|what can you do|what do you do|how do you work|what are you|who are you|show me the menu|menu)$/;
 
   // Radius: "within 2 km", "3 kilometres", "500 m", "near me" → 1000 m.
+  // Explicit distances beat the "near me" default — "cafes near me within
+  // 5 km" means 5 km, not 1 km.
   function parseRadiusM(t) {
-    if (/\b(near me|nearby|around me|close by|walking distance)\b/.test(t)) return 1000;
     var km = t.match(/\b(\d+(?:\.\d+)?)\s*(?:km|kilometre|kilometres|kilometer|kilometers|k)\b/);
     if (km) return Math.round(parseFloat(km[1]) * 1000);
     var m = t.match(/\b(\d+)\s*(?:m|metres|meters)\b/);
     if (m) return parseInt(m[1], 10);
+    if (/\b(near me|nearby|around me|close by|walking distance)\b/.test(t)) return 1000;
     return null;
   }
 
-  // Old build's specific-business regex, widened verbs, greedy name capture.
-  var BUSINESS_RE = /\b(?:find|show me|show|tell me about|where is|where's|look up|search for)\s+(?:the\s+)?([\w\s'&-]+)$/;
+  // Once a radius is parsed it lives in cmd.radiusM — the phrase itself
+  // must never reach the brain as literal search text.
+  function stripRadiusPhrases(t) {
+    return t
+      .replace(/\b(?:within|inside|in)?\s*\d+(?:\.\d+)?\s*(?:km|kilometres?|kilometers?|k|m|metres|meters)\b/g, " ")
+      .replace(/\b(?:near me|nearby|around me|close by|walking distance)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
 
-  // "take me to X" / "go to X" / "fly to X" — suburb first, else business.
-  var GOTO_RE = /\b(?:take me to|go to|fly to|navigate to|head to|jump to)\s+(?:the\s+)?([\w\s'&-]+)$/;
+  // Old build's specific-business regex, widened verbs, greedy name capture.
+  // An indefinite article after the verb ("find me A florist") signals a
+  // category-style discovery, not a proper business name — captured
+  // separately so route() can send those to free-text search instead.
+  var BUSINESS_RE = /\b(?:find(?: me)?|show me|show|tell me about|where is|where's|look up|search for)\s+(?:(a|an|some)\s+|the\s+)?([\w\s'&-]+)$/;
+
+  // "take me to X" / "go to X" / "fly to X" — suburb first, else business;
+  // an indefinite article ("take me to A cafe") marks discovery, not a name.
+  var GOTO_RE = /\b(?:take me to|go to|fly to|navigate to|head to|jump to)\s+(?:(a|an|some)\s+|the\s+)?([\w\s'&-]+)$/;
+
+  // Naming verbs mean a specific business, even when the name contains a
+  // category word ("where is Bondi Pizza" is a lookup, not a Food search) —
+  // unless an article/scope signal marks it generic ("where is A cafe").
+  var NAMED_RE = /\b(?:where is|where's|tell me about|look up)\s+(?:(a|an|some)\s+|the\s+)?([\w\s'&-]+)$/;
 
   var ZOOM_IN_RE = /\b(?:zoom in|closer|get closer)\b/;
   var ZOOM_OUT_RE = /\b(?:zoom out|further out|pull back|wider)\b/;
   var RESET_RE = /\b(?:reset(?: the)?(?: view| map)?|start over|show everything|whole map|zoom to fit)\b/;
 
-  var BOOKING_RE = /\b(?:book|booking|reserve|reservation|table for)\b/;
+  // Whole-utterance filter-clear phrasings ("show all", "show me
+  // everything", "clear filters") — anchored so "show all the cafes in
+  // bondi" stays a search, not a reset.
+  var CLEAR_RE = /^(?:show (?:me )?(?:everything|all(?: categories| pins)?)|clear (?:the |all )?filters?|remove (?:the |all )?filters?|all categories)(?:\s+(?:please|now|thanks|thank you|mate))*$/;
+
+  // "book" followed by store/shop is a NOUN ("book store near me" is a
+  // shopping search, not a reservation) — the lookahead keeps it out of
+  // booking detection.
+  var BOOKING_RE = /\b(?:book(?!\s+(?:stores?|shops?)\b)|booking|reserve|reservation|table for)\b/;
 
   // The connect-people mission: "connect me with…", "who can help me with…",
   // "i need a plumber", "put me in touch with…". ("find me a X" is plain
@@ -149,18 +200,30 @@
 
   var SUPERLATIVE_RE = /\b(?:best|greatest|top|number one|no 1)\b/;
 
+  // Category pins that are REQUESTS rather than THINGS — these words
+  // ("deals", "events", "jobs") essentially never appear as a business
+  // name, so a naming verb in front of them is still a category ask.
+  var REQUEST_PINS = { Offers: 1, News: 1, Events: 1, Sales: 1, "Job-Offers": 1, Fetch_Deliveries: 1 };
+
   var FILLER_RE = /\b(?:please|now|thanks|thank you|mate|for me)\b/g;
+
+  // Word-boundary regex for a suburb key — substring matching corrupts
+  // queries ("bonding therapist" must never match "bondi").
+  function suburbRe(key) {
+    return new RegExp("\\b" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b");
+  }
 
   // exact=true: the text must BE the suburb (plus filler words) — used for
   // goto/business-name candidates so "bondi wholefoods" isn't eaten by
-  // "bondi". exact=false: the suburb may appear anywhere ("cafes in bronte").
+  // "bondi". exact=false: the suburb may appear anywhere ("cafes in bronte")
+  // but only as whole words.
   function matchSuburb(name, suburbs, exact) {
     var n = clean(name).replace(FILLER_RE, "").replace(/\s+/g, " ").trim();
     if (!n) return null;
     // longest-key-first so "bondi junction" wins over "bondi"
     var keys = Object.keys(suburbs).sort(function (a, b) { return b.length - a.length; });
     for (var i = 0; i < keys.length; i++) {
-      if (exact ? n === keys[i] : n.indexOf(keys[i]) !== -1) return keys[i];
+      if (exact ? n === keys[i] : suburbRe(keys[i]).test(n)) return keys[i];
     }
     return null;
   }
@@ -196,23 +259,168 @@
 
     if (ZOOM_IN_RE.test(stripped)) { cmd.intent = "zoom"; cmd.zoomDelta = 1; return cmd; }
     if (ZOOM_OUT_RE.test(stripped)) { cmd.intent = "zoom"; cmd.zoomDelta = -1; return cmd; }
-    if (RESET_RE.test(stripped)) { cmd.intent = "reset"; return cmd; }
+    if (RESET_RE.test(stripped) || CLEAR_RE.test(stripped)) { cmd.intent = "reset"; return cmd; }
 
     if (SUPERLATIVE_RE.test(stripped)) cmd.superlative = true;
 
-    // "take me to bronte" → suburb; "take me to gertrude and alice" → business
+    // Suburb scope, computed ONCE so every category-style intent keeps it
+    // ("deals in Bronte" must not silently search the current map center).
+    var scopeSub = matchSuburb(stripped, suburbs, false);
+    function applyScope(c) {
+      if (scopeSub) { c.suburb = scopeSub; c.coords = suburbs[scopeSub]; }
+      return c;
+    }
+    // The brain should see the user's actual noun, not just our broad
+    // bucket term ("find me a plumber" must send "plumber", not only
+    // "trades services") — prepend the matched synonym to the term.
+    function termFor(cat) {
+      var m = stripped.match(cat.re);
+      var noun = m && m[0] ? m[0] : "";
+      return noun && cat.term.indexOf(noun) === -1 ? noun + " " + cat.term : cat.term;
+    }
+    // Strip location noise from a term the brain will receive: parsed
+    // radius phrases, a matched suburb, then dangling prepositions —
+    // "electrician near me" → "electrician", "plumber in bronte" → "plumber".
+    function cleanScopedTerm(text, sub) {
+      var t = stripRadiusPhrases(text);
+      if (sub) t = t.replace(suburbRe(sub), " "); // boundary-safe: never eats "bonding"
+      return t
+        .replace(/\b(?:in|at|around|near)\b\s*$/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+    // A locative tail ("… in bronte") means the suburb is WHERE, not part
+    // of a business name.
+    function hasLocativeTail(text) {
+      return !!scopeSub &&
+        new RegExp("\\b(?:in|at|around|near)\\s+" + scopeSub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$").test(text);
+    }
+    // Category term PLUS the user's remaining subject words — "pizza deals"
+    // must send "pizza" to the brain, not just the generic bucket term.
+    // Pass `text` to scope the subject to a captured target instead of the
+    // whole utterance (keeps goto/connect verbs out of the term).
+    function subjectPlus(cat, text) {
+      var src = text || stripped;
+      var subject = cleanScopedTerm(src.replace(new RegExp(cat.re.source, "gi"), " "), scopeSub)
+        // temporal words (weekend/today/tonight/tomorrow) are NOT filler —
+        // "events tonight" must send its time window to the brain
+        .replace(/\b(?:anything|something|any|some|all|everything|what|whats|what's|on|the|a|an|i|i'm|im|we|us|to|for|me|my|show|find|tell|about|look|up|want|need|search for|are|are there|is|around|here|there|this|going|happening|somewhere|anywhere|please|best|greatest|top)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      var base = termFor(cat);
+      return subject ? subject + " " + base : base;
+    }
+
+    // "take me to bronte" → suburb; "take me to gertrude and alice" →
+    // business; article/scope signals mean navigation-style DISCOVERY
+    // ("take me to a cafe near me", "navigate to restaurants in Bronte").
     var goto_ = stripped.match(GOTO_RE);
     if (goto_) {
-      var sub = matchSuburb(goto_[1], suburbs, true);
+      var gotoTarget = stripArticles(goto_[2].trim());
+      var sub = matchSuburb(gotoTarget, suburbs, true);
       if (sub) {
         cmd.intent = "suburb";
         cmd.suburb = sub;
         cmd.coords = suburbs[sub];
         return cmd;
       }
+      if (goto_[1] || cmd.radiusM != null || hasLocativeTail(gotoTarget)) {
+        // navigation-style discovery keeps its category ("take me to a
+        // cafe near me" filters Food; "navigate to delivery" must reach
+        // the Fetch_Deliveries flow, not an uncategorized search)
+        cmd.intent = "search";
+        var gotoCat = matchCategory(gotoTarget);
+        if (gotoCat) {
+          if (gotoCat.pin) cmd.category = gotoCat.pin;
+          cmd.searchTerm = subjectPlus(gotoCat, gotoTarget);
+        } else {
+          cmd.searchTerm = cleanScopedTerm(gotoTarget, scopeSub) || gotoTarget;
+        }
+        return applyScope(cmd);
+      }
+      // A bare target built entirely of category vocabulary ("take me to
+      // food delivery", "go to job offers") is a category request, not a
+      // business name — same rule the find/show path applies.
+      var gotoExtra = gotoTarget;
+      for (var gi = 0; gi < SYNONYMS.length; gi++) {
+        gotoExtra = gotoExtra.replace(new RegExp(SYNONYMS[gi].re.source, "gi"), " ");
+      }
+      if (!gotoExtra.replace(/\s+/g, " ").trim()) {
+        var gotoBareCat = matchCategory(gotoTarget);
+        if (gotoBareCat) {
+          cmd.intent = "search";
+          if (gotoBareCat.pin) cmd.category = gotoBareCat.pin;
+          cmd.searchTerm = subjectPlus(gotoBareCat, gotoTarget);
+          return applyScope(cmd);
+        }
+      }
       cmd.intent = "business";
-      cmd.businessName = stripArticles(goto_[1].trim());
+      cmd.businessName = gotoTarget;
       return cmd;
+    }
+
+    // Naming verbs win over category words (see NAMED_RE above) — but an
+    // article or scope signal means a generic discovery ("where is a cafe
+    // near me", "tell me about restaurants in Bronte"), not a name.
+    var named = stripped.match(NAMED_RE);
+    if (named) {
+      var namedTarget = stripArticles(named[2].trim());
+      var namedSuburb = matchSuburb(namedTarget, suburbs, true);
+      if (namedSuburb) {
+        cmd.intent = "suburb";
+        cmd.suburb = namedSuburb;
+        cmd.coords = suburbs[namedSuburb];
+        return cmd;
+      }
+      // A suburb INSIDE the target that isn't an "in bondi" locative tail
+      // is part of a proper name ("where is Bondi Pizza near me") — the
+      // radius must not dissolve the name into a generic scoped search.
+      var namedSans = stripRadiusPhrases(namedTarget).replace(/\s+/g, " ").trim();
+      var namedSubIn = matchSuburb(namedSans, suburbs, false);
+      if (!named[1] && namedSubIn && !hasLocativeTail(namedSans)) {
+        if (namedSans === namedSubIn) {
+          cmd.intent = "suburb";
+          cmd.suburb = namedSubIn;
+          cmd.coords = suburbs[namedSubIn];
+          return cmd;
+        }
+        cmd.intent = "business";
+        cmd.businessName = namedSans;
+        return cmd;
+      }
+      if (named[1] || cmd.radiusM != null || hasLocativeTail(namedTarget)) {
+        // generic discovery via a naming verb keeps its category too
+        // ("where is a cafe near me" filters Food like "find me a cafe")
+        cmd.intent = "search";
+        var namedCat = matchCategory(namedTarget);
+        if (namedCat) {
+          if (namedCat.pin) cmd.category = namedCat.pin;
+          cmd.searchTerm = subjectPlus(namedCat, namedTarget);
+        } else {
+          cmd.searchTerm = cleanScopedTerm(namedTarget, scopeSub) || namedTarget;
+        }
+        return applyScope(cmd);
+      }
+      // A target made of request-type category vocabulary ("tell me about
+      // deals", "tell me about events this weekend") is a category ask,
+      // not a proper name — fall through to the offers/news logic below.
+      // Thing-type vocabulary (Food, shops) stays a name: "The Burger
+      // Shop" is a venue, "deals" never is.
+      var namedRest = namedTarget;
+      for (var ni = 0; ni < SYNONYMS.length; ni++) {
+        namedRest = namedRest.replace(new RegExp(SYNONYMS[ni].re.source, "gi"), " ");
+      }
+      namedRest = cleanScopedTerm(namedRest, scopeSub)
+        .replace(/\b(?:this|the|a|an|on|now|here|today|tonight|tomorrow|weekend|week)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      var namedCatAll = matchCategory(namedTarget);
+      if (namedRest || !namedCatAll || !REQUEST_PINS[namedCatAll.pin]) {
+        cmd.intent = "business";
+        cmd.businessName = namedTarget;
+        return cmd;
+      }
+      // pure category request — the branches below own it
     }
 
     var category = matchCategory(stripped);
@@ -225,10 +433,13 @@
       var connectTarget = stripArticles(connect[1].trim());
       var connectSuburb = matchSuburb(connectTarget, suburbs, false);
       cmd.intent = "connect";
-      cmd.searchTerm = connectTarget;
+      cmd.searchTerm = cleanScopedTerm(connectTarget, connectSuburb) || connectTarget;
       if (category) {
         cmd.category = category.pin || undefined;
-        if (connectTarget.split(" ").length > 4) cmd.searchTerm = category.term;
+        // long targets keep the user's qualifier words AND the category
+        // vocabulary — "dog friendly accommodation in bondi" must send
+        // "dog friendly", not just the bucket term
+        if (connectTarget.split(" ").length > 4) cmd.searchTerm = subjectPlus(category, connectTarget);
       }
       if (connectSuburb) { cmd.suburb = connectSuburb; cmd.coords = suburbs[connectSuburb]; }
       return cmd;
@@ -236,32 +447,62 @@
 
     if (booking) {
       cmd.intent = "booking";
-      if (category) { cmd.category = category.pin || undefined; cmd.searchTerm = category.term; }
-      else cmd.searchTerm = stripped.replace(BOOKING_RE, "").trim() || "restaurant";
-      return cmd;
+      if (category) {
+        cmd.category = category.pin || undefined;
+        // "book Pizza Hut" / "reserve Totti's restaurant" — words beyond
+        // the category noun are a venue NAME; send the name to the brain,
+        // not just the generic bucket term.
+        var bookTarget = cleanScopedTerm(stripped.replace(BOOKING_RE, " "), scopeSub)
+          .replace(/\b(?:a|an|the|for|me|us|please|tonight|today|tomorrow|at|table|\d+|two|three|four|five|six|seven|eight|pm|am)\b/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        var bookCatNoun = (stripped.match(category.re) || [""])[0];
+        var bookNameWords = bookCatNoun
+          ? bookTarget.replace(new RegExp("\\b" + bookCatNoun.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b"), " ").replace(/\s+/g, " ").trim()
+          : bookTarget;
+        cmd.searchTerm = bookNameWords ? bookTarget : termFor(category);
+      }
+      else {
+        // "book a table in Bronte" — the leftover after removing the verb,
+        // scope and filler is just table-talk, and the brain would treat it
+        // literally; generic table bookings default to restaurants.
+        var bookTerm = cleanScopedTerm(stripped.replace(BOOKING_RE, " "), scopeSub)
+          // same table-size/time filler the category branch strips —
+          // "table for 2 at Tottis" must send "tottis", not "2 at tottis"
+          .replace(/\b(?:a|an|the|for|me|us|please|tonight|today|tomorrow|at|table|\d+|two|three|four|five|six|seven|eight|pm|am)\b/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!bookTerm || /^table(?: \w+)?$/.test(bookTerm) || /^(?:two|three|four|five|six|\d+)$/.test(bookTerm)) {
+          bookTerm = "restaurant";
+        }
+        cmd.searchTerm = bookTerm;
+      }
+      return applyScope(cmd);
     }
 
-    // Offers/deals get their own intent (anti-bias handling downstream).
+    // Offers/deals get their own intent (anti-bias handling downstream);
+    // the subject rides along ("pizza deals" → "pizza deals offers").
     if (category && category.pin === "Offers") {
       cmd.intent = "offers";
       cmd.category = "Offers";
-      cmd.searchTerm = category.term;
-      return cmd;
+      cmd.searchTerm = subjectPlus(category);
+      return applyScope(cmd);
     }
 
-    // News/events phrasing like "what's happening"
+    // News/events phrasing like "what's happening" — qualifiers preserved
+    // ("sports news" → "sports news", "concerts" → "concerts events").
     if (category && (category.pin === "News" || category.pin === "Events")) {
       cmd.intent = "news";
       cmd.category = category.pin;
-      cmd.searchTerm = category.term;
-      return cmd;
+      cmd.searchTerm = subjectPlus(category);
+      return applyScope(cmd);
     }
 
     // Specific business: old build's /(?:find|show|tell me about) X/ regex.
     // Category words win over the business regex ("find me a cafe" = search).
     var biz = stripped.match(BUSINESS_RE);
-    if (biz && !category) {
-      var name = stripArticles(biz[1].trim());
+    if (biz) {
+      var name = stripArticles(biz[2].trim());
       var asSuburb = matchSuburb(name, suburbs, true);
       if (asSuburb) {
         cmd.intent = "suburb";
@@ -269,27 +510,104 @@
         cmd.coords = suburbs[asSuburb];
         return cmd;
       }
-      cmd.intent = "business";
-      cmd.businessName = name;
-      return cmd;
+      // A suburb INSIDE the target that isn't an "in bondi" locative tail
+      // is part of a proper name ("find Bondi Vet near me" — Bondi Vet is
+      // the business, near me is noise) — scope must not dissolve it.
+      var nameSansRadius = stripRadiusPhrases(name).replace(/\s+/g, " ").trim();
+      var subInName = matchSuburb(nameSansRadius, suburbs, false);
+      if (!biz[1] && subInName && !hasLocativeTail(nameSansRadius)) {
+        if (nameSansRadius === subInName) {
+          cmd.intent = "suburb";
+          cmd.suburb = subInName;
+          cmd.coords = suburbs[subInName];
+          return cmd;
+        }
+        cmd.intent = "business";
+        cmd.businessName = nameSansRadius;
+        return cmd;
+      }
+      // Scope signals make this discovery even without an article:
+      // "find florist in Bronte" / "search for accountant near me" must be
+      // scoped searches — a business lookup would ignore radius/suburb.
+      if (biz[1] || cmd.radiusM != null || hasLocativeTail(name)) {
+        // "find me a florist" — indefinite article ⇒ discovery, not a name.
+        // A named suburb scopes it AND leaves the search term clean
+        // ("find me a florist in bronte" → term "florist", coords Bronte),
+        // and parsed radius phrases never reach the brain as literal text.
+        // A matched category keeps its pin + search vocabulary ("find me a
+        // cafe" filters Food and searches the café terms).
+        cmd.intent = "search";
+        if (category) {
+          if (category.pin) cmd.category = category.pin;
+          cmd.searchTerm = subjectPlus(category);
+        } else {
+          cmd.searchTerm = cleanScopedTerm(name, scopeSub) || name;
+        }
+        return applyScope(cmd);
+      }
+      if (!category) {
+        cmd.intent = "business";
+        cmd.businessName = name;
+        return cmd;
+      }
+      // A category word inside a LARGER unscoped target is a named business
+      // ("find Pizza Hut", "show me Totti's restaurant") — the generic
+      // category path would drop the name. But a target built ENTIRELY of
+      // category vocabulary ("show job offers", "find hotel rooms", "show
+      // food delivery") is a category request, not a name. Superlatives
+      // stay discovery, Sales words stay qualifiers.
+      if (category.pin !== "Sales" && !cmd.superlative) {
+        var extraWords = name;
+        for (var si = 0; si < SYNONYMS.length; si++) {
+          extraWords = extraWords.replace(new RegExp(SYNONYMS[si].re.source, "gi"), " ");
+        }
+        extraWords = extraWords.replace(/\s+/g, " ").trim();
+        // Qualifier words before a category noun are DISCOVERY, not a name
+        // ("find vegan cafes", "show gluten free restaurants", "find dog
+        // friendly accommodation") — only unknown words like "hut" or
+        // "totti's" mark a proper business name.
+        var isQualifier = /^(?:dog|pet|kid|kids|family|child|baby|friendly|vegan|vegetarian|gluten|dairy|free|halal|kosher|organic|budget|luxury|licensed|byo|outdoor|indoor|waterfront|beachfront|local|late|night|open|24|hour|hours|new|good|nice|fancy|quiet|healthy)$/;
+        var allQualifiers = extraWords !== "" && extraWords.split(" ").every(function (w) { return isQualifier.test(w); });
+        if (extraWords && !allQualifiers) {
+          cmd.intent = "business";
+          cmd.businessName = name;
+          return cmd;
+        }
+      }
+      // bare category target ("find pizza") — fall through to category search
     }
 
     if (category) {
       cmd.intent = "search";
       if (category.pin) cmd.category = category.pin;
-      cmd.searchTerm = category.term;
+      // Every category keeps the user's qualifier words ("vegan cafe",
+      // "dog friendly accommodation", "bike for sale") — the pin is only
+      // a map filter, so the brain needs the constraint, not just the
+      // generic bucket term.
+      cmd.searchTerm = subjectPlus(category);
       // a mentioned suburb scopes the search ("cafes in bronte")
-      var inSub = matchSuburb(stripped, suburbs, false);
-      if (inSub) { cmd.suburb = inSub; cmd.coords = suburbs[inSub]; }
-      return cmd;
+      return applyScope(cmd);
     }
 
-    // Bare suburb mention: "bondi junction please"
-    var bare = matchSuburb(stripped, suburbs, false);
-    if (bare && stripped.split(" ").length <= 4) {
+    // Short suburb-scoped phrase: pure suburb ("bondi junction please")
+    // flies there; leftover words ("florist in bronte") are a SEARCH
+    // scoped to that suburb — flying without searching loses the request.
+    if (scopeSub && stripped.split(" ").length <= 4) {
+      var leftover = stripped
+        .replace(suburbRe(scopeSub), " ")
+        .replace(/\b(?:in|at|around|near|the|please|now|thanks|thank you|mate)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (leftover) {
+        cmd.intent = "search";
+        cmd.searchTerm = leftover;
+        cmd.suburb = scopeSub;
+        cmd.coords = suburbs[scopeSub];
+        return cmd;
+      }
       cmd.intent = "suburb";
-      cmd.suburb = bare;
-      cmd.coords = suburbs[bare];
+      cmd.suburb = scopeSub;
+      cmd.coords = suburbs[scopeSub];
       return cmd;
     }
 
@@ -297,25 +615,31 @@
     // removed, it's a search ("bus stop near me" → search "bus stop");
     // a bare radius ("within 2 km") re-runs the last search with it.
     if (radiusM !== null) {
-      var leftover = stripped
-        .replace(/\b(?:within|inside|in)?\s*\d+(?:\.\d+)?\s*(?:km|kilometres?|kilometers?|k|m|metres|meters)\b/g, " ")
-        .replace(/\b(?:near me|nearby|around me|close by|walking distance)\b/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+      var leftover = cleanScopedTerm(stripped, scopeSub);
+      // "set radius to 5 km" — once the distance is stripped, what remains
+      // is command boilerplate, not a search subject. Route it as
+      // set_radius so the orchestrator re-runs the last search with the
+      // new radius instead of querying the brain for "set radius to".
+      if (/^(?:(?:set|change|update|make|adjust|increase|expand|widen|decrease|shrink|reduce)\s+)?(?:the\s+|my\s+)?(?:search\s+)?(?:radius|range|distance|area)(?:\s+(?:to|at|of|by))?$/.test(leftover)) {
+        cmd.intent = "set_radius";
+        return cmd;
+      }
       if (leftover) {
+        // "florist in bronte within 5 km" → term "florist", coords Bronte
         cmd.intent = "search";
         cmd.searchTerm = leftover;
-      } else {
-        cmd.intent = "set_radius";
+        return applyScope(cmd);
       }
+      cmd.intent = "set_radius";
       return cmd;
     }
 
-    // Anything else with a few words → free-text search via the brain.
+    // Anything else with a few words → free-text search via the brain
+    // ("best dog wash in coogee" keeps its suburb scope here too).
     if (stripped.split(" ").length >= 2) {
       cmd.intent = "search";
-      cmd.searchTerm = stripped;
-      return cmd;
+      cmd.searchTerm = cleanScopedTerm(stripped, scopeSub) || stripped;
+      return applyScope(cmd);
     }
 
     return cmd;

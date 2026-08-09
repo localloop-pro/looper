@@ -28,7 +28,26 @@
     activeCategory: null,
     resultMarkers: [],
     resultPopup: null,
+    // Unclaimed-business CTA — hosts override via init opts.claimCta.
+    // llx11 points this at its first-party claim funnel until the external
+    // hybrid-card handoff decision is resolved (its SETUP_TODO).
+    claimCta: {
+      url: "https://hybridcard.ai?src=localloop&district=bondi",
+      label: "Own this business? Get your Hybrid Card →",
+    },
   };
+
+  // Only http(s) links ever render — owner-supplied card_url/website could
+  // otherwise smuggle javascript:/data: URIs into popups.
+  function safeUrl(value) {
+    if (!value) return null;
+    try {
+      var u = new URL(String(value), typeof location !== "undefined" ? location.href : "https://localloop.ai");
+      return (u.protocol === "http:" || u.protocol === "https:") ? u.href : null;
+    } catch (e) {
+      return null;
+    }
+  }
 
   function ready() {
     if (!state.map) {
@@ -45,19 +64,29 @@
     if (opts.home) state.home = opts.home;
     if (opts.onCategory) state.onCategory = opts.onCategory;
     if (opts.resolveBusiness) state.resolveBusiness = opts.resolveBusiness;
+    if (opts.claimCta) state.claimCta = opts.claimCta;
     return bus;
   }
 
-  function setCategory(category) {
+  // meta is passed through to the host hook untouched — e.g. {fromSearch:
+  // true} lets a host skip its own camera choreography when the search is
+  // about to fit its results itself.
+  function setCategory(category, meta) {
     if (!ready()) return;
     state.activeCategory = category || null;
     if (state.onCategory) {
-      try { state.onCategory(state.activeCategory); } catch (e) { console.warn("[LooperMapBus] onCategory hook failed", e); }
+      try { state.onCategory(state.activeCategory, meta || null); } catch (e) { console.warn("[LooperMapBus] onCategory hook failed", e); }
     }
   }
 
   function flyTo(lng, lat, zoom) {
     if (!ready()) return;
+    // single choke point for camera moves: every caller passes API data,
+    // so validate here rather than trusting each call site
+    if (!hasValidCoords({ lng: lng, lat: lat })) {
+      console.warn("[LooperMapBus] flyTo ignored — invalid coordinates", lng, lat);
+      return;
+    }
     state.map.flyTo({
       center: [Number(lng), Number(lat)],
       zoom: typeof zoom === "number" ? zoom : Math.max(state.map.getZoom(), 14),
@@ -69,17 +98,19 @@
   // padding 50, maxZoom 15.
   function fitPoints(points) {
     if (!ready() || !points || !points.length) return;
+    // null coords must be excluded BEFORE coercion — Number(null) is 0,
+    // which would drag the bounds to the Gulf of Guinea
+    var valid = points.filter(hasValidCoords);
+    if (!valid.length) return;
     var minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
-    points.forEach(function (p) {
+    valid.forEach(function (p) {
       var lng = Number(p.lng), lat = Number(p.lat);
-      if (!isFinite(lng) || !isFinite(lat)) return;
       if (lng < minLng) minLng = lng;
       if (lat < minLat) minLat = lat;
       if (lng > maxLng) maxLng = lng;
       if (lat > maxLat) maxLat = lat;
     });
-    if (!isFinite(minLng)) return;
-    if (points.length === 1) return flyTo(minLng, minLat, 16);
+    if (valid.length === 1) return flyTo(minLng, minLat, 16);
     state.map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 50, maxZoom: 15 });
   }
 
@@ -112,6 +143,19 @@
     state.map.flyTo({ center: [state.home.lng, state.home.lat], zoom: state.home.zoom, essential: true });
   }
 
+  // Coordinates must be present, finite AND in range — the API is data:
+  // Number("N/A") is NaN, Number(null) is 0, and a finite lat of 999 makes
+  // Mapbox throw inside setLngLat/fitBounds.
+  function hasValidCoords(p) {
+    if (!p || p.lng == null || p.lat == null) return false;
+    // '' and whitespace coerce to 0 — a blank string is a MISSING
+    // coordinate, not a pin in the Gulf of Guinea
+    if (String(p.lng).trim() === "" || String(p.lat).trim() === "") return false;
+    var lng = Number(p.lng), lat = Number(p.lat);
+    return isFinite(lng) && isFinite(lat) &&
+      lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90;
+  }
+
   // Drop/refresh result markers for a set of businesses
   // [{name, lng, lat, category?, review_count?, avg_rating?, card_url?, website?}]
   function showResults(results) {
@@ -119,7 +163,7 @@
     clearResults();
     var lib = state.lib;
     (results || []).forEach(function (r) {
-      if (r.lng == null || r.lat == null) return;
+      if (!hasValidCoords(r)) return;
       var el = document.createElement("div");
       el.className = "looper-result-marker";
       el.title = r.name || "";
@@ -150,20 +194,33 @@
   }
 
   function popupHtml(r) {
-    var stars = r.avg_rating ? "⭐ " + r.avg_rating + " · " : "";
-    var reviews = (r.review_count || 0) + " review" + (r.review_count === 1 ? "" : "s");
+    // Coerce metadata to numbers — API fields must never carry markup.
+    var rating = Number(r.avg_rating);
+    var reviewCount = Number(r.review_count);
+    if (!isFinite(reviewCount)) reviewCount = 0;
+    var stars = (r.avg_rating != null && isFinite(rating)) ? "⭐ " + rating + " · " : "";
+    var reviews = reviewCount + " review" + (reviewCount === 1 ? "" : "s");
     var html = '<div class="looper-popup">' +
       "<strong>" + escapeHtml(r.name) + "</strong><br>" +
       '<span class="looper-popup-cat">' + escapeHtml(r.category || "") + "</span><br>" +
-      '<span class="looper-popup-meta">' + stars + reviews + "</span>";
+      '<span class="looper-popup-meta">' + escapeHtml(stars + reviews) + "</span>";
     // HybridCard connection: card link when the business has one, claim
     // funnel when it doesn't (F5.3 pattern; UTM for rev-share attribution).
-    if (r.card_url) {
-      html += '<br><a href="' + escapeHtml(r.card_url) + '" target="_blank" rel="noopener">View card →</a>';
-    } else if (r.website) {
-      html += '<br><a href="' + escapeHtml(r.website) + '" target="_blank" rel="noopener">Website →</a>';
+    var cardHref = safeUrl(r.card_url);
+    var siteHref = safeUrl(r.website);
+    var ctaHref = safeUrl(state.claimCta && state.claimCta.url);
+    if (cardHref) {
+      html += '<br><a href="' + escapeHtml(cardHref) + '" target="_blank" rel="noopener">View card →</a>';
     } else {
-      html += '<br><a class="looper-popup-claim" href="https://hybridcard.ai?src=localloop&district=bondi" target="_blank" rel="noopener">Own this business? Get your Hybrid Card →</a>';
+      // no card: the website link (when any) AND the claim funnel — an
+      // ordinary directory row with a website is exactly who the
+      // "own this business?" CTA is for
+      if (siteHref) {
+        html += '<br><a href="' + escapeHtml(siteHref) + '" target="_blank" rel="noopener">Website →</a>';
+      }
+      if (ctaHref) {
+        html += '<br><a class="looper-popup-claim" href="' + escapeHtml(ctaHref) + '" target="_blank" rel="noopener">' + escapeHtml(state.claimCta.label || "Own this business? Claim it →") + "</a>";
+      }
     }
     html += "</div>";
     return html;
@@ -203,6 +260,9 @@
     clearResults: clearResults,
     openNews: openNews,
     getActiveCategory: function () { return state.activeCategory; },
+    // exported so consumers judge "mappable" by the SAME rules markers use
+    // (presence, non-blank, finite, in range) — a != null check diverges
+    hasValidCoords: hasValidCoords,
   };
 
   root.LooperMapBus = bus;
