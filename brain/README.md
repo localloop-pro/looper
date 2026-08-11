@@ -72,7 +72,8 @@ Run once after enabling to backfill existing SQLite businesses:
 python brain/full_sync.py
 ```
 
-Coolify Scheduled Task: `0 3 * * *` (3 AM UTC daily).
+Coolify Scheduled Task: `0 3 * * *` (3 AM UTC daily).  
+Command (in Docker container): `python /app/looper/brain/full_sync.py`
 
 ## Files
 

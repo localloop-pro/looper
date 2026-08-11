@@ -26,7 +26,7 @@ pip install supabase openai
 | `NEWS_TTS_API_KEY` | ✓ | `$OPENAI_API_KEY` | API key for TTS |
 | `NEWS_AUDIO_BUCKET` | — | `news-audio` | Supabase Storage bucket |
 | `NEWS_AUDIO_VOICE` | — | `alloy` | OpenAI voice name |
-| `NEWS_MAX_CHARS` | — | `1800` | Truncate input to this length |
+| `NEWS_MAX_CHARS` | — | `1200` | Truncate input to this length |
 | `NEWS_AUDIO_BATCH` | — | `5` | Posts per run (time-budget) |
 
 ### Supabase bucket setup (once)
@@ -52,7 +52,7 @@ python tools/news_audio_worker.py
 ### Coolify Scheduled Task
 
 Schedule: `*/10 * * * *`  
-Command: `python tools/news_audio_worker.py`
+Command: `python /app/looper/tools/news_audio_worker.py`
 
 ### Idempotency
 

@@ -152,11 +152,24 @@ def _upsert_business(session, *, hybrid_card_id: str, name: str,
             # Delete mutable core attributes before re-inserting (TypeDB 2.x update pattern).
             # TypeQL 2 ownership deletion binds the attribute variable ($n) and deletes
             # via that variable — repeating the type label ("has name $n") is invalid.
-            tx.query.delete(
-                f'match $b isa business_entity, has hybrid_card_id "{hid_e}", '
-                f'has name $n, has slug $sl, has is_active $ia; '
-                f'delete $b has $n; $b has $sl; $b has $ia;'
-            )
+            #
+            # slug handling: only delete/re-insert slug when the sender supplied one
+            # (card events). Deal events and full_sync pass slug=None — preserving the
+            # card-event slug prevents a deal update from clobbering the stable identifier.
+            if slug is not None:
+                tx.query.delete(
+                    f'match $b isa business_entity, has hybrid_card_id "{hid_e}", '
+                    f'has name $n, has slug $sl, has is_active $ia; '
+                    f'delete $b has $n; $b has $sl; $b has $ia;'
+                )
+                slug_insert = f'has slug "{slug_e}", '
+            else:
+                tx.query.delete(
+                    f'match $b isa business_entity, has hybrid_card_id "{hid_e}", '
+                    f'has name $n, has is_active $ia; '
+                    f'delete $b has $n; $b has $ia;'
+                )
+                slug_insert = ""
             if not skip_archetype:
                 tx.query.delete(
                     f'match $b isa business_entity, has hybrid_card_id "{hid_e}", '
@@ -175,7 +188,8 @@ def _upsert_business(session, *, hybrid_card_id: str, name: str,
             )
             tx.query.insert(
                 f'match $b isa business_entity, has hybrid_card_id "{hid_e}"; '
-                f'insert $b has name "{name_e}", has slug "{slug_e}", '
+                f'insert $b has name "{name_e}", '
+                + slug_insert
                 + arch_insert
                 + f'has is_active {str(is_active).lower()}'
                 + (f', has latitude {lat}, has longitude {lng}' if lat is not None else '')
