@@ -129,40 +129,45 @@ def _upsert_business(session, *, hybrid_card_id: str, name: str,
                      category: str, lat: float | None, lng: float | None,
                      is_active: bool, archetype_id: Optional[str],
                      sub_type: Optional[str],
+                     slug: Optional[str] = None,
                      skip_archetype: bool = False) -> None:
     """Insert or update a business_entity in TypeDB.
 
     skip_archetype=True: preserve existing archetype_id/sub_type in TypeDB
     (used by full_sync.py which reads from SQLite and has no archetype data).
+    slug: sender-supplied stable slug; falls back to _slugify(name) when absent.
     """
     from typedb.driver import TransactionType  # type: ignore[import]
 
     # Escape all string values before TypeQL interpolation
     hid_e = _tql_escape(hybrid_card_id)
     name_e = _tql_escape(name)
-    slug_e = _tql_escape(_slugify(name))
+    # Prefer the sender's authoritative slug; derive from name only when absent.
+    slug_e = _tql_escape(slug) if slug else _tql_escape(_slugify(name))
     arch_e = _tql_escape(archetype_id or category or "other")
     sub_e = _tql_escape(sub_type or "")
 
     with session.transaction(TransactionType.WRITE) as tx:
         if _concept_value is not None and _business_exists(session, hybrid_card_id):
-            # Delete mutable core attributes before re-inserting (TypeDB 2.x update pattern)
+            # Delete mutable core attributes before re-inserting (TypeDB 2.x update pattern).
+            # TypeQL 2 ownership deletion binds the attribute variable ($n) and deletes
+            # via that variable — repeating the type label ("has name $n") is invalid.
             tx.query.delete(
                 f'match $b isa business_entity, has hybrid_card_id "{hid_e}", '
                 f'has name $n, has slug $sl, has is_active $ia; '
-                f'delete $b has name $n; $b has slug $sl; $b has is_active $ia;'
+                f'delete $b has $n; $b has $sl; $b has $ia;'
             )
             if not skip_archetype:
                 tx.query.delete(
                     f'match $b isa business_entity, has hybrid_card_id "{hid_e}", '
                     f'has archetype_id $ai, has sub_type $st; '
-                    f'delete $b has archetype_id $ai; $b has sub_type $st;'
+                    f'delete $b has $ai; $b has $st;'
                 )
             if lat is not None:
                 tx.query.delete(
                     f'match $b isa business_entity, has hybrid_card_id "{hid_e}", '
                     f'has latitude $la, has longitude $lo; '
-                    f'delete $b has latitude $la; $b has longitude $lo;'
+                    f'delete $b has $la; $b has $lo;'
                 )
             arch_insert = (
                 f'has archetype_id "{arch_e}", has sub_type "{sub_e}", '
@@ -246,6 +251,7 @@ def sync_business(
     *,
     archetype_id: Optional[str] = None,
     sub_type: Optional[str] = None,
+    slug: Optional[str] = None,
     skip_archetype: bool = False,
 ) -> bool:
     """Upsert one business into TypeDB.  Never raises — TypeDB errors are
@@ -253,6 +259,7 @@ def sync_business(
 
     Returns True on success, False if the sync was skipped or failed.
 
+    slug: sender-supplied stable slug (card payload); falls back to _slugify(name).
     skip_archetype=True: do not overwrite existing archetype_id/sub_type in
     TypeDB (used by full_sync.py which reads SQLite and has no archetype data).
     """
@@ -280,6 +287,7 @@ def sync_business(
                     is_active=is_active,
                     archetype_id=archetype_id,
                     sub_type=sub_type,
+                    slug=slug,
                     skip_archetype=skip_archetype,
                 )
                 if suburb:

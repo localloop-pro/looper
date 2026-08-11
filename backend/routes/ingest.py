@@ -36,6 +36,7 @@ def _brain_sync(
     archetype_id: str | None = None,
     sub_type: str | None = None,
     skip_archetype: bool = False,
+    slug: str | None = None,
 ) -> None:
     """Fire-and-forget TypeDB sync (F2.2).  Never raises.
 
@@ -43,6 +44,7 @@ def _brain_sync(
     request session closes — avoids DetachedInstanceError when FastAPI runs
     background tasks after the response is sent.
 
+    slug: sender-supplied stable slug (card payload only; deal payloads omit it).
     skip_archetype=True: preserve existing archetype_id/sub_type in TypeDB
     (used by deal events which carry sub_type but not the card-level archetype).
     """
@@ -60,6 +62,7 @@ def _brain_sync(
             is_active=is_active,
             archetype_id=archetype_id,
             sub_type=sub_type,
+            slug=slug,
             skip_archetype=skip_archetype,
         )
     except Exception:
@@ -251,11 +254,13 @@ async def ingest_hybridcard_card(
     result = _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
     if not result.get("duplicate") and not stale:
         # Extract scalars while session is open; background task runs after session closes.
+        # Pass the sender's authoritative slug so TypeDB uses the stable card slug
+        # rather than re-deriving it from the business name.
         background_tasks.add_task(
             _brain_sync,
             biz.hybrid_card_id, biz.name or "", biz.category or "other",
             biz.lat, biz.lng, bool(biz.is_active),
-            payload.archetype, payload.sub_type,
+            payload.archetype, payload.sub_type, False, payload.slug,
         )
     return result
 
