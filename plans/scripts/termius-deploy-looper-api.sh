@@ -20,14 +20,13 @@ else
   cd looper && git fetch --depth 1 origin main && git reset --hard origin/main && cd /opt
 fi
 
-cd /opt/looper/backend
-docker build -t looper-api:latest .
+cd /opt/looper
+docker build -f backend/Dockerfile -t looper-api:latest .
 
 docker rm -f looper-api 2>/dev/null || true
 docker run -d --name looper-api --restart unless-stopped \
   -p 8001:8000 \
   -v /opt/looper-data:/app/data \
-  -e LOOPER_DB_URL=sqlite:///data/looper.db \
   -e HYBRIDCARD_INGEST_SECRET="$INGEST_SECRET" \
   -e HYBRIDCARD_KEY_IDS=hc-1 \
   looper-api:latest

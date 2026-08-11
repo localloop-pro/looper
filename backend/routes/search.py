@@ -62,7 +62,7 @@ def search_businesses(
     q: str = Query(..., min_length=1, description="Search query"),
     lat: float | None = Query(None, description="User latitude"),
     lng: float | None = Query(None, description="User longitude"),
-    radius_km: float = Query(5.0, ge=0.1, le=50.0),
+    radius_km: float = Query(5.0, ge=0.1, le=5000.0),
     category: str | None = Query(None),
     limit: int = Query(5, ge=1, le=20),
     intent: str | None = Query(None, description="Caller-classified intent (telemetry only, never ranking)"),

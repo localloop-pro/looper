@@ -42,7 +42,7 @@ flowchart LR
 
 1. Sanitize tracked `.env.example`: strip real Twilio/Mongo/Minimax/bridge values back to placeholders only (keep TypeDB *placeholder* keys).
 2. Sync with `origin/main` carefully (pull/rebase or merge) without committing secrets from `.env.local` / `secrets/`.
-3. Confirm Coolify will build with **Dockerfile context = `backend/`** (not repo root).
+3. Confirm Coolify will build with **Dockerfile context = repo root** (not `backend/`), Dockerfile path = `backend/Dockerfile`.
 
 ## Step 2 — Coolify: create `looper-api` (F9.1 slice)
 
@@ -51,14 +51,13 @@ On Coolify (`167.86.79.151`):
 | Setting | Value |
 |---------|--------|
 | Source | `localloop-pro/looper` GitHub |
-| Build | Dockerfile at `backend/Dockerfile` |
+| Build | Dockerfile = `backend/Dockerfile`, build context = **repo root** |
 | Port | `8000` |
 | Domain | `api.localloop.ai` |
 | Volume | persist `/app/data` (SQLite) |
 
 Env on the service:
 
-- `LOOPER_DB_URL=sqlite:///data/looper.db`
 - `HYBRIDCARD_INGEST_SECRET=<openssl rand -hex 32>` (generate once; store in password manager + Coolify)
 - `HYBRIDCARD_KEY_IDS=hc-1`
 

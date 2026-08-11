@@ -619,19 +619,14 @@
     Bus.setCategory(null, { fromSearch: true });
     S.face.setMood("thinking");
     var seq = S.reqSeq; // a newer command supersedes this response
-    // Same-name businesses exist across suburbs — send the current map
-    // center so the brain proximity-ranks, with a wide radius so a named
-    // business just outside the view is still found.
+    // Named business lookup: pass map center as a soft proximity tiebreaker
+    // with a continent-wide radius so nothing is ever filtered out
+    // (e.g. Sydney map → The Farm Byron Bay still surfaces).
+    // Ranking: relevance → reviews → recency → proximity.
     var center = mapCenter();
-    return api("/search", {
-      q: cmd.businessName,
-      lat: center.lat,
-      lng: center.lng,
-      radius_km: 50,
-      limit: 3,
-      intent: "business",
-      session: S.session,
-    }).then(function (data) {
+    var params = { q: cmd.businessName, limit: 3, intent: "business", session: S.session };
+    if (center) { params.lat = center.lat; params.lng = center.lng; params.radius_km = 5000; }
+    return api("/search", params).then(function (data) {
       if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
       var results = (data && data.results) || [];
       S.face.setMood("idle");
@@ -646,7 +641,7 @@
       Bus.showResults(results);
       // both coords or no flight — a null lat coerces to the equator
       if (top.lng != null && top.lat != null) Bus.flyTo(top.lng, top.lat, 17); // old build: zoom 17
-      showPanel(optionsHtml(results, "Closest matches:"));
+      showPanel(optionsHtml(results, "Matching options:"));
       wireOptionClicks(results);
       var line = top.name;
       if (top.avg_rating) line += " — " + top.avg_rating + " stars from " + top.review_count + " community reviews.";
@@ -782,7 +777,7 @@
       // link's own words are the query
       cmd.searchTerm = Router.clean(q) || q;
     }
-    if (flyCoords && !cmd.coords) cmd.coords = flyCoords;
+    if (flyCoords) cmd.coords = flyCoords; // explicit fly= always owns the camera + search center
     runSearch(cmd);
   }
 
@@ -811,6 +806,7 @@
         markerLib: opts.markerLib || root.maplibregl || root.mapboxgl,
         onCategory: opts.onCategory || cfg.onCategory || null,
         claimCta: opts.claimCta || cfg.claimCta || null,
+        district: S.district,
         resolveBusiness: function (name) {
           return api("/search", { q: name, limit: 1 }).then(function (d) {
             return (d.results && d.results[0]) || null;

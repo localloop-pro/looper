@@ -65,6 +65,13 @@
     if (opts.onCategory) state.onCategory = opts.onCategory;
     if (opts.resolveBusiness) state.resolveBusiness = opts.resolveBusiness;
     if (opts.claimCta) state.claimCta = opts.claimCta;
+    if (!opts.claimCta && opts.district) {
+      var d = String(opts.district).toLowerCase().replace(/\s+/g, "-");
+      state.claimCta = {
+        url: "https://hybridcard.ai?src=localloop&district=" + encodeURIComponent(d),
+        label: "Own this business? Get your Hybrid Card →",
+      };
+    }
     return bus;
   }
 
