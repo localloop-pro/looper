@@ -171,7 +171,7 @@ def _upsert_business(session, *, hybrid_card_id: str, name: str,
                 f'has archetype_id "{arch_e}", has sub_type "{sub_e}", '
                 f'has tier "premium", has is_active {str(is_active).lower()}'
             )
-            if lat is not None:
+            if lat is not None and lng is not None:
                 attrs += f', has latitude {lat}, has longitude {lng}'
             tx.query.insert(f'insert $b isa business_entity, {attrs};')
         tx.commit()

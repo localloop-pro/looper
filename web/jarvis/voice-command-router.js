@@ -122,6 +122,9 @@
     "waverley": { lng: 151.2540, lat: -33.8980, zoom: 15 },
     "woollahra": { lng: 151.2410, lat: -33.8870, zoom: 15 },
     "paddington": { lng: 151.2260, lat: -33.8840, zoom: 15 },
+    "surry hills": { lng: 151.2100, lat: -33.8880, zoom: 15 },
+    "redfern": { lng: 151.2040, lat: -33.8930, zoom: 15 },
+    "alexandria": { lng: 151.1960, lat: -33.9130, zoom: 15 },
     "byron bay": { lng: 153.6120, lat: -28.6474, zoom: 14.5 },
   };
 

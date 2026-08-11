@@ -1,0 +1,26 @@
+# Prevent secrets and local DBs from being baked into the image.
+backend/data/
+backend/.env
+backend/.env.local
+*.db
+*.db-journal
+*.db-wal
+.env
+.env.local
+local.env
+secrets/
+
+# Python artefacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node / looper-bot (not needed in the API image)
+looper-bot/node_modules/
+looper-bot/dist/
+node_modules/
+
+# Misc
+.git/
+*.DS_Store

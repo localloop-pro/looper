@@ -14,6 +14,10 @@ RUN pip install --no-cache-dir -r requirements-brain.txt
 COPY backend/ backend/
 COPY brain/ brain/
 COPY tools/ tools/
+COPY web/ web/
+# Scheduled tasks must use absolute paths because WORKDIR below is /app/looper/backend:
+#   python /app/looper/tools/news_audio_worker.py
+#   python /app/looper/brain/full_sync.py
 
 RUN mkdir -p /app/data
 ENV LOOPER_DB_URL=sqlite:////app/data/looper.db
