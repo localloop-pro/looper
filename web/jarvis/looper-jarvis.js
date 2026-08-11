@@ -619,15 +619,14 @@
     Bus.setCategory(null, { fromSearch: true });
     S.face.setMood("thinking");
     var seq = S.reqSeq; // a newer command supersedes this response
-    // Named business lookup: omit geo filter so cross-district results are
-    // never blocked by viewport position (e.g. Sydney map → The Farm Byron Bay).
-    // The backend ranks by reviews + recency; proximity is secondary for named lookups.
-    return api("/search", {
-      q: cmd.businessName,
-      limit: 3,
-      intent: "business",
-      session: S.session,
-    }).then(function (data) {
+    // Named business lookup: pass map center as a soft proximity tiebreaker
+    // with a continent-wide radius so nothing is ever filtered out
+    // (e.g. Sydney map → The Farm Byron Bay still surfaces).
+    // Ranking: relevance → reviews → recency → proximity.
+    var center = mapCenter();
+    var params = { q: cmd.businessName, limit: 3, intent: "business", session: S.session };
+    if (center) { params.lat = center.lat; params.lng = center.lng; params.radius_km = 5000; }
+    return api("/search", params).then(function (data) {
       if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
       var results = (data && data.results) || [];
       S.face.setMood("idle");
@@ -642,7 +641,7 @@
       Bus.showResults(results);
       // both coords or no flight — a null lat coerces to the equator
       if (top.lng != null && top.lat != null) Bus.flyTo(top.lng, top.lat, 17); // old build: zoom 17
-      showPanel(optionsHtml(results, "Closest matches:"));
+      showPanel(optionsHtml(results, "Best matches:"));
       wireOptionClicks(results);
       var line = top.name;
       if (top.avg_rating) line += " — " + top.avg_rating + " stars from " + top.review_count + " community reviews.";
