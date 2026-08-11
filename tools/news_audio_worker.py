@@ -43,7 +43,7 @@ TTS_PROVIDER = os.getenv("NEWS_TTS_PROVIDER", "openai")
 TTS_API_KEY = os.getenv("NEWS_TTS_API_KEY") or os.getenv("OPENAI_API_KEY", "")
 AUDIO_BUCKET = os.getenv("NEWS_AUDIO_BUCKET", "news-audio")
 AUDIO_VOICE = os.getenv("NEWS_AUDIO_VOICE", "alloy")
-MAX_CHARS = int(os.getenv("NEWS_MAX_CHARS", "1800"))
+MAX_CHARS = int(os.getenv("NEWS_MAX_CHARS", "1200"))  # ~80-90 s at 150 wpm; override via env
 
 # Coolify batch: process at most N posts per run to stay within 10-min window
 BATCH_SIZE = int(os.getenv("NEWS_AUDIO_BATCH", "5"))
