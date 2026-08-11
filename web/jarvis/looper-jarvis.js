@@ -570,7 +570,7 @@
 
     var seq = S.reqSeq; // a newer command supersedes this response
     var radiusKm = Math.max(0.1, Math.min(50, radiusM / 1000));
-    return api("/search", {
+    var searchParams = {
       q: cmd.searchTerm || cmd.raw,
       lat: center.lat,
       lng: center.lng,
@@ -578,7 +578,9 @@
       limit: 5,
       intent: cmd.intent, // telemetry only (F2.5) — never a ranking input
       session: S.session,
-    }).then(function (data) {
+    };
+    if (cmd.category) searchParams.category = cmd.category;
+    return api("/search", searchParams).then(function (data) {
       if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
       var results = (data && data.results) || [];
       S.face.setMood("idle");
@@ -619,15 +621,11 @@
     Bus.setCategory(null, { fromSearch: true });
     S.face.setMood("thinking");
     var seq = S.reqSeq; // a newer command supersedes this response
-    // Same-name businesses exist across suburbs — send the current map
-    // center so the brain proximity-ranks, with a wide radius so a named
-    // business just outside the view is still found.
-    var center = mapCenter();
+    // Named business lookup: omit geo filter so cross-district results are
+    // never blocked by viewport position (e.g. Sydney map → The Farm Byron Bay).
+    // The backend ranks by reviews + recency; proximity is secondary for named lookups.
     return api("/search", {
       q: cmd.businessName,
-      lat: center.lat,
-      lng: center.lng,
-      radius_km: 50,
       limit: 3,
       intent: "business",
       session: S.session,
