@@ -641,7 +641,7 @@
       Bus.showResults(results);
       // both coords or no flight — a null lat coerces to the equator
       if (top.lng != null && top.lat != null) Bus.flyTo(top.lng, top.lat, 17); // old build: zoom 17
-      showPanel(optionsHtml(results, "Best matches:"));
+      showPanel(optionsHtml(results, "Matching options:"));
       wireOptionClicks(results);
       var line = top.name;
       if (top.avg_rating) line += " — " + top.avg_rating + " stars from " + top.review_count + " community reviews.";

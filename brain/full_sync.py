@@ -67,7 +67,8 @@ def run_full_sync(db_url: str, typedb_host: str, typedb_db: str) -> int:
     logger.info("Full sync: %d businesses to upsert", len(rows))
     ok = err = 0
     for row in rows:
-        hid = row[1] if row[1] else f"seed:{row[0]}"
+        is_carded = bool(row[1])
+        hid = row[1] if is_carded else f"seed:{row[0]}"
         success = sync_business(
             hybrid_card_id=hid,
             name=row[2] or "",
@@ -76,6 +77,7 @@ def run_full_sync(db_url: str, typedb_host: str, typedb_db: str) -> int:
             lng=row[5],
             is_active=bool(row[6]),
             skip_archetype=True,  # SQLite has no archetype_id/sub_type; preserve TypeDB values
+            tier="premium" if is_carded else "community",
         )
         if success:
             ok += 1

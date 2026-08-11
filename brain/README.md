@@ -54,11 +54,15 @@ python brain/seed_geo.py
 
 ### 5. Enable the brain in the backend
 
-Set `TYPEDB_ENABLED=true` in the backend's environment (`.env` or Coolify):
+**In Coolify:** add these to the service env vars.
 
-```
-TYPEDB_ENABLED=true
-TYPEDB_ADDRESS=typedb:1729      # Docker service name in Coolify; use localhost:1729 when running the backend directly on the host
+**Locally (brain scripts + backend):** export before running — brain scripts
+read `os.getenv()` at import time, so a `.env` file is not enough unless
+the backend loads it via `python-dotenv`. Use shell exports instead:
+
+```bash
+export TYPEDB_ENABLED=true
+export TYPEDB_ADDRESS=localhost:1729   # or typedb:1729 inside Docker
 ```
 
 The `GET /api/discover` endpoint will then route through the TypeDB graph

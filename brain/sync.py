@@ -130,7 +130,8 @@ def _upsert_business(session, *, hybrid_card_id: str, name: str,
                      is_active: bool, archetype_id: Optional[str],
                      sub_type: Optional[str],
                      slug: Optional[str] = None,
-                     skip_archetype: bool = False) -> None:
+                     skip_archetype: bool = False,
+                     tier: str = "premium") -> None:
     """Insert or update a business_entity in TypeDB.
 
     skip_archetype=True: preserve existing archetype_id/sub_type in TypeDB
@@ -201,7 +202,7 @@ def _upsert_business(session, *, hybrid_card_id: str, name: str,
                 f'has hybrid_card_id "{hid_e}", '
                 f'has name "{name_e}", has slug "{slug_e}", '
                 f'has archetype_id "{arch_e}", has sub_type "{sub_e}", '
-                f'has tier "premium", has is_active {str(is_active).lower()}'
+                f'has tier "{_tql_escape(tier)}", has is_active {str(is_active).lower()}'
             )
             if lat is not None and lng is not None:
                 attrs += f', has latitude {lat}, has longitude {lng}'
@@ -267,6 +268,7 @@ def sync_business(
     sub_type: Optional[str] = None,
     slug: Optional[str] = None,
     skip_archetype: bool = False,
+    tier: str = "premium",
 ) -> bool:
     """Upsert one business into TypeDB.  Never raises — TypeDB errors are
     logged and swallowed so the caller (ingest route) always succeeds.
@@ -303,6 +305,7 @@ def sync_business(
                     sub_type=sub_type,
                     slug=slug,
                     skip_archetype=skip_archetype,
+                    tier=tier,
                 )
                 if suburb:
                     _link_suburb(session, hybrid_card_id, suburb)
