@@ -51,7 +51,7 @@ On Coolify (`167.86.79.151`):
 | Setting | Value |
 |---------|--------|
 | Source | `localloop-pro/looper` GitHub |
-| Build | Dockerfile at `backend/Dockerfile` |
+| Build | Dockerfile = `backend/Dockerfile`, build context = **repo root** |
 | Port | `8000` |
 | Domain | `api.localloop.ai` |
 | Volume | persist `/app/data` (SQLite) |
