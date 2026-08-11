@@ -177,6 +177,7 @@ def run() -> None:
 
     logger.info("Processing %d news post(s)", len(posts))
 
+    errors = 0
     for post in posts:
         post_id = post["id"]
         try:
@@ -188,10 +189,15 @@ def run() -> None:
             logger.info("  [%s] done → %s", post_id, audio_url)
         except Exception as exc:
             logger.error("  [%s] FAILED: %s", post_id, exc)
+            errors += 1
             try:
                 _mark_error(sb, post_id, str(exc))
             except Exception:
                 pass
+
+    if errors:
+        logger.error("%d/%d post(s) failed audio generation", errors, len(posts))
+        sys.exit(1)
 
 
 if __name__ == "__main__":

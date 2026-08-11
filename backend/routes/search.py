@@ -61,9 +61,13 @@ def _is_card_host(url: str | None) -> bool:
 def resolve_card_url(biz: Business, db: Session) -> str | None:
     """Return the HybridCard public URL for "View card →", or None.
 
-    Only accepts contract-approved hosts (*.hybridcard.ai, localhost, 127.0.0.1).
-    Never falls back to biz.website — that field is separate and rendered as
-    "Website →"; returning it here would mislabel a plain website as a card.
+    Two ingest paths store the card URL differently:
+    - deal events: stored in deal.public_card_url
+    - card-lifecycle events: stored in biz.website (see ingest.py _upsert_business)
+
+    Both paths are validated against the host allowlist before being labelled
+    "View card →". biz.website is only used as a card URL when the business has
+    a hybrid_card_id — without that gate, an ordinary website would be mislabelled.
     """
     if not biz.hybrid_card_id:
         return None
@@ -74,6 +78,9 @@ def resolve_card_url(biz: Business, db: Session) -> str | None:
             .first())
     if deal and _is_card_host(deal.public_card_url):
         return deal.public_card_url
+    # Card-lifecycle ingest stores public_card_url in biz.website; validate before surfacing
+    if _is_card_host(biz.website):
+        return biz.website
     return None
 
 
