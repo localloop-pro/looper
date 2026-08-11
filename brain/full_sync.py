@@ -75,6 +75,7 @@ def run_full_sync(db_url: str, typedb_host: str, typedb_db: str) -> int:
             lat=row[4],
             lng=row[5],
             is_active=bool(row[6]),
+            skip_archetype=True,  # SQLite has no archetype_id/sub_type; preserve TypeDB values
         )
         if success:
             ok += 1

@@ -159,17 +159,17 @@ def run() -> None:
 
     sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    # Over-fetch so client-side audio_error filter doesn't starve the batch
+    # Server-side filter: audio_url IS NULL AND no audio_error in payload.
+    # payload->>audio_error IS NULL covers both NULL payload and missing key,
+    # preventing failed rows from starving newer posts via the client-side limit.
     response = (sb.table("news_post")
                 .select("id, title, body, created_at, district_slug, payload")
                 .is_("audio_url", "null")
-                .limit(BATCH_SIZE * 5)
+                .filter("payload->>audio_error", "is", "null")
+                .limit(BATCH_SIZE)
                 .execute())
 
     posts = response.data or []
-    # Skip any post already marked with an audio_error
-    posts = [p for p in posts if not (p.get("payload") or {}).get("audio_error")]
-    posts = posts[:BATCH_SIZE]
 
     if not posts:
         logger.info("No news posts need audio — nothing to do")
