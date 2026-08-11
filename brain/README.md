@@ -58,7 +58,7 @@ Set `TYPEDB_ENABLED=true` in the backend's environment (`.env` or Coolify):
 
 ```
 TYPEDB_ENABLED=true
-TYPEDB_ADDRESS=localhost:1729   # internal Docker network in Coolify
+TYPEDB_ADDRESS=typedb:1729      # Docker service name in Coolify; use localhost:1729 when running the backend directly on the host
 ```
 
 The `GET /api/discover` endpoint will then route through the TypeDB graph
