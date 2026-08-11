@@ -38,7 +38,7 @@ DEFAULT_HOST = os.getenv("TYPEDB_ADDRESS", "localhost:1729")
 DEFAULT_TYPEDB_DB = os.getenv("TYPEDB_DB", "localloop")
 
 
-def run_full_sync(db_url: str, typedb_host: str, typedb_db: str) -> None:
+def run_full_sync(db_url: str, typedb_host: str, typedb_db: str) -> int:
     # Temporarily override the envs that sync.py reads so we can pass
     # non-default values in from the CLI.
     os.environ["TYPEDB_ADDRESS"] = typedb_host
@@ -83,6 +83,7 @@ def run_full_sync(db_url: str, typedb_host: str, typedb_db: str) -> None:
             err += 1
 
     logger.info("Full sync complete: %d ok, %d errors", ok, err)
+    return err
 
 
 if __name__ == "__main__":
@@ -91,4 +92,4 @@ if __name__ == "__main__":
     p.add_argument("--host", default=DEFAULT_HOST)
     p.add_argument("--typedb-db", default=DEFAULT_TYPEDB_DB)
     args = p.parse_args()
-    run_full_sync(args.db_url, args.host, args.typedb_db)
+    sys.exit(1 if run_full_sync(args.db_url, args.host, args.typedb_db) else 0)

@@ -172,8 +172,7 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
             distance = haversine_km(center_lat, center_lng, biz.lat, biz.lng)
             if distance > radius_km:
                 continue
-        elif center:
-            continue  # no coords + center given → can't place business, skip
+        # no coords: include without distance (sorts last); matches SQLite-path behaviour
 
         review_count = db.query(func.count(Review.id)).filter(
             Review.business_id == biz.id, Review.is_public == True

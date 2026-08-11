@@ -778,7 +778,7 @@
       // link's own words are the query
       cmd.searchTerm = Router.clean(q) || q;
     }
-    if (flyCoords && !cmd.coords) cmd.coords = flyCoords;
+    if (flyCoords) cmd.coords = flyCoords; // explicit fly= always owns the camera + search center
     runSearch(cmd);
   }
 

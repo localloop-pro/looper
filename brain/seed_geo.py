@@ -81,7 +81,8 @@ def _existing_names(session, entity_type: str) -> set[str]:
                 except AttributeError:
                     names.add(concept.value)
         except Exception as exc:
-            print(f"  warn: could not read {entity_type} names: {exc}", file=sys.stderr)
+            print(f"  error: could not read {entity_type} names: {exc}", file=sys.stderr)
+            raise
     return names
 
 
@@ -104,7 +105,8 @@ def _existing_nearby_pairs(session) -> set[tuple]:
                         return c.value
                 pairs.add((_val(answer.get("na")), _val(answer.get("nb"))))
         except Exception as exc:
-            print(f"  warn: could not read nearby pairs: {exc}", file=sys.stderr)
+            print(f"  error: could not read nearby pairs: {exc}", file=sys.stderr)
+            raise
     return pairs
 
 
