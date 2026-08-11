@@ -156,6 +156,7 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
     ]
 
     businesses = list(card_bizs) + non_card_bizs + extra_carded
+    businesses.sort(key=lambda b: b.id)  # neutral, deterministic order before scoring so source is never a tie-breaker
 
     # Category filter (Python-side; avoids TypeQL string-match quirks)
     if category:

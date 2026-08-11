@@ -52,7 +52,7 @@ def _is_card_host(url: str | None) -> bool:
         return (
             host == "hybridcard.ai"
             or host.endswith(".hybridcard.ai")
-            or host in ("localhost", "127.0.0.1")
+            or host in ("localhost", "127.0.0.1", "::1")
         )
     except Exception:
         return False
