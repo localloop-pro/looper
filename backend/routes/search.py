@@ -1,6 +1,5 @@
 """LOOPER API — Search Routes — Neutral, review-backed business discovery"""
 import math
-from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -36,38 +35,13 @@ def get_top_review(business_id: int, db: Session) -> str | None:
     return None
 
 
-def _is_card_host(url: str | None) -> bool:
-    """True only for contract-approved HybridCard hosts (*.hybridcard.ai or localhost/127.0.0.1).
-
-    biz.website is a general business website and must NOT be treated as a card
-    URL — it has its own "Website →" link in the popup and a separate SearchResult field.
-    """
-    if not url:
-        return False
-    try:
-        p = urlparse(url)
-        if p.scheme not in ("http", "https"):
-            return False
-        host = p.hostname or ""
-        return (
-            host == "hybridcard.ai"
-            or host.endswith(".hybridcard.ai")
-            or host in ("localhost", "127.0.0.1", "::1")
-        )
-    except Exception:
-        return False
-
-
 def resolve_card_url(biz: Business, db: Session) -> str | None:
-    """Return the HybridCard public URL for "View card →", or None.
+    """Pass-through HybridCard public URL for "View card →" (never a ranking input).
 
-    Two ingest paths store the card URL differently:
-    - deal events: stored in deal.public_card_url
-    - card-lifecycle events: stored in biz.website (see ingest.py _upsert_business)
-
-    Both paths are validated against the host allowlist before being labelled
-    "View card →". biz.website is only used as a card URL when the business has
-    a hybrid_card_id — without that gate, an ordinary website would be mislabelled.
+    Prefer an active deal's public_card_url, else the business website set by
+    bridge ingest (which IS public_card_url). Accept any host — prod
+    ``*.hybridcard.ai`` and local/dev ``http://localhost:3000/c/{slug}`` alike.
+    Never rebuild from slug and never rewrite the stored URL.
     """
     if not biz.hybrid_card_id:
         return None
@@ -76,10 +50,9 @@ def resolve_card_url(biz: Business, db: Session) -> str | None:
                     Deal.active == True,
                     Deal.public_card_url.is_not(None))
             .first())
-    if deal and _is_card_host(deal.public_card_url):
+    if deal and deal.public_card_url:
         return deal.public_card_url
-    # Card-lifecycle ingest stores public_card_url in biz.website; validate before surfacing
-    if _is_card_host(biz.website):
+    if biz.website:
         return biz.website
     return None
 
