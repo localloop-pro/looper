@@ -13,8 +13,10 @@ RUN pip install --no-cache-dir -r requirements-brain.txt
 
 COPY backend/ backend/
 COPY brain/ brain/
+COPY tools/ tools/
 
-RUN mkdir -p /app/looper/backend/data
+RUN mkdir -p /app/data
+ENV LOOPER_DB_URL=sqlite:////app/data/looper.db
 
 EXPOSE 8000
 

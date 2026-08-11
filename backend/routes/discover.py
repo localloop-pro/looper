@@ -24,6 +24,11 @@ from services import telemetry
 
 router = APIRouter(prefix="/api", tags=["discover"])
 
+# Buffer added to radius_km when testing suburb centroids against the search
+# radius — prevents false negatives when a suburb centroid sits just outside
+# the radius but the actual suburb boundary overlaps it.
+_SUBURB_BUFFER_KM = 2.0
+
 # Seed geography: Eastern Suburbs + Byron (mirrors the voice router's
 # SUBURBS table in web/jarvis/voice-command-router.js — keep in sync until
 # the TypeDB geo hierarchy replaces both, F2.1).
@@ -83,10 +88,12 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
 
     center_lat, center_lng = center
 
-    # Suburbs within radius_km (Python haversine over SUBURB_COORDS)
+    # Suburbs within radius_km + buffer (centroid-based; buffer prevents false
+    # negatives when the centroid is just outside the radius but the suburb
+    # boundary overlaps).
     nearby_suburbs: set[str] = {
         name for name, (slat, slng) in SUBURB_COORDS.items()
-        if haversine_km(center_lat, center_lng, slat, slng) <= radius_km
+        if haversine_km(center_lat, center_lng, slat, slng) <= radius_km + _SUBURB_BUFFER_KM
     }
 
     # TypeDB: get active carded business_entities + their suburb name.
@@ -133,7 +140,22 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
         .all()
     )
 
-    businesses = list(card_bizs) + non_card_bizs
+    # Carded businesses that have no `located_in` in TypeDB (not yet synced)
+    # would be silently dropped by the TypeQL query; include them via SQLite.
+    card_biz_ids_in_graph = {b.hybrid_card_id for b in card_bizs}
+    extra_carded = [
+        b for b in (
+            db.query(Business)
+            .filter(
+                Business.hybrid_card_id.is_not(None),
+                Business.is_active.is_not(False),
+            )
+            .all()
+        )
+        if b.hybrid_card_id not in card_biz_ids_in_graph
+    ]
+
+    businesses = list(card_bizs) + non_card_bizs + extra_carded
 
     # Category filter (Python-side; avoids TypeQL string-match quirks)
     if category:

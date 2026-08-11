@@ -570,7 +570,7 @@
 
     var seq = S.reqSeq; // a newer command supersedes this response
     var radiusKm = Math.max(0.1, Math.min(50, radiusM / 1000));
-    var searchParams = {
+    return api("/search", {
       q: cmd.searchTerm || cmd.raw,
       lat: center.lat,
       lng: center.lng,
@@ -578,9 +578,7 @@
       limit: 5,
       intent: cmd.intent, // telemetry only (F2.5) — never a ranking input
       session: S.session,
-    };
-    if (cmd.category) searchParams.category = cmd.category;
-    return api("/search", searchParams).then(function (data) {
+    }).then(function (data) {
       if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
       var results = (data && data.results) || [];
       S.face.setMood("idle");
@@ -809,6 +807,7 @@
         markerLib: opts.markerLib || root.maplibregl || root.mapboxgl,
         onCategory: opts.onCategory || cfg.onCategory || null,
         claimCta: opts.claimCta || cfg.claimCta || null,
+        district: S.district,
         resolveBusiness: function (name) {
           return api("/search", { q: name, limit: 1 }).then(function (d) {
             return (d.results && d.results[0]) || null;

@@ -45,7 +45,7 @@ def run_full_sync(db_url: str, typedb_host: str, typedb_db: str) -> None:
     os.environ["TYPEDB_DB"] = typedb_db
     os.environ["TYPEDB_ENABLED"] = "true"
 
-    from brain.sync import sync_business  # type: ignore[import]
+    from sync import sync_business  # type: ignore[import]
 
     try:
         from sqlalchemy import create_engine, text
@@ -56,24 +56,25 @@ def run_full_sync(db_url: str, typedb_host: str, typedb_db: str) -> None:
     engine = create_engine(db_url, connect_args={"check_same_thread": False})
     with engine.connect() as conn:
         rows = conn.execute(text(
-            "SELECT hybrid_card_id, name, category, lat, lng, is_active "
-            "FROM businesses WHERE hybrid_card_id IS NOT NULL"
+            "SELECT id, hybrid_card_id, name, category, lat, lng, is_active "
+            "FROM businesses"
         )).fetchall()
 
     if not rows:
-        logger.info("No hybrid-card businesses found in SQLite — nothing to sync")
+        logger.info("No businesses found in SQLite — nothing to sync")
         return
 
     logger.info("Full sync: %d businesses to upsert", len(rows))
     ok = err = 0
     for row in rows:
+        hid = row[1] if row[1] else f"seed:{row[0]}"
         success = sync_business(
-            hybrid_card_id=row[0],
-            name=row[1] or "",
-            category=row[2] or "other",
-            lat=row[3],
-            lng=row[4],
-            is_active=bool(row[5]),
+            hybrid_card_id=hid,
+            name=row[2] or "",
+            category=row[3] or "other",
+            lat=row[4],
+            lng=row[5],
+            is_active=bool(row[6]),
         )
         if success:
             ok += 1
