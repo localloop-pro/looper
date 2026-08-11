@@ -45,16 +45,20 @@ SUBURB_COORDS = {
     "waverley": (-33.8980, 151.2540),
     "woollahra": (-33.8870, 151.2410),
     "paddington": (-33.8840, 151.2260),
+    "surry hills": (-33.8880, 151.2100),
+    "redfern": (-33.8930, 151.2040),
+    "alexandria": (-33.9130, 151.1960),
     "byron bay": (-28.6474, 153.6120),
 }
 
 
-def _graph_discover(db, suburb, lat, lng, radius_km, category, limit):
+def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
+                    intent=None, session_id=None):
     """TypeDB graph engine for /api/discover (F2.3).
 
-    Finds business_entities located_in suburbs within radius_km of the center,
-    hydrates full details from SQLite, and ranks anti-bias.
-    Raises on any error — the caller catches and falls back to SQLite haversine.
+    Merges carded businesses from the TypeDB graph with non-carded businesses
+    from SQLite so graph discovery maintains parity with the fallback engine.
+    Raises on TypeDB connection/query error — caller falls back transparently.
     """
     import os as _os
     from typedb.driver import TypeDB, SessionType, TransactionType  # type: ignore[import]
@@ -85,8 +89,9 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit):
         if haversine_km(center_lat, center_lng, slat, slng) <= radius_km
     }
 
-    # TypeDB: get all active business_entities + their suburb name
-    hybrid_card_id_to_suburb: dict[str, str] = {}
+    # TypeDB: get active carded business_entities + their suburb name.
+    # Raises on connection/query errors → caller falls back to SQLite.
+    hybrid_card_ids: set[str] = set()
     with TypeDB.core_driver(address) as driver:
         with driver.session(typedb_db, SessionType.DATA) as session:
             with session.transaction(TransactionType.READ) as tx:
@@ -105,20 +110,30 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit):
                         hid = cm.get("hid").value
                         sname = cm.get("sname").value
                     if sname.lower() in nearby_suburbs:
-                        hybrid_card_id_to_suburb[hid] = sname
+                        hybrid_card_ids.add(hid)
 
-    if not hybrid_card_id_to_suburb:
-        raise LookupError("no TypeDB results for this area")
-
-    # Hydrate from SQLite (source of truth for full business details)
-    businesses = (
+    # Hydrate carded businesses from SQLite (source of truth for full details)
+    card_bizs = (
         db.query(Business)
         .filter(
-            Business.hybrid_card_id.in_(list(hybrid_card_id_to_suburb)),
+            Business.hybrid_card_id.in_(list(hybrid_card_ids)),
+            Business.is_active.is_not(False),
+        )
+        .all()
+    ) if hybrid_card_ids else []
+
+    # Also include non-carded businesses (Facebook-imported, seeded, etc.) so
+    # graph discovery maintains parity with the SQLite fallback.
+    non_card_bizs = (
+        db.query(Business)
+        .filter(
+            Business.hybrid_card_id.is_(None),
             Business.is_active.is_not(False),
         )
         .all()
     )
+
+    businesses = list(card_bizs) + non_card_bizs
 
     # Category filter (Python-side; avoids TypeQL string-match quirks)
     if category:
@@ -135,6 +150,8 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit):
             distance = haversine_km(center_lat, center_lng, biz.lat, biz.lng)
             if distance > radius_km:
                 continue
+        elif center:
+            continue  # no coords + center given → can't place business, skip
 
         review_count = db.query(func.count(Review.id)).filter(
             Review.business_id == biz.id, Review.is_public == True
@@ -191,6 +208,10 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit):
             f"ranked by community experience. I don't pick favourites — you decide!"
         )
 
+    telemetry.log_query(db, f"discover suburb={suburb or ''} category={category or ''}",
+                        intent=intent or "discover", session_id=session_id,
+                        response_text=message)
+
     return {
         "engine": "graph",
         "suburb": suburb_key or suburb,
@@ -219,7 +240,8 @@ def discover(
     engine = "fallback"
     if os.getenv("TYPEDB_ENABLED", "false").lower() == "true":
         try:
-            return _graph_discover(db, suburb, lat, lng, radius_km, category, limit)
+            return _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
+                                   intent=intent, session_id=session)
         except Exception:
             engine = "fallback"  # graph down → transparent fallback (additive rule)
 

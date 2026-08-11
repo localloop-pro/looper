@@ -21,19 +21,25 @@ import sys
 from pathlib import Path
 
 SCHEMA_DIR = Path(__file__).parent / "schema"
-APPLIED_LOG = Path(__file__).parent / ".applied_migrations"
 DEFAULT_HOST = os.getenv("TYPEDB_ADDRESS", "localhost:1729")
 DEFAULT_DB = os.getenv("TYPEDB_DB", "localloop")
 
 
-def _applied() -> set[str]:
-    if not APPLIED_LOG.exists():
+def _log_path(host: str, db_name: str) -> Path:
+    """Return a migration log path scoped to this host+db so staging and
+    production never share the same applied-migrations record."""
+    safe_key = f"{host}_{db_name}".replace(":", "_").replace("/", "_")
+    return Path(__file__).parent / f".applied_migrations.{safe_key}"
+
+
+def _applied(log_path: Path) -> set[str]:
+    if not log_path.exists():
         return set()
-    return {line.strip() for line in APPLIED_LOG.read_text().splitlines() if line.strip()}
+    return {line.strip() for line in log_path.read_text().splitlines() if line.strip()}
 
 
-def _mark_applied(filename: str) -> None:
-    with APPLIED_LOG.open("a") as fh:
+def _mark_applied(log_path: Path, filename: str) -> None:
+    with log_path.open("a") as fh:
         fh.write(filename + "\n")
 
 
@@ -54,7 +60,8 @@ def migrate(host: str, db_name: str, dry_run: bool = False) -> None:
         print(f"No .tql files found in {SCHEMA_DIR}")
         return
 
-    applied = _applied()
+    log_path = _log_path(host, db_name)
+    applied = _applied(log_path)
     pending = [f for f in schema_files if f.name not in applied]
     if not pending:
         print("All migrations already applied — nothing to do.")
@@ -80,7 +87,7 @@ def migrate(host: str, db_name: str, dry_run: bool = False) -> None:
                 with session.transaction(TransactionType.WRITE) as tx:
                     tx.query.define(schema_str)
                     tx.commit()
-                _mark_applied(schema_file.name)
+                _mark_applied(log_path, schema_file.name)
                 print("done")
 
     print("Migration complete.")

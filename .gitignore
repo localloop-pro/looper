@@ -7,6 +7,9 @@ build/
 venv/
 .venv/
 
+# TypeDB migration state (per-host; runtime only)
+brain/.applied_migrations*
+
 # Database
 backend/data/looper.db
 backend/data/*.db

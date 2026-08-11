@@ -26,20 +26,36 @@ from services.bridge_hmac import BridgeAuthError
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
 
-def _brain_sync(biz: Business) -> None:
-    """Fire-and-forget TypeDB sync (F2.2).  Never raises."""
+def _brain_sync(
+    hybrid_card_id: str,
+    name: str,
+    category: str,
+    lat: float | None,
+    lng: float | None,
+    is_active: bool,
+    archetype_id: str | None = None,
+    sub_type: str | None = None,
+) -> None:
+    """Fire-and-forget TypeDB sync (F2.2).  Never raises.
+
+    Accepts scalar values extracted from the Business ORM object before the
+    request session closes — avoids DetachedInstanceError when FastAPI runs
+    background tasks after the response is sent.
+    """
     try:
         import sys
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "brain"))
         from sync import sync_business  # type: ignore[import]
         sync_business(
-            hybrid_card_id=biz.hybrid_card_id,
-            name=biz.name or "",
-            category=biz.category or "other",
-            lat=biz.lat,
-            lng=biz.lng,
-            is_active=bool(biz.is_active),
+            hybrid_card_id=hybrid_card_id,
+            name=name,
+            category=category,
+            lat=lat,
+            lng=lng,
+            is_active=is_active,
+            archetype_id=archetype_id,
+            sub_type=sub_type,
         )
     except Exception:
         pass  # additive: TypeDB never blocks ingest
@@ -184,7 +200,13 @@ async def ingest_hybridcard_deal(
     event_type = "deal.upserted" if payload.active else "deal.removed"
     result = _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
     if not result.get("duplicate") and not stale:
-        background_tasks.add_task(_brain_sync, biz)
+        # Extract scalars while session is open; background task runs after session closes.
+        background_tasks.add_task(
+            _brain_sync,
+            biz.hybrid_card_id, biz.name or "", biz.category or "other",
+            biz.lat, biz.lng, bool(biz.is_active),
+            None, payload.sub_type,
+        )
     return result
 
 
@@ -220,7 +242,13 @@ async def ingest_hybridcard_card(
     event_type = "card.upserted" if payload.active else "card.removed"
     result = _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
     if not result.get("duplicate") and not stale:
-        background_tasks.add_task(_brain_sync, biz)
+        # Extract scalars while session is open; background task runs after session closes.
+        background_tasks.add_task(
+            _brain_sync,
+            biz.hybrid_card_id, biz.name or "", biz.category or "other",
+            biz.lat, biz.lng, bool(biz.is_active),
+            payload.archetype, payload.sub_type,
+        )
     return result
 
 

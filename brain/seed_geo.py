@@ -85,10 +85,14 @@ def _existing_names(session, entity_type: str) -> set[str]:
     return names
 
 
-def _existing_nearby_pairs(session) -> set[frozenset]:
-    """Return frozensets {name_a, name_b} for existing nearby relations."""
+def _existing_nearby_pairs(session) -> set[tuple]:
+    """Return (name_a, name_b) tuples for existing nearby relations (role-ordered).
+
+    Tracks directed pairs so both (a→b) and (b→a) are seeded independently,
+    allowing TypeQL queries to find neighbors from either endpoint.
+    """
     from typedb.driver import TransactionType  # type: ignore[import]
-    pairs: set[frozenset] = set()
+    pairs: set[tuple] = set()
     with session.transaction(TransactionType.READ) as tx:
         query = 'match (region-a: $a, region-b: $b) isa nearby; $a has name $na; $b has name $nb; get $na, $nb;'
         try:
@@ -98,7 +102,7 @@ def _existing_nearby_pairs(session) -> set[frozenset]:
                         return c.get_value()
                     except AttributeError:
                         return c.value
-                pairs.add(frozenset({_val(answer.get("na")), _val(answer.get("nb"))}))
+                pairs.add((_val(answer.get("na")), _val(answer.get("nb"))))
         except Exception as exc:
             print(f"  warn: could not read nearby pairs: {exc}", file=sys.stderr)
     return pairs
@@ -186,26 +190,29 @@ def seed(host: str, db_name: str) -> None:
             print(f"  geo chain: {inserts_made} inserts (0 if all existed)")
 
             # ── Step 2: nearby relations ─────────────────────────────────────
+            # Insert both (a→b) and (b→a) so TypeQL can find neighbors from
+            # either endpoint with role-specific queries like (region-a: $x).
             existing_pairs = _existing_nearby_pairs(session)
             nearby_inserts = 0
             with session.transaction(TransactionType.WRITE) as tx:
                 for i, a in enumerate(rows):
                     for b in rows[i + 1:]:
-                        if frozenset({a.name, b.name}) in existing_pairs:
-                            continue
                         dist = haversine(a.lat, a.lng, b.lat, b.lng)
                         if dist > NEARBY_KM:
                             continue
-                        tx.query.insert(
-                            f'match $a isa suburb, has name "{a.name}"; '
-                            f'$b isa suburb, has name "{b.name}"; '
-                            f'insert (region-a: $a, region-b: $b) isa nearby, '
-                            f'has distance_km {round(dist, 2)};'
-                        )
-                        existing_pairs.add(frozenset({a.name, b.name}))
-                        nearby_inserts += 1
+                        for x, y in [(a, b), (b, a)]:
+                            if (x.name, y.name) in existing_pairs:
+                                continue
+                            tx.query.insert(
+                                f'match $a isa suburb, has name "{x.name}"; '
+                                f'$b isa suburb, has name "{y.name}"; '
+                                f'insert (region-a: $a, region-b: $b) isa nearby, '
+                                f'has distance_km {round(dist, 2)};'
+                            )
+                            existing_pairs.add((x.name, y.name))
+                            nearby_inserts += 1
                 tx.commit()
-            print(f"  nearby: {nearby_inserts} pairs inserted (≤ {NEARBY_KM} km)")
+            print(f"  nearby: {nearby_inserts} directed pairs inserted (≤ {NEARBY_KM} km)")
 
     print("Geo seed complete.")
 

@@ -133,8 +133,16 @@ def _set_audio_url(supabase_client, post_id: str, audio_url: str) -> None:
 
 
 def _mark_error(supabase_client, post_id: str, error: str) -> None:
+    # Fetch existing payload first so we only add audio_error, not overwrite other fields
+    resp = (supabase_client.table("news_post")
+            .select("payload")
+            .eq("id", post_id)
+            .single()
+            .execute())
+    existing = (resp.data or {}).get("payload") or {}
+    merged = {**existing, "audio_error": error[:200]}
     (supabase_client.table("news_post")
-     .update({"payload": {"audio_error": error[:200]}})
+     .update({"payload": merged})
      .eq("id", post_id)
      .execute())
 
@@ -151,16 +159,17 @@ def run() -> None:
 
     sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    # Fetch posts that need audio (audio_url IS NULL, no audio_error)
+    # Over-fetch so client-side audio_error filter doesn't starve the batch
     response = (sb.table("news_post")
                 .select("id, title, body, created_at, district_slug, payload")
                 .is_("audio_url", "null")
-                .limit(BATCH_SIZE)
+                .limit(BATCH_SIZE * 5)
                 .execute())
 
     posts = response.data or []
     # Skip any post already marked with an audio_error
     posts = [p for p in posts if not (p.get("payload") or {}).get("audio_error")]
+    posts = posts[:BATCH_SIZE]
 
     if not posts:
         logger.info("No news posts need audio — nothing to do")

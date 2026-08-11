@@ -30,7 +30,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_URL = os.getenv("LOOPER_DB_URL", "sqlite:///data/looper.db")
+DEFAULT_DB_URL = os.getenv(
+    "LOOPER_DB_URL",
+    f"sqlite:///{Path(__file__).parent.parent / 'backend' / 'data' / 'looper.db'}",
+)
 DEFAULT_HOST = os.getenv("TYPEDB_ADDRESS", "localhost:1729")
 DEFAULT_TYPEDB_DB = os.getenv("TYPEDB_DB", "localloop")
 
@@ -64,18 +67,18 @@ def run_full_sync(db_url: str, typedb_host: str, typedb_db: str) -> None:
     logger.info("Full sync: %d businesses to upsert", len(rows))
     ok = err = 0
     for row in rows:
-        try:
-            sync_business(
-                hybrid_card_id=row[0],
-                name=row[1] or "",
-                category=row[2] or "other",
-                lat=row[3],
-                lng=row[4],
-                is_active=bool(row[5]),
-            )
+        success = sync_business(
+            hybrid_card_id=row[0],
+            name=row[1] or "",
+            category=row[2] or "other",
+            lat=row[3],
+            lng=row[4],
+            is_active=bool(row[5]),
+        )
+        if success:
             ok += 1
-        except Exception as exc:
-            logger.warning("  skip %s: %s", row[0], exc)
+        else:
+            logger.warning("  sync failed for %s", row[0])
             err += 1
 
     logger.info("Full sync complete: %d ok, %d errors", ok, err)

@@ -30,6 +30,7 @@ SUBURBS_CSV = Path(__file__).parent / "data" / "suburbs.csv"
 _TYPEDB_ENABLED = os.getenv("TYPEDB_ENABLED", "false").lower() == "true"
 _TYPEDB_HOST = os.getenv("TYPEDB_ADDRESS", "localhost:1729")
 _TYPEDB_DB = os.getenv("TYPEDB_DB", "localloop")
+_MAX_SUBURB_KM = 100.0  # skip sync for businesses more than 100 km from any seeded suburb
 
 
 # ── Suburb lookup (haversine nearest) ────────────────────────────────────────
@@ -73,14 +74,27 @@ def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 
 def nearest_suburb(lat: float, lng: float) -> Optional[str]:
-    """Return the name of the nearest suburb from suburbs.csv, or None."""
+    """Return the name of the nearest suburb from suburbs.csv, or None.
+
+    Returns None if the nearest suburb is more than _MAX_SUBURB_KM away —
+    prevents overseas / interstate businesses being assigned to a Sydney suburb.
+    """
     suburbs = _load_suburbs()
     if not suburbs:
         return None
-    return min(suburbs, key=lambda s: _haversine(lat, lng, s.lat, s.lng)).name
+    best = min(suburbs, key=lambda s: _haversine(lat, lng, s.lat, s.lng))
+    if _haversine(lat, lng, best.lat, best.lng) > _MAX_SUBURB_KM:
+        return None
+    return best.name
 
 
 # ── TypeDB helpers ────────────────────────────────────────────────────────────
+
+
+def _tql_escape(value: str) -> str:
+    """Escape a string for safe interpolation inside TypeQL double-quoted literals."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
 
 def _get_driver():
     from typedb.driver import TypeDB  # type: ignore[import]
@@ -118,15 +132,18 @@ def _upsert_business(session, *, hybrid_card_id: str, name: str,
     """Insert or update a business_entity in TypeDB."""
     from typedb.driver import TransactionType  # type: ignore[import]
 
-    slug = _slugify(name)
-    archetype_id = archetype_id or category or "other"
-    sub_type = sub_type or ""
+    # Escape all string values before TypeQL interpolation
+    hid_e = _tql_escape(hybrid_card_id)
+    name_e = _tql_escape(name)
+    slug_e = _tql_escape(_slugify(name))
+    arch_e = _tql_escape(archetype_id or category or "other")
+    sub_e = _tql_escape(sub_type or "")
 
     with session.transaction(TransactionType.WRITE) as tx:
         if _concept_value is not None and _business_exists(session, hybrid_card_id):
             # Delete mutable attributes before re-inserting (TypeDB 2.x update pattern)
             tx.query.delete(
-                f'match $b isa business_entity, has hybrid_card_id "{hybrid_card_id}", '
+                f'match $b isa business_entity, has hybrid_card_id "{hid_e}", '
                 f'has name $n, has slug $sl, has archetype_id $ai, '
                 f'has sub_type $st, has is_active $ia; '
                 f'delete $b has name $n; $b has slug $sl; $b has archetype_id $ai; '
@@ -134,14 +151,14 @@ def _upsert_business(session, *, hybrid_card_id: str, name: str,
             )
             if lat is not None:
                 tx.query.delete(
-                    f'match $b isa business_entity, has hybrid_card_id "{hybrid_card_id}", '
+                    f'match $b isa business_entity, has hybrid_card_id "{hid_e}", '
                     f'has latitude $la, has longitude $lo; '
                     f'delete $b has latitude $la; $b has longitude $lo;'
                 )
             tx.query.insert(
-                f'match $b isa business_entity, has hybrid_card_id "{hybrid_card_id}"; '
-                f'insert $b has name "{name}", has slug "{slug}", '
-                f'has archetype_id "{archetype_id}", has sub_type "{sub_type}", '
+                f'match $b isa business_entity, has hybrid_card_id "{hid_e}"; '
+                f'insert $b has name "{name_e}", has slug "{slug_e}", '
+                f'has archetype_id "{arch_e}", has sub_type "{sub_e}", '
                 f'has is_active {str(is_active).lower()}'
                 + (f', has latitude {lat}, has longitude {lng}' if lat is not None else '')
                 + ';'
@@ -149,9 +166,9 @@ def _upsert_business(session, *, hybrid_card_id: str, name: str,
         else:
             # New entity
             attrs = (
-                f'has hybrid_card_id "{hybrid_card_id}", '
-                f'has name "{name}", has slug "{slug}", '
-                f'has archetype_id "{archetype_id}", has sub_type "{sub_type}", '
+                f'has hybrid_card_id "{hid_e}", '
+                f'has name "{name_e}", has slug "{slug_e}", '
+                f'has archetype_id "{arch_e}", has sub_type "{sub_e}", '
                 f'has tier "premium", has is_active {str(is_active).lower()}'
             )
             if lat is not None:
@@ -203,17 +220,20 @@ def sync_business(
     *,
     archetype_id: Optional[str] = None,
     sub_type: Optional[str] = None,
-) -> None:
+) -> bool:
     """Upsert one business into TypeDB.  Never raises — TypeDB errors are
-    logged and swallowed so the caller (ingest route) always succeeds."""
+    logged and swallowed so the caller (ingest route) always succeeds.
+
+    Returns True on success, False if the sync was skipped or failed.
+    """
     if not _TYPEDB_ENABLED:
-        return
+        return True  # disabled is not an error
 
     try:
         from typedb.driver import SessionType  # type: ignore[import]
     except ImportError:
         logger.debug("typedb-driver not installed; skipping brain sync")
-        return
+        return False
 
     suburb = nearest_suburb(lat, lng) if (lat and lng) else None
 
@@ -233,6 +253,8 @@ def sync_business(
                 )
                 if suburb:
                     _link_suburb(session, hybrid_card_id, suburb)
+        return True
     except Exception as exc:
         # ADDITIVE RULE: TypeDB down ≠ ingest failure.
         logger.warning("TypeDB sync failed for %s: %s", hybrid_card_id, exc)
+        return False
