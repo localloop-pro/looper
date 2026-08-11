@@ -13,7 +13,7 @@ Contract rules this file lives by:
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -24,6 +24,25 @@ from services import bridge_hmac
 from services.bridge_hmac import BridgeAuthError
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
+
+
+def _brain_sync(biz: Business) -> None:
+    """Fire-and-forget TypeDB sync (F2.2).  Never raises."""
+    try:
+        import sys
+        import os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "brain"))
+        from sync import sync_business  # type: ignore[import]
+        sync_business(
+            hybrid_card_id=biz.hybrid_card_id,
+            name=biz.name or "",
+            category=biz.category or "other",
+            lat=biz.lat,
+            lng=biz.lng,
+            is_active=bool(biz.is_active),
+        )
+    except Exception:
+        pass  # additive: TypeDB never blocks ingest
 
 # Real contract payloads are ~2 KB; cap well above that but far below
 # anything that could hurt (body is buffered pre-auth and stored in
@@ -117,7 +136,11 @@ def _upsert_business(db: Session, *, hybrid_card_id: str, name: str, category: s
 
 
 @router.post("/hybridcard-deal")
-async def ingest_hybridcard_deal(request: Request, db: Session = Depends(get_db)):
+async def ingest_hybridcard_deal(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Receiver for LooperIngestPayload (deal.upserted / deal.removed)."""
     raw = await _verified_raw_body(request)
     try:
@@ -159,11 +182,18 @@ async def ingest_hybridcard_deal(request: Request, db: Session = Depends(get_db)
             deal.source_updated_at = sender_ts
 
     event_type = "deal.upserted" if payload.active else "deal.removed"
-    return _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
+    result = _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
+    if not result.get("duplicate") and not stale:
+        background_tasks.add_task(_brain_sync, biz)
+    return result
 
 
 @router.post("/hybridcard-card")
-async def ingest_hybridcard_card(request: Request, db: Session = Depends(get_db)):
+async def ingest_hybridcard_card(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Receiver for card-lifecycle events (card.upserted / card.removed).
 
     card.removed flips the business is_active flag — its deals stay
@@ -188,7 +218,10 @@ async def ingest_hybridcard_card(request: Request, db: Session = Depends(get_db)
         biz.is_active = payload.active  # is_verified untouched
 
     event_type = "card.upserted" if payload.active else "card.removed"
-    return _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
+    result = _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
+    if not result.get("duplicate") and not stale:
+        background_tasks.add_task(_brain_sync, biz)
+    return result
 
 
 @router.get("/status")

@@ -1,0 +1,8 @@
+# Brain (TypeDB) dependencies — install only when TYPEDB_ENABLED=true
+# Pin exact version: run `pip index versions typedb-driver` and record in .SEED/decisions.md.
+# Verify the TypeQL schema syntax against the installed version before first migration.
+typedb-driver>=2.28.0
+
+# Tools (news audio worker) — install for Coolify tools service
+# openai is already in backend/requirements.txt
+supabase>=2.0.0

@@ -49,9 +49,157 @@ SUBURB_COORDS = {
 }
 
 
-def _graph_discover(*_args, **_kwargs):
-    """TypeDB engine — lands with F2.2. Raising keeps us on the fallback."""
-    raise NotImplementedError("TypeDB engine not deployed yet (F2.1/F2.2)")
+def _graph_discover(db, suburb, lat, lng, radius_km, category, limit):
+    """TypeDB graph engine for /api/discover (F2.3).
+
+    Finds business_entities located_in suburbs within radius_km of the center,
+    hydrates full details from SQLite, and ranks anti-bias.
+    Raises on any error — the caller catches and falls back to SQLite haversine.
+    """
+    import os as _os
+    from typedb.driver import TypeDB, SessionType, TransactionType  # type: ignore[import]
+
+    address = _os.getenv("TYPEDB_ADDRESS", "localhost:1729")
+    typedb_db = _os.getenv("TYPEDB_DB", "localloop")
+
+    # Resolve center (same logic as fallback)
+    center = None
+    suburb_key = None
+    if suburb:
+        folded = fold_accents(suburb)
+        for key in sorted(SUBURB_COORDS, key=len, reverse=True):
+            if key == folded or key in folded:
+                suburb_key = key
+                center = SUBURB_COORDS[key]
+                break
+    if center is None and lat is not None and lng is not None:
+        center = (lat, lng)
+    if center is None:
+        raise ValueError("no center to search from")
+
+    center_lat, center_lng = center
+
+    # Suburbs within radius_km (Python haversine over SUBURB_COORDS)
+    nearby_suburbs: set[str] = {
+        name for name, (slat, slng) in SUBURB_COORDS.items()
+        if haversine_km(center_lat, center_lng, slat, slng) <= radius_km
+    }
+
+    # TypeDB: get all active business_entities + their suburb name
+    hybrid_card_id_to_suburb: dict[str, str] = {}
+    with TypeDB.core_driver(address) as driver:
+        with driver.session(typedb_db, SessionType.DATA) as session:
+            with session.transaction(TransactionType.READ) as tx:
+                typeql = (
+                    "match "
+                    "$b isa business_entity, has hybrid_card_id $hid, has is_active true; "
+                    "(contained: $b, container: $s) isa located_in; "
+                    "$s isa suburb, has name $sname; "
+                    "get $b, $hid, $sname;"
+                )
+                for cm in tx.query.get(typeql):
+                    try:
+                        hid = cm.get("hid").get_value()
+                        sname = cm.get("sname").get_value()
+                    except AttributeError:
+                        hid = cm.get("hid").value
+                        sname = cm.get("sname").value
+                    if sname.lower() in nearby_suburbs:
+                        hybrid_card_id_to_suburb[hid] = sname
+
+    if not hybrid_card_id_to_suburb:
+        raise LookupError("no TypeDB results for this area")
+
+    # Hydrate from SQLite (source of truth for full business details)
+    businesses = (
+        db.query(Business)
+        .filter(
+            Business.hybrid_card_id.in_(list(hybrid_card_id_to_suburb)),
+            Business.is_active.is_not(False),
+        )
+        .all()
+    )
+
+    # Category filter (Python-side; avoids TypeQL string-match quirks)
+    if category:
+        cat_pat = fold_accents(category).lower()
+        businesses = [
+            b for b in businesses
+            if b.category and cat_pat in fold_accents(b.category).lower()
+        ]
+
+    scored = []
+    for biz in businesses:
+        distance = None
+        if biz.lat is not None and biz.lng is not None:
+            distance = haversine_km(center_lat, center_lng, biz.lat, biz.lng)
+            if distance > radius_km:
+                continue
+
+        review_count = db.query(func.count(Review.id)).filter(
+            Review.business_id == biz.id, Review.is_public == True
+        ).scalar()
+        avg_rating = db.query(func.avg(Review.rating)).filter(
+            Review.business_id == biz.id, Review.is_public == True
+        ).scalar()
+        latest_review_at = db.query(func.max(Review.created_at)).filter(
+            Review.business_id == biz.id, Review.is_public == True
+        ).scalar()
+
+        scored.append({
+            "biz": biz,
+            "review_count": review_count,
+            "avg_rating": round(avg_rating, 1) if avg_rating else None,
+            "latest_review_at": latest_review_at,
+            "distance_km": round(distance, 1) if distance is not None else None,
+        })
+
+    # Anti-bias: reviews DESC → recency DESC → proximity ASC (ONLY ranking inputs)
+    scored.sort(key=lambda r: (
+        -r["review_count"],
+        -(r["latest_review_at"].timestamp() if r["latest_review_at"] else 0),
+        r["distance_km"] if r["distance_km"] is not None else 999,
+    ))
+
+    results = []
+    for r in scored[:limit]:
+        biz = r["biz"]
+        results.append(SearchResult(
+            business_id=biz.id,
+            name=biz.name,
+            category=biz.category,
+            address=biz.address,
+            lat=biz.lat,
+            lng=biz.lng,
+            review_count=r["review_count"],
+            avg_rating=r["avg_rating"],
+            top_review=get_top_review(biz.id, db),
+            distance_km=r["distance_km"],
+            website=biz.website,
+            card_url=resolve_card_url(biz, db),
+        ))
+
+    where = suburb_key or suburb or "this area"
+    if not results:
+        message = (
+            f"Nothing on the loop for {category or 'that'} around {where} yet "
+            f"— want to add the first?"
+        )
+    else:
+        message = (
+            f"{len(results)} option{'s' if len(results) != 1 else ''} around {where}, "
+            f"ranked by community experience. I don't pick favourites — you decide!"
+        )
+
+    return {
+        "engine": "graph",
+        "suburb": suburb_key or suburb,
+        "category": category,
+        "radius_km": radius_km,
+        "results": results,
+        "total_results": len(scored),
+        "message": message,
+    }
 
 
 @router.get("/discover")

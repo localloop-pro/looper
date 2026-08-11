@@ -25,6 +25,15 @@
 > has real data. F2.3's box ticks only after the TypeDB engine + parity
 > test (needs F2.1/F2.2); F2.5's after the TypeDB DB-2 archetype counters
 > (needs F2.4).
+>
+> **2026-08-11 progress (see `.SEED/decisions.md`):** F2.1/F2.2/F2.3 code
+> complete. TypeDB schemas (`brain/schema/001_geo.tql` + `002_business.tql`),
+> migration runner (`brain/migrate.py`), geo seed (`brain/seed_geo.py`),
+> sync worker (`brain/sync.py`), full-sync CLI (`brain/full_sync.py`),
+> and the TypeDB graph engine in `_graph_discover()` (discover.py) are all
+> shipped on this branch. BackgroundTask hook in `routes/ingest.py` fires
+> `sync_business()` after every bridge ingest. Boxes tick when Bill has
+> TypeDB running in Coolify and the acceptance queries pass.
 
 ---
 

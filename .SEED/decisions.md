@@ -139,6 +139,30 @@
   login is reset and a durable Docker origin is attached. Gateway
   `looper.localloop.ai` redeployed with BRIDGE_EVENTS_KV +
   LOCALLOOP_BRIDGE_SECRET. Evidence: `plans/evidence/F9.1/`.
+- 2026-08-11: F2.1 + F2.2 + F2.3 (graph engine) + F6.1 code-complete on
+  branch `claude/looper-jarvis-map-app-vskorv`. TypeDB schemas
+  `brain/schema/001_geo.tql` (geo hierarchy: world→country→state→city→suburb
+  →locality; `located_in`; `nearby` with `distance_km`) and
+  `brain/schema/002_business.tql` (business_entity with hybrid_card_id,
+  is_active, lat/lng; `serves_area`, `franchise_of`, `subsidiary_of`)
+  match TYPEDB-GEO-HIERARCHY-SPEC. `brain/migrate.py` tracks applied schemas
+  in `brain/.applied_migrations` (idempotent). `brain/seed_geo.py` inserts
+  21 suburbs (Eastern Suburbs + Byron Bay) + pre-computes `nearby` pairs
+  ≤ 10 km. `brain/sync.py` upserts business_entity + located_in (nearest
+  suburb haversine from suburbs.csv); NEVER raises. `brain/full_sync.py`
+  nightly CLI. `routes/ingest.py` fires BackgroundTask `_brain_sync()` after
+  every bridge ingest (F2.2). `_graph_discover()` in `routes/discover.py`
+  now fully implemented (F2.3): TypeDB DATA session → get all active
+  business_entities + suburb name → Python haversine suburb filter →
+  SQLite hydration + category filter → anti-bias ranking → engine:"graph".
+  Falls back to SQLite on ANY TypeDB error. F6.1: `tools/news_audio_worker.py`
+  reads `news_post.audio_url IS NULL`, strips markup, calls OpenAI TTS tts-1,
+  uploads to Supabase Storage `news-audio` bucket, sets `audio_url`. Env:
+  NEWS_TTS_PROVIDER/NEWS_TTS_API_KEY/NEWS_AUDIO_BUCKET/NEWS_AUDIO_VOICE/
+  NEWS_MAX_CHARS/NEWS_AUDIO_BATCH. `requirements-brain.txt` added:
+  typedb-driver>=2.28.0 (PIN exact version on first install — run
+  `pip index versions typedb-driver`), supabase>=2.0.0. Acceptance pending
+  Bill deploying TypeDB in Coolify + creating `news-audio` bucket.
 - 2026-07-28: "Brain offline" on live map diagnosed: CORS (backend allowlist
   lacked localloop.ai — fixed, committed 7c6753b on main, Coolify looper-api
   redeployed via API, verified: `access-control-allow-origin:

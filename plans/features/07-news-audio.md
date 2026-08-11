@@ -10,6 +10,9 @@
 ## Checklist
 
 - [ ] **F6.1** — News audio worker (text → voice → `audio_url`)
+  > **2026-08-11:** `tools/news_audio_worker.py` + `tools/README.md` shipped.
+  > Bill: create `news-audio` Supabase bucket (public-read) + set env vars
+  > in Coolify, then run manually to tick this box.
 - [ ] **F6.2** — Server-side geo lock for news
 - [ ] **F6.3** — Community sentiment tag on news (light-touch, P2)
 
