@@ -35,12 +35,16 @@ def _brain_sync(
     is_active: bool,
     archetype_id: str | None = None,
     sub_type: str | None = None,
+    skip_archetype: bool = False,
 ) -> None:
     """Fire-and-forget TypeDB sync (F2.2).  Never raises.
 
     Accepts scalar values extracted from the Business ORM object before the
     request session closes — avoids DetachedInstanceError when FastAPI runs
     background tasks after the response is sent.
+
+    skip_archetype=True: preserve existing archetype_id/sub_type in TypeDB
+    (used by deal events which carry sub_type but not the card-level archetype).
     """
     try:
         import sys
@@ -56,6 +60,7 @@ def _brain_sync(
             is_active=is_active,
             archetype_id=archetype_id,
             sub_type=sub_type,
+            skip_archetype=skip_archetype,
         )
     except Exception:
         pass  # additive: TypeDB never blocks ingest
@@ -201,11 +206,14 @@ async def ingest_hybridcard_deal(
     result = _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
     if not result.get("duplicate") and not stale:
         # Extract scalars while session is open; background task runs after session closes.
+        # skip_archetype=True: deal events carry sub_type but not the card-level archetype;
+        # preserving the archetype set by the prior card.upserted event prevents a deal
+        # update from replacing a card-supplied classifier with the category fallback.
         background_tasks.add_task(
             _brain_sync,
             biz.hybrid_card_id, biz.name or "", biz.category or "other",
             biz.lat, biz.lng, bool(biz.is_active),
-            None, payload.sub_type,
+            None, payload.sub_type, True,
         )
     return result
 
