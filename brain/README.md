@@ -14,7 +14,7 @@ TypeDB being down **never** blocks any API endpoint.  Set `TYPEDB_ENABLED=false`
 
 ```bash
 # Docker (recommended for Coolify)
-docker run -d --name typedb -p 1729:1729 vaticle/typedb:latest
+docker run -d --name typedb -p 127.0.0.1:1729:1729 vaticle/typedb:latest
 
 # Or: https://typedb.com/docs/home/install
 ```
@@ -25,9 +25,9 @@ docker run -d --name typedb -p 1729:1729 vaticle/typedb:latest
 ### 2. Install the Python driver
 
 ```bash
-pip install typedb-driver
-# Pin exact version: pip index versions typedb-driver
-# Record pinned version in .SEED/decisions.md
+pip install -r requirements-brain.txt
+# This installs the pinned typedb-driver~=2.28.0 (TypeQL 2.x API).
+# Record the resolved version in .SEED/decisions.md after install.
 ```
 
 ### 3. Run migrations
