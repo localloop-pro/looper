@@ -30,6 +30,17 @@
 > desktop voice acceptance. F4.3 is still partial: Looper has bridge status,
 > but the pending-pin count/table artifact through the read-only gateway and
 > its audit proof remain unimplemented/unverified. No write tools are allowed.
+>
+> **2026-08-12 wrap-up assessment:** F4.1 is also not yet checkbox-complete:
+> `localloop_search`, `localloop_discover`, `localloop_businesses`, open-map,
+> and bridge-status exist, but the planned `localloop_pins` and
+> `localloop_gateway_health` desktop tools do not; archetype-skills depends on
+> unfinished F2.4. The gateway health URL is live/read-only, but no new tool was
+> started during wrap-up. LocalLoop confirmed F4.3 is cross-repo blocked:
+> llx11 has no supported machine-authenticated pending-pin GET endpoint, schema,
+> pagination/filter contract, or read-audit semantics. Its admin browser's
+> direct Supabase query must not be copied into Looper. Resume from these exact
+> gaps after compaction; keep all F4 checkboxes open.
 
 ---
 

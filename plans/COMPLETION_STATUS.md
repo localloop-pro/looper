@@ -26,8 +26,8 @@ Do not start untouched scope while an item below is waiting on its named gate.
 | F2.1–F2.3 TypeDB | code + full local real-service acceptance complete | Bill: internal-only Coolify service, env, nightly task, repeat acceptance |
 | F2.5 telemetry | search/discover logging + PII scrubbing tested | F2.4 archetype counters; do not begin unless that existing dependency is approved |
 | F3.1–F3.4 voice/map | Looper code complete; llx11 wiring merged at `158299a` with remote checks green | LocalLoop direct tests for map bus + deep links; Bill Chrome mic/Firefox fallback review |
-| F4.1–F4.2 desktop/deep links | tools/build and llx11 integration complete | Bill manual voice + live deep-link acceptance |
-| F4.3 bridge cockpit | status read path exists | read-only pending-pin count/table artifact + gateway audit proof |
+| F4.1–F4.2 desktop/deep links | search/discover/business/open-map/bridge-status tools build; llx11 integration merged | Looper still lacks the planned `localloop_pins` + `localloop_gateway_health` tools; archetype-skills waits on F2.4; then Bill manual voice + live deep-link acceptance |
+| F4.3 bridge cockpit | public-safe bridge status/table exists and is tested | **Cross-repo blocker:** llx11 has no machine-authenticated read-only pending-pin gateway endpoint, response schema, pagination/filter contract, or read-audit behavior; do not copy its browser-only direct-Supabase query |
 | F6.1 news audio | worker + 4 unit tests | Bill: bucket/service secrets/TTS-cost approval/cron/existing-player smoke |
 | F9.3–F9.4 go-live | runbooks/evidence exist | Bill-only production smoke and ordered hot-zone flag flips |
 
@@ -42,3 +42,16 @@ completion-only directive.
 Obtain one named owner approval above. Without it, report the blocker rather
 than changing production, using private data, incurring TTS cost, or starting a
 new feature.
+
+### F4 completion assessment (2026-08-12)
+
+LocalLoop confirmed merged llx11 `158299a` exposes only write routes for pins
+(`POST /api/looper/pins/create`, `/api/admin/pins/moderate`, and
+`/api/bridge/pin`). There is no supported `GET /api/bot/map/pins` equivalent.
+The admin browser directly queries Supabase with anon/user auth and creates no
+read audit row; that browser implementation is explicitly **not** a Looper
+machine contract. A future llx11 change must define machine auth, bounded
+filters/pagination, a response schema, and read-audit semantics before F4.3 can
+finish. The public gateway health route itself is live (`GET
+https://looper.localloop.ai/health` returned HTTP 200), but its desktop Looper
+tool is not yet implemented. Work paused here per coordinator wrap-up notice.

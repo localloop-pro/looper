@@ -192,3 +192,12 @@
   closes the cross-repo integration/merge gate, not the two direct-contract
   evidence tests or Bill's live mic/deep-link smoke. Beauty & Wellness #76
   remains explicitly paused/backlog; Looper starts no pilot implementation.
+- 2026-08-12 wrap-up: corrected F4 status before compaction. F4.1 still lacks
+  planned desktop `localloop_pins` and `localloop_gateway_health` tools;
+  archetype-skills waits on F2.4. Public gateway health is live (HTTP 200), but
+  no implementation was started after the coordinator's wrap-up notice. F4.3
+  cannot finish inside Looper: llx11 `158299a` exposes no supported read-only
+  machine endpoint for pending HybridCard pins and defines no bot auth,
+  response/pagination schema, or read-audit semantics. The existing admin
+  browser direct-Supabase query is not a machine contract and must not be
+  copied. Exact restart state is in `plans/COMPLETION_STATUS.md`.
