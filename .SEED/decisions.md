@@ -186,3 +186,9 @@
   blocked on wiring; remaining evidence is two direct-contract tests
   (`looper-map-bus.js`, `applyDeepLinks()`) plus Bill's real mic/browser and
   desktop voice acceptance. F4.3 pending-pin artifact/audit remains partial.
+- 2026-08-12: LocalLoop PR #75 subsequently merged to llx11 main as `158299a`;
+  install/secret scan, unit/integration, Playwright E2E, and `ci-required`
+  remote checks were all green, and tracking issue #77 auto-closed. This
+  closes the cross-repo integration/merge gate, not the two direct-contract
+  evidence tests or Bill's live mic/deep-link smoke. Beauty & Wellness #76
+  remains explicitly paused/backlog; Looper starts no pilot implementation.
