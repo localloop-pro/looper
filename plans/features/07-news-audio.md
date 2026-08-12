@@ -13,6 +13,13 @@
   > **2026-08-11:** `tools/news_audio_worker.py` + `tools/README.md` shipped.
   > Bill: create `news-audio` Supabase bucket (public-read) + set env vars
   > in Coolify, then run manually to tick this box.
+  >
+  > **2026-08-12 completion pass:** four deterministic unit tests now cover
+  > markup/URL stripping, the TTS character cap, successful process-once/skip
+  > idempotency, and failure marking (`backend/tests/test_news_audio_worker.py`).
+  > The box remains open only for the real owner-approved Supabase bucket +
+  > TTS call + scheduled-task/player acceptance; those paths use service-role/
+  > API secrets and may incur cost, so they are not run autonomously.
 - [ ] **F6.2** — Server-side geo lock for news
 - [ ] **F6.3** — Community sentiment tag on news (light-touch, P2)
 

@@ -34,6 +34,20 @@
 > shipped on this branch. BackgroundTask hook in `routes/ingest.py` fires
 > `sync_business()` after every bridge ingest. Boxes tick when Bill has
 > TypeDB running in Coolify and the acceptance queries pass.
+>
+> **2026-08-12 completion pass:** local acceptance is now green against
+> pinned TypeDB Core `2.29.1` + `typedb-driver==2.28.4`. Migration and the
+> 21-suburb/378-relation seed are idempotent; the Bondi nearby query includes
+> Bronte + Bondi Junction; a real signed ingest created `business_entity` +
+> `located_in Bondi Beach`; stopping TypeDB still returned ingest 200; full
+> sync backfilled all 20 seeded SQLite businesses; and graph/fallback returned
+> the same ordered 20 results. The opt-in real-service regression lives at
+> `backend/tests/test_typedb_integration.py` (1 passed). Blank Coolify env
+> values now safely fall back instead of reaching the driver as an invalid
+> empty address. Evidence: `plans/evidence/F2-typedb/README.md`.
+> **Remaining gate:** deploy the pinned internal-only TypeDB service in
+> Coolify, set the three TypeDB env vars + nightly task, then repeat the
+> acceptance query there. This is deployment/hot-zone work and needs Bill.
 
 ---
 

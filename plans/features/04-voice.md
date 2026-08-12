@@ -23,6 +23,16 @@
 > modules are wired into llx11's MicWave/main-map entry points and the
 > acceptance passes there (integration snippet: README "Embedding on the
 > live map").
+>
+> **2026-08-12 cross-repo confirmation:** LocalLoop confirmed the live llx11
+> source now loads the five Jarvis scripts in the required defer order and
+> binds `LooperMapBus`; `applyDeepLinks()` and host listening/idle state sync
+> are wired. LocalLoop reports its 102 unit checks + PR E2E green and is
+> finishing PR #75 without Looper edits. Remaining acceptance evidence is
+> narrower than the old note: add direct mocked-map coverage for
+> `looper-map-bus.js`, direct `applyDeepLinks()` coverage, then Bill performs
+> the real Chrome mic / Firefox typed-fallback checklist. Do not mark F3.x
+> complete before those manual/direct-contract gates pass.
 
 ---
 

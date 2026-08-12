@@ -170,3 +170,19 @@
   llx11 Coolify app (site's looperApi still localhost:8000). Bill to set
   `LOOPER_API_URL=https://api.localloop.ai` on app zl9s2tebckbu9zgzkdy2en4t
   and redeploy (agent's env-write was permission-blocked).
+- 2026-08-12: TypeDB local acceptance completed against pinned Core 2.29.1
+  and `typedb-driver==2.28.4`: idempotent migration + 21-suburb/378-nearby
+  seed; Bondi query includes Bronte/Bondi Junction; signed bridge ingest
+  creates business + `located_in`; TypeDB-down ingest remains 200; full sync
+  backfills 20/20; graph/fallback parity is exact (20 ordered results). Added
+  opt-in real-service integration coverage plus blank-env/zero-coordinate
+  regressions. Empty `TYPEDB_ADDRESS`/`TYPEDB_DB` now mean safe defaults —
+  this fixes the observed driver `invalid format` failure and prevents silent
+  graph fallback in Coolify. Production boxes remain gated on Bill deploying
+  the internal-only TypeDB service/env/nightly task. F6.1 gained four isolated
+  worker tests; real bucket/TTS/cron/player acceptance remains owner-gated.
+- 2026-08-12: LocalLoop confirmed llx11 already embeds and binds the Jarvis
+  router/bus/face/orchestrator/boot stack and deep links. F3/F4 are no longer
+  blocked on wiring; remaining evidence is two direct-contract tests
+  (`looper-map-bus.js`, `applyDeepLinks()`) plus Bill's real mic/browser and
+  desktop voice acceptance. F4.3 pending-pin artifact/audit remains partial.

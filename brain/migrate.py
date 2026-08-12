@@ -21,8 +21,11 @@ import sys
 from pathlib import Path
 
 SCHEMA_DIR = Path(__file__).parent / "schema"
-DEFAULT_HOST = os.getenv("TYPEDB_ADDRESS", "localhost:1729")
-DEFAULT_DB = os.getenv("TYPEDB_DB", "localloop")
+# Treat blank Coolify/local env values as unset.  An explicitly present but
+# empty TYPEDB_ADDRESS otherwise reaches the driver as "" and fails with the
+# unhelpful error "invalid format".
+DEFAULT_HOST = os.getenv("TYPEDB_ADDRESS") or "localhost:1729"
+DEFAULT_DB = os.getenv("TYPEDB_DB") or "localloop"
 
 
 def _log_path(host: str, db_name: str) -> Path:

@@ -68,8 +68,10 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
     import os as _os
     from typedb.driver import TypeDB, SessionType, TransactionType  # type: ignore[import]
 
-    address = _os.getenv("TYPEDB_ADDRESS", "localhost:1729")
-    typedb_db = _os.getenv("TYPEDB_DB", "localloop")
+    # Coolify may inject declared-but-empty variables. Treat those exactly as
+    # unset so enabling TypeDB cannot silently force every request to fallback.
+    address = _os.getenv("TYPEDB_ADDRESS") or "localhost:1729"
+    typedb_db = _os.getenv("TYPEDB_DB") or "localloop"
 
     # Resolve center (same logic as fallback)
     center = None

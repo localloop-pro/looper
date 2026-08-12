@@ -21,6 +21,14 @@
 > `GET /api/ingest/status` shipped. Boxes tick after Bill's manual voice
 > acceptance ("what's good for lunch in Bondi?") and, for F4.2, once llx11
 > embeds the Jarvis layer.
+>
+> **2026-08-12 update:** llx11 embedding is confirmed complete by the
+> LocalLoop owner session (script order, bus binding, deep-link handler, and
+> listening-state sync). F4.2 now waits only for its dedicated direct-contract
+> test + Bill's live deep-link voice smoke. F4.1 still needs Bill's manual
+> desktop voice acceptance. F4.3 is still partial: Looper has bridge status,
+> but the pending-pin count/table artifact through the read-only gateway and
+> its audit proof remain unimplemented/unverified. No write tools are allowed.
 
 ---
 

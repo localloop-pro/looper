@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 
 SUBURBS_CSV = Path(__file__).parent / "data" / "suburbs.csv"
 _TYPEDB_ENABLED = os.getenv("TYPEDB_ENABLED", "false").lower() == "true"
-_TYPEDB_HOST = os.getenv("TYPEDB_ADDRESS", "localhost:1729")
-_TYPEDB_DB = os.getenv("TYPEDB_DB", "localloop")
+_TYPEDB_HOST = os.getenv("TYPEDB_ADDRESS") or "localhost:1729"
+_TYPEDB_DB = os.getenv("TYPEDB_DB") or "localloop"
 _MAX_SUBURB_KM = 100.0  # skip sync for businesses more than 100 km from any seeded suburb
 
 
@@ -288,7 +288,7 @@ def sync_business(
         logger.debug("typedb-driver not installed; skipping brain sync")
         return False
 
-    suburb = nearest_suburb(lat, lng) if (lat and lng) else None
+    suburb = nearest_suburb(lat, lng) if (lat is not None and lng is not None) else None
 
     try:
         with _get_driver() as driver:

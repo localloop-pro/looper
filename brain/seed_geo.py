@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 DATA_FILE = Path(__file__).parent / "data" / "suburbs.csv"
-DEFAULT_HOST = os.getenv("TYPEDB_ADDRESS", "localhost:1729")
-DEFAULT_DB = os.getenv("TYPEDB_DB", "localloop")
+DEFAULT_HOST = os.getenv("TYPEDB_ADDRESS") or "localhost:1729"
+DEFAULT_DB = os.getenv("TYPEDB_DB") or "localloop"
 NEARBY_KM = 10.0
 
 

@@ -30,12 +30,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_URL = os.getenv(
-    "LOOPER_DB_URL",
-    f"sqlite:///{Path(__file__).parent.parent / 'backend' / 'data' / 'looper.db'}",
+DEFAULT_DB_URL = os.getenv("LOOPER_DB_URL") or (
+    f"sqlite:///{Path(__file__).parent.parent / 'backend' / 'data' / 'looper.db'}"
 )
-DEFAULT_HOST = os.getenv("TYPEDB_ADDRESS", "localhost:1729")
-DEFAULT_TYPEDB_DB = os.getenv("TYPEDB_DB", "localloop")
+DEFAULT_HOST = os.getenv("TYPEDB_ADDRESS") or "localhost:1729"
+DEFAULT_TYPEDB_DB = os.getenv("TYPEDB_DB") or "localloop"
 
 
 def run_full_sync(db_url: str, typedb_host: str, typedb_db: str) -> int:
