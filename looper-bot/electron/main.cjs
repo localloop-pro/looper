@@ -5,6 +5,7 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
 const dotenv = require("dotenv");
+const { createLocalLoopGatewayTools } = require("./localloop-gateway-tools.cjs");
 
 dotenv.config({ path: path.join(process.cwd(), ".env.local") });
 
@@ -27,6 +28,11 @@ let dbWriteQueue = Promise.resolve();
 // LocalLoop ecosystem endpoints (F4.1/F4.2)
 const LOOPER_API_BASE = (process.env.LOOPER_API_BASE || "http://localhost:8000").replace(/\/$/, "");
 const LOCALLOOP_MAP_URL = (process.env.LOCALLOOP_MAP_URL || "https://localloop.ai").replace(/\/$/, "");
+const LOCALLOOP_GATEWAY_URL = (process.env.LOCALLOOP_GATEWAY_URL || "https://looper.localloop.ai").replace(/\/$/, "");
+const localLoopGatewayTools = createLocalLoopGatewayTools({
+  baseUrl: LOCALLOOP_GATEWAY_URL,
+  readToken: process.env.LOOPER_BOT_READ_TOKEN,
+});
 
 const LOOPER_INSTRUCTIONS = `# Role and Objective
 You are Looper, Bill's desktop AI operator. You speak through realtime voice and can use local tools.
@@ -63,6 +69,8 @@ Let the user interrupt. If audio is unclear, ask one short clarifying question i
 - ANTI-BIAS RULES (non-negotiable): never call any business "the best". Always present MULTIPLE options. Ranking comes only from community reviews, recency, and distance — never from discounts, payments, or who owns a card. If Bill asks for "the best", say you show what the community says instead.
 - To control the live map, call localloop_open_map with a category, query, or coordinates — it opens localloop.ai deep-linked to that view (the map's Looper dock takes it from there).
 - For "how's the bridge?" or questions about HybridCard deals flowing in, use localloop_bridge_status.
+- For card deals/pins waiting for approval, call localloop_pending_pins. It is read-only and gateway-audited. Never query Supabase directly and never invent a pending count.
+- Use localloop_gateway_health to check whether the LocalLoop control gateway is online.
 - Businesses with a Hybrid Card have a card_url — offer it as "their card" link. If a business has none, you may mention they can get one at hybridcard.ai.
 - Privacy: never read out emails, mobile numbers, or member identities. Aggregate counts only.`;
 
@@ -187,6 +195,29 @@ const toolSpecs = [
     type: "function",
     name: "localloop_bridge_status",
     description: "Read-only HybridCard→LocalLoop bridge cockpit: recent bridge events, counts by status/type, active deals and card-linked businesses. Use when Bill asks how the bridge is doing or whether deals are flowing.",
+    parameters: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "localloop_pending_pins",
+    description: "Read-only, machine-authenticated and audited list of HybridCard pins awaiting LocalLoop moderation. Use when Bill asks how many card deals/pins are waiting for approval. Returns an exact total plus a bounded table; never queries Supabase directly.",
+    parameters: {
+      type: "object",
+      properties: {
+        page: { type: "integer", minimum: 1, maximum: 10000 },
+        limit: { type: "integer", minimum: 1, maximum: 50 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "localloop_gateway_health",
+    description: "Read-only health check for the LocalLoop Bot Gateway. Use when Bill asks whether the LocalLoop gateway/control layer is online.",
     parameters: {
       type: "object",
       properties: {},
@@ -761,6 +792,14 @@ ipcMain.handle("tools:execute", async (_event, toolCall) => {
 
     if (name === "localloop_bridge_status") {
       return await localloopBridgeStatus();
+    }
+
+    if (name === "localloop_pending_pins") {
+      return await localLoopGatewayTools.readPendingPins(args);
+    }
+
+    if (name === "localloop_gateway_health") {
+      return await localLoopGatewayTools.health();
     }
 
     if (name === "image_generate") {

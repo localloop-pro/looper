@@ -201,3 +201,24 @@
   response/pagination schema, or read-audit semantics. The existing admin
   browser direct-Supabase query is not a machine contract and must not be
   copied. Exact restart state is in `plans/COMPLETION_STATUS.md`.
+- 2026-08-12: Coordinator sanctioned the F4.3 Looper client against LocalLoop
+  SPEC-055. Added Electron-main-only `localloop_pending_pins` bearer client and
+  `localloop_gateway_health`. The pending client fixes HybridCard/pending filters,
+  bounds page/limit, validates exact pagination + the 21-field allowlist,
+  strips unsafe links/unrecognized fields, rejects redirects and insecure
+  token destinations, escapes untrusted table text, restricts card links to
+  HybridCard/loopback hosts, validates each pin's fixed source/status, uses a
+  10s timeout, and withholds all data on malformed, auth, select, backend, or
+  audit failures. Fifteen Node tests + desktop
+  typecheck/build + live public health passed. LocalLoop branch `cd4c751`
+  (core `71c3052`, hardening `af31947`) is reported green but **not merged or
+  live**; no production token/acceptance claim until final merge SHA, owner
+  activation, a live audited 200, and Bill voice acceptance.
+- 2026-08-12: SPEC-055 provider then merged through LocalLoop PR #80 to main
+  at `d77ccf8659638f71ee39f813691ecd597d1aa0d3` (feature PR #79 squash
+  `7043938`); Install+Secret Scan+Lint, Unit/Integration, Playwright E2E, and
+  `ci-required` passed, and issue #78 closed. Merge resolves the contract/code
+  blocker only. Production remains owner-gated: apply
+  `db/migrations/looper_gateway_audit_log.sql`, provision the identical random
+  32+ byte `LOOPER_BOT_READ_TOKEN` in Worker + Looper, deploy, and correlate a
+  live 200 with `pin_pending_list_read` before Bill's voice acceptance.

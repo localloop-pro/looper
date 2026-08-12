@@ -41,6 +41,24 @@
 > pagination/filter contract, or read-audit semantics. Its admin browser's
 > direct Supabase query must not be copied into Looper. Resume from these exact
 > gaps after compaction; keep all F4 checkboxes open.
+>
+> **2026-08-12 sanctioned F4.3 client slice:** coordinator unblocked Looper
+> against LocalLoop SPEC-055. `localloop_pending_pins` now calls only
+> `GET ${LOCALLOOP_GATEWAY_URL}/api/bot/map/pins` with fixed
+> `source=hybridcard&status=pending_review`, bounded page/limit, and
+> `Authorization: Bearer ${LOOPER_BOT_READ_TOKEN}` from Electron main.
+> Responses are strict-allowlisted, pagination-bound, rendered as an exact
+> count/table artifact, and fail closed on auth/backend/select/audit failures;
+> redirects, insecure non-loopback HTTP bases, unsafe card links, raw payload,
+> and unrecognized keys are rejected/removed. `localloop_gateway_health` also
+> shipped. Fifteen Node contract/security tests, typecheck, build, and live
+> public health read are green. LocalLoop provider branch `cd4c751` (core
+> `71c3052`, hardening `af31947`) subsequently merged through PR #80 to main
+> at `d77ccf8659638f71ee39f813691ecd597d1aa0d3`; all remote gates passed and
+> issue #78 closed. It is still **not live/activated**. Keep F4.3 unchecked
+> until Bill applies the audit migration, provisions the same 32+ byte token
+> in Worker + Looper, deploys, records one live audited 200, and completes the
+> voice acceptance.
 
 ---
 
