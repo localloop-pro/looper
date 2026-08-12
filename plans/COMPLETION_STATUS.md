@@ -29,7 +29,7 @@ Do not start untouched scope while an item below is waiting on its named gate.
 | F2.5 telemetry | search/discover logging + PII scrubbing tested | F2.4 archetype counters; do not begin unless that existing dependency is approved |
 | F3.1–F3.4 voice/map | Looper code complete; llx11 wiring merged at `158299a` with remote checks green | LocalLoop direct tests for map bus + deep links; Bill Chrome mic/Firefox fallback review |
 | F4.1–F4.2 desktop/deep links | search/discover/business/open-map/bridge-status + gateway-health tools build; llx11 integration merged | Looper still lacks planned `localloop_pins`; archetype-skills waits on F2.4; then Bill manual voice + live deep-link acceptance |
-| F4.3 bridge cockpit | Looper machine client/tool complete against merged SPEC-055 contract: fixed filters, bearer auth, bounded pagination, strict allowlist, exact count/table, HTTPS/redirect controls, timeout, fail-closed errors; 15 tests green. LocalLoop PR #80 merged main at `d77ccf8659638f71ee39f813691ecd597d1aa0d3`, all remote gates green, issue #78 closed | Bill hot zone: apply audit migration, provision identical shared secret in Worker + Looper, deploy Worker, prove one live audited 200, then Bill voice acceptance before checking F4.3 |
+| F4.3 bridge cockpit | **Code complete/checkpointed:** Looper machine client/tool against merged SPEC-055; fixed filters, bearer auth, bounded pagination, strict allowlist, exact count/table, HTTPS/redirect controls, timeout, fail-closed errors; 15/15 tests green. Checkpoints: `854e1e7`, `7a91cb5`. LocalLoop PR #80 merged main at `d77ccf8659638f71ee39f813691ecd597d1aa0d3`, all remote gates green, issue #78 closed | **Owner-gated only:** Bill must apply audit migration, provision identical shared secret in Worker + Looper, deploy Worker, prove one live audited 200, then complete voice acceptance before the checkbox is marked |
 | F6.1 news audio | worker + 4 unit tests | Bill: bucket/service secrets/TTS-cost approval/cron/existing-player smoke |
 | F9.3–F9.4 go-live | runbooks/evidence exist | Bill-only production smoke and ordered hot-zone flag flips |
 
@@ -69,7 +69,8 @@ Install+Secret Scan+Lint, Unit/Integration, Playwright E2E, and `ci-required`
 checks also passed, and issue #78 closed. The production route is still not
 enabled/proven.
 
-Looper's side now implements `localloop_pending_pins` and
+Looper's side is code-complete and checkpointed (`854e1e7` integration,
+`7a91cb5` module/tests/evidence) with `localloop_pending_pins` and
 `localloop_gateway_health` in `looper-bot/electron/localloop-gateway-tools.cjs`.
 The pending reader uses only the sanctioned gateway, keeps the bearer token in
 Electron main, fixes filters, validates pagination/allowlisted response fields,

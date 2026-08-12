@@ -222,3 +222,10 @@
   `db/migrations/looper_gateway_audit_log.sql`, provision the identical random
   32+ byte `LOOPER_BOT_READ_TOKEN` in Worker + Looper, deploy, and correlate a
   live 200 with `pin_pending_list_read` before Bill's voice acceptance.
+- 2026-08-12: F4.3 Looper client is code-complete and checkpointed in
+  coordinator commits `854e1e7` (integration) and `7a91cb5` (gateway module,
+  15 tests, evidence). LocalLoop confirmed no contract mismatch against merged
+  SPEC-055. Remaining work is owner-gated only: Bill applies the audit
+  migration, provisions the identical token in Worker + Looper, deploys the
+  Worker, proves a live audited HTTP 200, and completes voice acceptance.
+  Keep the F4.3 checkbox open until those production gates pass.
