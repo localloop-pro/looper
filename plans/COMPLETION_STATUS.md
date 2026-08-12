@@ -54,4 +54,13 @@ machine contract. A future llx11 change must define machine auth, bounded
 filters/pagination, a response schema, and read-audit semantics before F4.3 can
 finish. The public gateway health route itself is live (`GET
 https://looper.localloop.ai/health` returned HTTP 200), but its desktop Looper
-tool is not yet implemented. Work paused here per coordinator wrap-up notice.
+tool is not yet implemented.
+
+**Provider work in progress:** LocalLoop began the sanctioned llx11 blocker
+slice after this assessment: machine-authenticated `GET /api/bot/map/pins`,
+fixed HybridCard/`pending_review` filters, bounded page/limit pagination,
+allowlisted response fields, and fail-closed audit creation before success.
+Looper remains paused until LocalLoop supplies the merged URL, exact auth
+header/env contract, final request/response/error semantics, and green PR/check
+evidence. Do not implement against the draft description. Work paused here per
+coordinator wrap-up notice.
