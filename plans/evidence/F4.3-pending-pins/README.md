@@ -71,13 +71,42 @@ Public gateway health through the new client:
 
 ## Remaining acceptance gate
 
-1. Bill approves/applies `db/migrations/looper_gateway_audit_log.sql` and
-   deploys the merged Worker route.
-2. Owner configures the same random 32+ byte `LOOPER_BOT_READ_TOKEN` in the
-   Worker secret store and Looper `.env.local` (never browser config).
-3. Invoke `localloop_pending_pins` against the live route and record a 200 plus
-   corresponding `pin_pending_list_read` audit row.
-4. Bill asks, “any card deals waiting for approval?” and verifies the spoken
+1. [x] Bill approves/applies `db/migrations/looper_gateway_audit_log.sql` and
+   deploys the merged Worker route. — DONE 2026-08-22 (owner-directed session)
+2. [x] Owner configures the same random 32+ byte `LOOPER_BOT_READ_TOKEN` in the
+   Worker secret store and Looper `.env.local` (never browser config). — DONE 2026-08-22
+3. [x] Invoke `localloop_pending_pins` against the live route and record a 200 plus
+   corresponding `pin_pending_list_read` audit row. — DONE 2026-08-22 (see below)
+4. [ ] Bill asks, “any card deals waiting for approval?” and verifies the spoken
    exact count + table artifact.
 
-Until all four pass, F4.3 remains unchecked.
+Until all four pass, F4.3 remains unchecked. Items 1–3 passed on 2026-08-22;
+only item 4 (voice acceptance) remains.
+
+## Live smoke record — 2026-08-22 (gates 1–3)
+
+Owner (Bill) directed the coordinator session to run the SPEC-055 owner-gate
+runbook (llx11 `dox/runbooks/spec-055-owner-gate.md`, adapted: deploy from a
+temporary `origin/main` worktree so the active fix-branch checkout was
+untouched).
+
+- Migration: `looper_gateway_audit_log.sql` applied to the production Supabase
+  (table/indexes pre-existed from schema.sql; RLS now enforced, 3 indexes).
+- Token: fresh `openssl rand -hex 32` value uploaded with
+  `wrangler secret put LOOPER_BOT_READ_TOKEN` and written to
+  `looper-bot/.env.local` (mode 0600). Token value recorded nowhere else.
+- Deploy: `localloop-looper-gateway` from `origin/main` (merge `4e44c44`),
+  Cloudflare version `0fb82412-f2e1-460b-87c5-000acb30850f`, route
+  `looper.localloop.ai/*`.
+- Live smoke (node client using looper-bot `.env.local`, same header path as
+  `localloop-gateway-tools.cjs`):
+  - `GET /api/bot/map/pins?source=hybridcard&status=pending_review&page=1&limit=20`
+    → `200`, shape PASS, pagination
+    `{"page":1,"limit":20,"returned":0,"total":0,"total_pages":0,"has_next":false}`
+  - no Authorization header → `401`; extra `bogus=1` param → `422`.
+- Audit row: `id 12957da6-dc5e-4ffb-9040-fe69a0a9bcaf`,
+  `created_at 2026-08-22 16:38:20 UTC`,
+  `target_id source=hybridcard;status=pending_review;page=1;limit=20`.
+- Next: restart Looper Bot (`npm run dev`) before the item-4 voice test so
+  Electron loads the token; TTS-cost and hot-zone approvals remain separately
+  gated and were NOT touched.

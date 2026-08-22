@@ -254,3 +254,17 @@
   migration, provisions the identical token in Worker + Looper, deploys the
   Worker, proves a live audited HTTP 200, and completes voice acceptance.
   Keep the F4.3 checkbox open until those production gates pass.
+
+### F4.3 owner gates 1–3 executed (2026-08-22)
+
+- Owner (Bill) directed the coordinator to run the SPEC-055 owner-gate chain;
+  scope explicitly limited to the mechanical gates (no voice/TTS/hot-zone).
+- Applied `looper_gateway_audit_log.sql` to production Supabase (RLS enforced),
+  provisioned one fresh 32-byte `LOOPER_BOT_READ_TOKEN` in the Worker secret
+  store and `looper-bot/.env.local` (0600), deployed `localloop-looper-gateway`
+  from `origin/main` (Cloudflare version `0fb82412`), and proved the live
+  audited 200 (+401/+422 negatives; audit row `12957da6`, 16:38:20Z).
+- Evidence: `plans/evidence/F4.3-pending-pins/README.md` (live smoke record).
+- F4.3 now blocks ONLY on voice acceptance (restart looper-bot first so
+  Electron loads the token). TTS-cost and hot-zone flags remain untouched and
+  separately gated.
