@@ -701,7 +701,10 @@ ipcMain.handle("realtime:create-token", async () => {
   const realtimeModel = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2";
   const realtimeVoice = process.env.LOOPER_VOICE || "cedar"; // marin/cedar = OpenAI's quality picks
   const vadEagerness = process.env.LOOPER_VAD_EAGERNESS || "medium"; // low | medium | high | auto
-  const voiceSpeed = Number(process.env.LOOPER_VOICE_SPEED); // 0.25-1.5, default 1.0
+  // 0.25-1.5, default 1.0. A blank placeholder must stay unset — Number("")
+  // is 0, which is out of range and would 400 every client-secret mint.
+  const voiceSpeedRaw = (process.env.LOOPER_VOICE_SPEED || "").trim();
+  const voiceSpeed = voiceSpeedRaw ? Number(voiceSpeedRaw) : NaN;
   // near_field = headset mic, far_field = laptop/room mic, off = disable.
   const noiseReductionEnv = process.env.LOOPER_NOISE_REDUCTION || "far_field";
   const noiseReduction =
@@ -746,7 +749,7 @@ ipcMain.handle("realtime:create-token", async () => {
           },
           output: {
             voice: realtimeVoice,
-            ...(Number.isFinite(voiceSpeed) ? { speed: voiceSpeed } : {}),
+            ...(Number.isFinite(voiceSpeed) && voiceSpeed >= 0.25 && voiceSpeed <= 1.5 ? { speed: voiceSpeed } : {}),
           },
         },
         tracing: {

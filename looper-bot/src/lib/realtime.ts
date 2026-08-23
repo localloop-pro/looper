@@ -85,6 +85,7 @@ export class LooperRealtimeClient {
   private disconnectGraceTimer = 0;
   private responseActive = false;
   private pendingResponseCreate = false;
+  private activeToolCalls = 0;
   private handledCallIds = new Set<string>();
   private mood: LooperMood = "idle";
   private lastAudibleAt = 0;
@@ -200,6 +201,12 @@ export class LooperRealtimeClient {
       this.dc = dc;
     } catch (error) {
       this.teardown();
+      // A failed REDIAL (Wi-Fi still down during the immediate retry) must
+      // keep walking the backoff schedule, not stop at attempt one.
+      if (!this.closedByUser && this.reconnectAttempts > 0) {
+        this.scheduleReconnect(friendlyErrorMessage(error));
+        return;
+      }
       this.callbacks.onConnectionState("error");
       this.setMood("error");
       this.callbacks.onStatus(friendlyErrorMessage(error));
@@ -244,6 +251,11 @@ export class LooperRealtimeClient {
     if (this.closedByUser || !this.pc) return;
     this.clearGraceTimer();
     this.teardown();
+    this.scheduleReconnect(reason);
+  }
+
+  private scheduleReconnect(reason: string): void {
+    if (this.closedByUser) return;
     if (this.reconnectAttempts >= maxReconnectAttempts) {
       this.callbacks.onConnectionState("error");
       this.setMood("error");
@@ -277,6 +289,7 @@ export class LooperRealtimeClient {
     this.currentAssistantText = "";
     this.responseActive = false;
     this.pendingResponseCreate = false;
+    this.activeToolCalls = 0;
     this.toolRunning = false;
     this.handledCallIds.clear();
   }
@@ -292,6 +305,13 @@ export class LooperRealtimeClient {
         void this.handleDrop("Voice session hit OpenAI's 60-minute limit");
         return;
       }
+      // Benign races (e.g. a response.create colliding with an active
+      // response) stay status-only; real server errors show the error face
+      // so the mood can't sit on "thinking"/"working" forever.
+      const benign =
+        event.error?.code === "conversation_already_has_active_response" ||
+        event.error?.code === "response_cancel_not_active";
+      if (!benign) this.setMood("error");
       this.callbacks.onStatus(event.error?.message || "Realtime API returned an error.");
       return;
     }
@@ -360,10 +380,7 @@ export class LooperRealtimeClient {
       if (spoken) this.callbacks.onTranscript(newEntry("looper", cancelled ? `${spoken} … (interrupted)` : spoken));
       this.currentAssistantText = "";
 
-      if (this.pendingResponseCreate) {
-        this.pendingResponseCreate = false;
-        this.sendEvent({ type: "response.create" });
-      }
+      this.maybeCreateResponse();
 
       // Safety net for function calls the output_item.done path didn't see.
       // Half-emitted calls from a cancelled response are skipped.
@@ -386,7 +403,19 @@ export class LooperRealtimeClient {
     }
   }
 
+  // The model may emit several function calls in one response, and each
+  // response.output_item.done handler runs concurrently — the follow-up
+  // response.create may only fire once EVERY in-flight call has returned its
+  // function_call_output, or a slow tool's result misses the model's answer.
+  private maybeCreateResponse(): void {
+    if (this.pendingResponseCreate && !this.responseActive && this.activeToolCalls === 0) {
+      this.pendingResponseCreate = false;
+      this.sendEvent({ type: "response.create" });
+    }
+  }
+
   private async executeFunctionCalls(items: ResponseOutputItem[]): Promise<void> {
+    this.activeToolCalls += 1;
     this.toolRunning = true;
     this.setMood("working");
     let shouldCreateResponse = false;
@@ -448,14 +477,13 @@ export class LooperRealtimeClient {
         }
       }
 
-      if (shouldCreateResponse) {
-        // If the model's turn is still open, response.create would be
-        // rejected — defer it to the response.done handler.
-        if (this.responseActive) this.pendingResponseCreate = true;
-        else this.sendEvent({ type: "response.create" });
-      }
+      if (shouldCreateResponse) this.pendingResponseCreate = true;
     } finally {
-      this.toolRunning = false;
+      this.activeToolCalls -= 1;
+      if (this.activeToolCalls === 0) this.toolRunning = false;
+      // Fires only once the model's turn is over AND no sibling call is
+      // still running (also re-checked by the response.done handler).
+      this.maybeCreateResponse();
     }
   }
 
