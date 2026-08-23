@@ -86,6 +86,10 @@ export class LooperRealtimeClient {
   private responseActive = false;
   private pendingResponseCreate = false;
   private activeToolCalls = 0;
+  // Bumped on every teardown: a tool still awaiting IPC when the session
+  // died must not send its stale call_id into the NEXT session or decrement
+  // that session's counters underneath it.
+  private sessionGen = 0;
   private handledCallIds = new Set<string>();
   private mood: LooperMood = "idle";
   private lastAudibleAt = 0;
@@ -234,6 +238,12 @@ export class LooperRealtimeClient {
     if (this.responseActive) {
       this.sendEvent({ type: "response.cancel" });
     }
+    // Generation can finish while the WebRTC audio is still buffered and
+    // audibly playing (the "speaking" mood tracks actual playback) — flush
+    // the server-side buffer so the old answer stops talking over this turn.
+    if (this.mood === "speaking" || this.responseActive) {
+      this.sendEvent({ type: "output_audio_buffer.clear" });
+    }
     this.sendEvent({
       type: "conversation.item.create",
       item: {
@@ -273,6 +283,7 @@ export class LooperRealtimeClient {
   }
 
   private teardown(): void {
+    this.sessionGen += 1;
     const dc = this.dc;
     const pc = this.pc;
     this.dc = null;
@@ -415,6 +426,7 @@ export class LooperRealtimeClient {
   }
 
   private async executeFunctionCalls(items: ResponseOutputItem[]): Promise<void> {
+    const gen = this.sessionGen;
     this.activeToolCalls += 1;
     this.toolRunning = true;
     this.setMood("working");
@@ -422,6 +434,7 @@ export class LooperRealtimeClient {
 
     try {
       for (const item of items) {
+        if (gen !== this.sessionGen) return; // session died mid-run — results belong to nobody
         const callId = item.call_id;
         const name = item.name;
         if (!callId || !name) continue;
@@ -459,6 +472,7 @@ export class LooperRealtimeClient {
             if (loadingResult.artifact) this.callbacks.onArtifact(loadingResult.artifact);
           }
           const result = await window.looper.executeTool({ name, arguments: parsedArgs } satisfies LooperToolCall);
+          if (gen !== this.sessionGen) return; // stale call_id must not enter the new session
           if (result.mode === "display" || result.mode === "computer") {
             this.callbacks.onMode(result.mode);
           }
@@ -467,6 +481,7 @@ export class LooperRealtimeClient {
           if (result.silent !== true) shouldCreateResponse = true;
           await this.returnToolOutput(callId, result);
         } catch (error) {
+          if (gen !== this.sessionGen) return;
           // The model must always get an answer per call_id, or the
           // conversation dead-ends waiting for a function_call_output.
           await this.returnToolOutput(callId, {
@@ -477,13 +492,17 @@ export class LooperRealtimeClient {
         }
       }
 
-      if (shouldCreateResponse) this.pendingResponseCreate = true;
+      if (shouldCreateResponse && gen === this.sessionGen) this.pendingResponseCreate = true;
     } finally {
-      this.activeToolCalls -= 1;
-      if (this.activeToolCalls === 0) this.toolRunning = false;
-      // Fires only once the model's turn is over AND no sibling call is
-      // still running (also re-checked by the response.done handler).
-      this.maybeCreateResponse();
+      // A stale invocation's session already reset these counters — only the
+      // generation that incremented them may decrement.
+      if (gen === this.sessionGen) {
+        this.activeToolCalls -= 1;
+        if (this.activeToolCalls === 0) this.toolRunning = false;
+        // Fires only once the model's turn is over AND no sibling call is
+        // still running (also re-checked by the response.done handler).
+        this.maybeCreateResponse();
+      }
     }
   }
 

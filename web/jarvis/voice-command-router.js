@@ -142,12 +142,14 @@
   // Prefix REQUIRED — used to barge in while Looper is talking, where a bare
   // name could be Looper's own TTS ("G'day! Looper here…") heard by the mic.
   var WAKE_STRICT_RE = new RegExp("^" + WAKE_PREFIX_SRC + "\\s+" + WAKE_NOUN_SRC + "\\b");
-  var WAKE_STRIP_RE = new RegExp("^(?:" + WAKE_PREFIX_SRC + "\\s+)?" + WAKE_NOUN_SRC + "[,!]?\\s*");
+  // \b keeps the split mishear "loop a" from eating the start of ordinary
+  // phrases ("loop around bondi" must not become a search for "round bondi").
+  var WAKE_STRIP_RE = new RegExp("^(?:" + WAKE_PREFIX_SRC + "\\s+)?" + WAKE_NOUN_SRC + "\\b[,!]?\\s*");
 
   // Whole-utterance stop command (misfire fix: "bus stop near me" ≠ stop).
   // Prefix accepts every wake-word variant the orchestrator accepts
   // so "okay loopa stop" interrupts hands-free too.
-  var STOP_RE = new RegExp("^(?:(?:" + WAKE_PREFIX_SRC + "\\s+)?" + WAKE_NOUN_SRC + "[,!]?\\s*)?(?:please\\s+)?(?:stop|cancel|pause|quiet|silence|shut up|be quiet|that's enough|thats enough|never mind|nevermind)(?:\\s+(?:talking|listening|it|that|now|please))*$");
+  var STOP_RE = new RegExp("^(?:(?:" + WAKE_PREFIX_SRC + "\\s+)?" + WAKE_NOUN_SRC + "\\b[,!]?\\s*)?(?:please\\s+)?(?:stop|cancel|pause|quiet|silence|shut up|be quiet|that's enough|thats enough|never mind|nevermind)(?:\\s+(?:talking|listening|it|that|now|please))*$");
 
   var GREET_RE = new RegExp("^(?:hey|hi|hello|yo|g'day|gday|good morning|good arvo|good afternoon|good evening)(?:\\s+(?:" + WAKE_NOUN_SRC + "|there|mate))*$|^" + WAKE_NOUN_SRC + "$");
 
