@@ -90,6 +90,10 @@ export class LooperRealtimeClient {
   // died must not send its stale call_id into the NEXT session or decrement
   // that session's counters underneath it.
   private sessionGen = 0;
+  // Bumped when the user starts a NEW turn (typed prompt or speech) — a tool
+  // launched for a superseded turn still posts its output for context, but
+  // must not queue a spoken follow-up after the new turn's answer.
+  private turnGen = 0;
   private handledCallIds = new Set<string>();
   private mood: LooperMood = "idle";
   private lastAudibleAt = 0;
@@ -201,6 +205,16 @@ export class LooperRealtimeClient {
         sdp: await sdpResponse.text(),
       });
 
+      // The user can cancel while we were dialing (the mic button stays
+      // clickable during "connecting") — abandon the finished dial quietly.
+      if (this.closedByUser) {
+        dc.close();
+        pc.close();
+        this.micStream?.getTracks().forEach((track) => track.stop());
+        this.micStream = null;
+        return;
+      }
+
       this.pc = pc;
       this.dc = dc;
     } catch (error) {
@@ -233,6 +247,7 @@ export class LooperRealtimeClient {
       return;
     }
     this.callbacks.onTranscript(newEntry("user", text));
+    this.turnGen += 1;
     // Typing while Looper is mid-reply is a barge-in: cancel first, or the
     // server rejects response.create with conversation_already_has_active_response.
     if (this.responseActive) {
@@ -338,6 +353,7 @@ export class LooperRealtimeClient {
     }
 
     if (event.type === "input_audio_buffer.speech_started") {
+      this.turnGen += 1; // speaking over a running tool supersedes its turn
       this.setMood("listening");
       return;
     }
@@ -435,6 +451,7 @@ export class LooperRealtimeClient {
 
   private async executeFunctionCalls(items: ResponseOutputItem[]): Promise<void> {
     const gen = this.sessionGen;
+    const turn = this.turnGen;
     this.activeToolCalls += 1;
     this.toolRunning = true;
     this.setMood("working");
@@ -500,7 +517,12 @@ export class LooperRealtimeClient {
         }
       }
 
-      if (shouldCreateResponse && gen === this.sessionGen) this.pendingResponseCreate = true;
+      // A tool whose turn was superseded (the user typed or spoke while it
+      // ran) still posted its output above for context, but must not queue a
+      // spoken follow-up on top of the new turn's answer.
+      if (shouldCreateResponse && gen === this.sessionGen && turn === this.turnGen) {
+        this.pendingResponseCreate = true;
+      }
     } finally {
       // A stale invocation's session already reset these counters — only the
       // generation that incremented them may decrement.
@@ -510,6 +532,16 @@ export class LooperRealtimeClient {
         // Fires only once the model's turn is over AND no sibling call is
         // still running (also re-checked by the response.done handler).
         this.maybeCreateResponse();
+        // A silent tool (e.g. thumbnail generation) queues no follow-up —
+        // don't leave the face stuck on "working" forever.
+        if (
+          this.activeToolCalls === 0 &&
+          !this.responseActive &&
+          !this.pendingResponseCreate &&
+          this.mood === "working"
+        ) {
+          this.setMood("idle");
+        }
       }
     }
   }
