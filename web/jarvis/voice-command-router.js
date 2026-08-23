@@ -130,16 +130,32 @@
 
   // ---- parsers ------------------------------------------------------------
 
+  // Wake vocabulary — the SINGLE source of truth (the dock's hands-free gate
+  // consumes WAKE_RE/WAKE_STRICT_RE from here so the variants can't drift).
+  // WAKE_NOUN_SRC lists the mishears real Chrome/Safari ASR produces for
+  // "looper". Deliberately absent: 'cooper' (a real name near an open mic)
+  // and bare 'loop' ("hey, loop me in" is ordinary speech).
+  var WAKE_PREFIX_SRC = "(?:hey|hay|ok|okay|oi|yo)";
+  var WAKE_NOUN_SRC = "(?:looper|loopers|loopa|loopah|lupa|lupah|luper|luber|louper|loop er|loop a)";
+  // Prefix optional: a dropped "hey" is the most common wake miss.
+  var WAKE_RE = new RegExp("^(?:" + WAKE_PREFIX_SRC + "\\s+)?" + WAKE_NOUN_SRC + "\\b");
+  // Prefix REQUIRED — used to barge in while Looper is talking, where a bare
+  // name could be Looper's own TTS ("G'day! Looper here…") heard by the mic.
+  var WAKE_STRICT_RE = new RegExp("^" + WAKE_PREFIX_SRC + "\\s+" + WAKE_NOUN_SRC + "\\b");
+  // \b keeps the split mishear "loop a" from eating the start of ordinary
+  // phrases ("loop around bondi" must not become a search for "round bondi").
+  var WAKE_STRIP_RE = new RegExp("^(?:" + WAKE_PREFIX_SRC + "\\s+)?" + WAKE_NOUN_SRC + "\\b[,!]?\\s*");
+
   // Whole-utterance stop command (misfire fix: "bus stop near me" ≠ stop).
   // Prefix accepts every wake-word variant the orchestrator accepts
-  // (hey/ok/okay looper) so "okay looper stop" interrupts hands-free too.
-  var STOP_RE = /^(?:(?:hey|ok|okay)\s+looper[,!]?\s*)?(?:please\s+)?(?:stop|cancel|pause|quiet|silence|shut up|be quiet|that's enough|thats enough|never mind|nevermind)(?:\s+(?:talking|listening|it|that|now|please))*$/;
+  // so "okay loopa stop" interrupts hands-free too.
+  var STOP_RE = new RegExp("^(?:(?:" + WAKE_PREFIX_SRC + "\\s+)?" + WAKE_NOUN_SRC + "\\b[,!]?\\s*)?(?:please\\s+)?(?:stop|cancel|pause|quiet|silence|shut up|be quiet|that's enough|thats enough|never mind|nevermind)(?:\\s+(?:talking|listening|it|that|now|please))*$");
 
-  var GREET_RE = /^(?:hey|hi|hello|yo|g'day|gday|good morning|good arvo|good afternoon|good evening)(?:\s+(?:looper|there|mate))*$/;
+  var GREET_RE = new RegExp("^(?:hey|hi|hello|yo|g'day|gday|good morning|good arvo|good afternoon|good evening)(?:\\s+(?:" + WAKE_NOUN_SRC + "|there|mate))*$|^" + WAKE_NOUN_SRC + "$");
 
   // Whole-utterance help only — "who can HELP me with my garden" is a
   // connect request, not a help request.
-  var HELP_RE = /^(?:looper\s+)?(?:help(?: me)?|what can you do|what do you do|how do you work|what are you|who are you|show me the menu|menu)$/;
+  var HELP_RE = new RegExp("^(?:" + WAKE_NOUN_SRC + "\\s+)?(?:help(?: me)?|what can you do|what do you do|how do you work|what are you|who are you|show me the menu|menu)$");
 
   // Radius: "within 2 km", "3 kilometres", "500 m", "near me" → 1000 m.
   // Explicit distances beat the "near me" default — "cafes near me within
@@ -251,7 +267,7 @@
     if (!t) return cmd;
 
     // Strip a leading wake word so "hey looper find me a cafe" routes clean.
-    var stripped = t.replace(/^(?:hey|ok|okay)\s+looper[,!]?\s*/, "");
+    var stripped = t.replace(WAKE_STRIP_RE, "");
 
     if (STOP_RE.test(t)) { cmd.intent = "stop"; return cmd; }
     if (GREET_RE.test(t)) { cmd.intent = "greet"; return cmd; }
@@ -652,6 +668,8 @@
     route: route,
     fold: fold,
     clean: clean,
+    WAKE_RE: WAKE_RE,
+    WAKE_STRICT_RE: WAKE_STRICT_RE,
     SUBURBS: SUBURBS,
     PIN_CATEGORIES: ["News", "Sales", "Offers", "Events", "Accommodation", "Job-Offers", "Fetch_Deliveries", "Food"],
   };

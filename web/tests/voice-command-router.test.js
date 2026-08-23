@@ -227,6 +227,17 @@ check("show all the cafes in bondi stays a search", route("show all the cafes in
 // ---- wake word stripping ------------------------------------------------------------
 check("hey looper prefix stripped", route("hey looper find me a coffee"), { intent: "search", category: "Food" });
 
+// ---- wake word mishears (ASR variants — router is the single source of truth) -------
+check("hey loopa stop (mishear)", route("hey loopa stop"), { intent: "stop" });
+check("okay luper find a cafe (mishear)", route("okay luper find me a cafe"), { intent: "search", category: "Food" });
+check("looper stop (dropped hey)", route("looper stop"), { intent: "stop" });
+check("bare loopa → greet", route("loopa"), { intent: "greet" });
+check("hey loop a find a cafe (split mishear)", route("hey loop a find me a cafe"), { intent: "search", category: "Food" });
+check("luber deals nearby (mishear stripped)", route("luber any deals near me"), { intent: "offers", category: "Offers" });
+check("bus stop near me still not a stop", route("bus stop near me"), { intent: "search" });
+check("loop me in is not a wake", route("can you loop me in on the news"), { intent: "news", category: "News" });
+check("loop around bondi is not wake-stripped", route("loop around bondi"), { intent: "search", searchTerm: "loop", suburb: "bondi" });
+
 // ---- fallbacks -----------------------------------------------------------------------
 check("free text → search", route("gluten free bakery bondi"), { intent: "search", category: "Food" });
 check("single junk word → unknown", route("banana"), { intent: "unknown" });

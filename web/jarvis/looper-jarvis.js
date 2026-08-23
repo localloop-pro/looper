@@ -35,8 +35,11 @@
   // ---------------------------------------------------------------- persona
   var PERSONA = {
     name: "Looper",
+    // No spoken persona line may BEGIN with a wake prefix + "Looper": the
+    // open mic hears Looper's own TTS, and "Hey! I'm Looper…" is one ASR
+    // dropped-word away from waking itself mid-greeting.
     greetings: [
-      "Hey! I'm Looper, your {district} Local Loop guide. Ask me to find food, deals, jobs — or say take me to Bondi.",
+      "Hi! I'm Looper, your {district} Local Loop guide. Ask me to find food, deals, jobs — or say take me to Bondi.",
       "G'day! Looper here. What are you after — a feed, a deal, or someone local to help you out?",
     ],
     acks: ["On it.", "One sec.", "Let me have a look.", "Checking the loop."],
@@ -77,6 +80,9 @@
     speaking: false,
     lastSearch: null, // {cmd} for set_radius re-runs (stale-closure fix: radius comes from the NEW command)
     lastRadiusM: 1500,
+    wantHandsFree: false, // the USER's intent — survives recognizer deaths so hidden-tab drops can re-arm
+    droppedWhileHidden: false, // the last bail happened while the page was hidden (screen-lock/tab-switch)
+    statusPinned: false, // "brain offline" stays visible until the next turn instead of being settled away
     ui: {},
     map: null,
     speechSupported: false,
@@ -87,7 +93,11 @@
     session: (root.crypto && root.crypto.randomUUID) ? root.crypto.randomUUID() : "s" + String(Math.random()).slice(2),
   };
 
-  var WAKE_RE = /^(?:hey|ok|okay)\s+looper\b/;
+  // Wake vocabulary lives in the router (single source of truth, incl. ASR
+  // mishears like "loopa"/"luper"); fall back to the old literals if an
+  // older cached router is loaded alongside a newer dock.
+  var WAKE_RE = Router.WAKE_RE || /^(?:hey|ok|okay)\s+looper\b/;
+  var WAKE_STRICT_RE = Router.WAKE_STRICT_RE || /^(?:hey|ok|okay)\s+looper\b/;
 
   // ------------------------------------------------------------------- UI
   var CSS = [
@@ -183,6 +193,21 @@
 
   function setStatus(text) { S.ui.status.textContent = text; }
 
+  // The dock's resting truth after a turn: listening face + hands-free hint
+  // while the mic is hot — never "idle" with an open mic, never a stale ack.
+  function settleUi() {
+    if (S.statusPinned) {
+      // "Looper brain offline" is pinned — keep the error face with it
+      // instead of settling to a healthy look mid-outage.
+      S.face.setMood("error");
+      return;
+    }
+    S.face.setMood(S.listening ? "listening" : "idle");
+    setStatus(S.listening
+      ? (S.handsFree ? "Hands-free — say “Hey Looper …”" : "Listening… say “find me a café”")
+      : "Tap my face to talk");
+  }
+
   function showPanel(html) {
     S.ui.panel.innerHTML = html;
     S.ui.panel.classList.add("lj-open");
@@ -247,8 +272,10 @@
       var u = new SpeechSynthesisUtterance(chunks[i++]);
       u.lang = "en-AU";
       u.rate = 0.95;
-      u.pitch = 1.05;
       var voice = pickVoice();
+      // Neural/natural voices sound artifacted when pitch-shifted — only
+      // brighten the plain synthesis engines.
+      u.pitch = (voice && /natural|neural/i.test(voice.name)) ? 1.0 : 1.05;
       if (voice) u.voice = voice;
       u.onend = next;
       u.onerror = finish;
@@ -259,23 +286,53 @@
       if (!S.speaking) return;
       S.speaking = false;
       S.face.stopTalking();
+      settleUi(); // gen guard above means only the CURRENT turn settles the dock
       if (done) done();
     }
     next();
   }
 
   var cachedVoice = null;
+  // Quality-ranked picker: en-AU still beats other English (the persona is
+  // local), but within a tier the Natural/Premium/Google engines beat the
+  // robotic compact/eSpeak ones — the single biggest audible upgrade on
+  // macOS (Karen vs Karen Premium), Edge (Natasha Online Natural) and Linux.
+  function scoreVoice(v) {
+    // Tier gap (100) exceeds the max quality bonus (+60) so a premium en-US
+    // voice can never tie or beat a plain en-AU one. The one intended
+    // tier-break stays: a robotic engine's -60 drops an eSpeak-class en-AU
+    // (140) below a premium other-English voice (160).
+    var s;
+    if (/en[-_]AU/i.test(v.lang)) s = 200; // Aussie accent first
+    else if (/^en([-_]|$)/i.test(v.lang)) s = 100; // any English second
+    else return -1;
+    var n = String(v.name || "");
+    if (/natural|neural|premium|enhanced/i.test(n)) s += 30;
+    if (/google/i.test(n)) s += 20;
+    if (/siri/i.test(n)) s += 10;
+    if (/compact|espeak|eloquence/i.test(n)) s -= 60; // known-robotic engines
+    return s;
+  }
   function pickVoice() {
     if (cachedVoice) return cachedVoice;
     var voices = root.speechSynthesis.getVoices() || [];
-    cachedVoice =
-      voices.find(function (v) { return /en[-_]AU/i.test(v.lang); }) ||
-      voices.find(function (v) { return /^en/i.test(v.lang); }) ||
-      null;
+    var best = null;
+    var bestScore = 0;
+    for (var i = 0; i < voices.length; i++) {
+      var sc = scoreVoice(voices[i]);
+      if (sc > bestScore) { bestScore = sc; best = voices[i]; }
+    }
+    cachedVoice = best;
     return cachedVoice;
   }
   if ("speechSynthesis" in root) {
-    root.speechSynthesis.onvoiceschanged = function () { cachedVoice = null; };
+    // addEventListener so a host page's own voiceschanged handler coexists
+    // instead of one clobbering the other.
+    if (root.speechSynthesis.addEventListener) {
+      root.speechSynthesis.addEventListener("voiceschanged", function () { cachedVoice = null; });
+    } else {
+      root.speechSynthesis.onvoiceschanged = function () { cachedVoice = null; };
+    }
   }
 
   function stopSpeaking() {
@@ -312,15 +369,27 @@
       }
       if (interim) {
         setStatus("“" + interim.trim() + "”");
+        S.recErrorStreak = 0; // audio is flowing — the mic works
         if (!S.handsFree) stopSpeaking(); // push-to-talk: any voice barges in
+        // Hands-free: halt TTS the moment a wake phrase is heard, so the
+        // barge-in below feels instant once the final transcript lands.
+        else if (S.speaking && WAKE_STRICT_RE.test(Router.clean(interim))) stopSpeaking();
       }
       var text = finalText.trim();
       if (!text) return;
       S.recErrorStreak = 0; // real speech arrived — the mic works
       if (S.handsFree) {
         // Open mic hears Looper's own TTS — while speaking, only an
-        // explicit stop command interrupts (else it would cancel itself).
+        // explicit stop command or a wake-PREFIXED command interrupts
+        // (else it would cancel itself).
         if (S.speaking) {
+          // "hey/okay + looper" is provably the USER: no spoken persona
+          // line starts with a wake prefix (see PERSONA comment above).
+          if (WAKE_STRICT_RE.test(Router.clean(text))) {
+            stopSpeaking();
+            ask(text);
+            return;
+          }
           if (Router.route(text).intent === "stop") {
             stopSpeaking();
             // "stop listening" mid-speech closes the mic too
@@ -348,18 +417,26 @@
           err === "audio-capture" || err === "network") {
         // Fail closed: a dead mic or speech-service outage must not spin
         // a restart loop — drop to typed input instead.
+        S.droppedWhileHidden = !!(document.hidden); // screen-lock kills recognition this way
         stopListening();
         S.ui.inputRow.classList.add("lj-open");
         setStatus(err === "audio-capture" ? "No microphone found — type to ask Looper" : "Mic unavailable — type to ask Looper");
         return;
       }
-      // Transient errors (no-speech, aborted): count them; onend bails out
-      // of restarting once the streak shows nothing is getting through.
+      // Hands-free: silence is the NORMAL state of a wake-word mic — Chrome
+      // ends continuous recognition with "no-speech" after a few quiet
+      // seconds, and counting those would bail hands-free in a quiet room.
+      // Push-to-talk keeps counting: there, repeated no-speech means the
+      // turn is dead.
+      if (err === "no-speech" && S.handsFree) return;
+      // Transient errors (aborted, push-to-talk no-speech): count them; onend
+      // bails out of restarting once the streak shows nothing is getting through.
       S.recErrorStreak = (S.recErrorStreak || 0) + 1;
     };
     rec.onend = function () {
       if (S.listening) {
         if ((S.recErrorStreak || 0) >= 4) {
+          S.droppedWhileHidden = !!(document.hidden); // backgrounded tabs die by streak too
           stopListening();
           // this onend is the recognizer's LAST — no later one will run the
           // release branch below, so let the host wake word back in here
@@ -400,6 +477,7 @@
       return;
     }
     S.handsFree = !S.handsFree;
+    S.wantHandsFree = S.handsFree; // remember the USER's intent for auto re-arm
     S.ui.wake.classList.toggle("on", S.handsFree);
     if (S.handsFree) {
       startListening();
@@ -417,6 +495,7 @@
     if (S.beforeSpeak) { try { S.beforeSpeak(); } catch (e) { /* never block the mic */ } }
     S.listening = true;
     S.recErrorStreak = 0;
+    S.statusPinned = false;
     S.recognition.continuous = S.handsFree; // hands-free keeps the stream open
     S.face.setMood("listening");
     setStatus(S.handsFree ? "Hands-free — say “Hey Looper …”" : "Listening… say “find me a café”");
@@ -581,7 +660,7 @@
     }).then(function (data) {
       if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
       var results = (data && data.results) || [];
-      S.face.setMood("idle");
+      settleUi();
       if (!results.length) {
         // clear the PREVIOUS search's pins — stale markers next to a
         // "nothing found" panel read as results for the new query
@@ -607,8 +686,9 @@
       Bus.clearResults(); // stale pins next to "brain offline" read as results
       S.face.setMood("error");
       setStatus("Looper brain offline");
+      S.statusPinned = true; // keep the offline message up until the next turn
       showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.apiDown)) + "</p>");
-      speak(pick(PERSONA.apiDown), function () { S.face.setMood("idle"); });
+      speak(pick(PERSONA.apiDown));
     });
   }
 
@@ -629,7 +709,7 @@
     return api("/search", params).then(function (data) {
       if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
       var results = (data && data.results) || [];
-      S.face.setMood("idle");
+      settleUi();
       if (!results.length) {
         Bus.clearResults(); // stale pins next to "no match" read as matches
         speak("I couldn't find " + cmd.businessName + " on the loop yet.");
@@ -651,7 +731,10 @@
     }).catch(function () {
       if (seq !== S.reqSeq) return; // superseded — don't clobber the newer UI
       Bus.clearResults(); // stale marker next to "brain offline" reads as current
-      S.face.setMood("idle");
+      // same offline treatment as runSearch — the dock must not look healthy
+      S.face.setMood("error");
+      setStatus("Looper brain offline");
+      S.statusPinned = true; // keep the offline message up until the next turn
       showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.apiDown)) + "</p>");
       speak(pick(PERSONA.apiDown));
     });
@@ -662,7 +745,10 @@
     switch (cmd.intent) {
       case "stop":
         // "stop" means stop everything: cancel speech AND close the mic
-        // ("hey looper stop listening" must actually stop listening).
+        // ("hey looper stop listening" must actually stop listening) —
+        // including the auto re-arm intent, or visibilitychange would
+        // resurrect a mic the user explicitly killed.
+        S.wantHandsFree = false;
         stopSpeaking();
         stopListening();
         // a superseded in-flight search can no longer restore the mood —
@@ -730,6 +816,7 @@
   function ask(text) {
     stopSpeaking(); // barge-in
     S.reqSeq++; // newer command owns the UI — in-flight responses go stale
+    S.statusPinned = false; // a new turn unpins "brain offline"
     setStatus("“" + text + "”");
     var cmd = Router.route(text, { radiusM: S.lastRadiusM });
     execute(cmd);
@@ -799,6 +886,23 @@
 
     buildUi(opts.dock || cfg.dock || null);
     setupRecognition();
+
+    // Screen-lock/tab-switch kills the recognizer through the fail-closed
+    // paths, which turn hands-free OFF. Re-arm on return ONLY when the drop
+    // happened while hidden — a real in-foreground mic failure keeps the
+    // deliberate typed-input fallback. A genuinely revoked mic just re-enters
+    // tryStartRecognition's fail-closed branch, so this cannot loop.
+    if (typeof document !== "undefined" && document.addEventListener) {
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) return;
+        if (S.wantHandsFree && !S.listening && S.speechSupported && S.droppedWhileHidden) {
+          S.droppedWhileHidden = false;
+          S.handsFree = true;
+          S.ui.wake.classList.add("on");
+          startListening();
+        }
+      });
+    }
 
     if (S.map) {
       Bus.init(S.map, {

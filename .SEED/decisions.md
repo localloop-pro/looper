@@ -222,6 +222,31 @@
   `db/migrations/looper_gateway_audit_log.sql`, provision the identical random
   32+ byte `LOOPER_BOT_READ_TOKEN` in Worker + Looper, deploy, and correlate a
   live 200 with `pin_pending_list_read` before Bill's voice acceptance.
+- 2026-08-23: Voice-quality overhaul on `claude/voice-self-improve-kvdr04`
+  (Bill's ask: "get the voice working as well as possible"). Desktop
+  (looper-bot): session now enables input transcription
+  (gpt-4o-mini-transcribe + LocalLoop-name prompt — Bill's spoken turns
+  finally appear in the Live Log), far_field noise reduction, and
+  env-overridable model/voice/eagerness/speed (defaults unchanged per the
+  model-name gotcha); realtime.ts gained auto-reconnect (pc/dc death,
+  60-min session_expired, mic unplug — fresh secret each dial-in, context
+  resets), low-latency tool dispatch on response.output_item.done with a
+  handledCallIds dedupe, try/finally + per-call error outputs so a failed
+  tool can't wedge the conversation, response.cancel before typed prompts,
+  cancelled-response "(interrupted)" transcript labeling, and
+  analyser-driven "speaking" mood (audio-delta events never fire over
+  WebRTC — that handler was dead code). Web Jarvis: wake vocabulary moved
+  into the router as the single source of truth (WAKE_RE/WAKE_STRICT_RE,
+  ASR mishears loopa/luper/luber/"loop a"; 'cooper' and bare 'loop'
+  deliberately rejected), wake-prefixed barge-in while Looper speaks
+  (greeting reworded so TTS can't self-wake), hands-free no longer dies in
+  a quiet room ("no-speech" is benign in wake mode) and re-arms after
+  screen-lock/tab-switch drops, quality-ranked TTS voice picker
+  (Natural/Premium/Google > compact/eSpeak within the same language tier),
+  and a settleUi() helper so the status pill/face never stick on "On it."
+  or show idle with a hot mic. Router tests 165→173; all gates green
+  (typecheck/build, 15 gateway tests, backend 80 pass/1 skip, Playwright
+  smoke). Bill's live-mic acceptance still owed as before.
 - 2026-08-12: F4.3 Looper client is code-complete and checkpointed in
   coordinator commits `854e1e7` (integration) and `7a91cb5` (gateway module,
   15 tests, evidence). LocalLoop confirmed no contract mismatch against merged

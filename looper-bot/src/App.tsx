@@ -135,10 +135,11 @@ export default function App() {
           <section className="control-strip">
             <button
               className={isConnected ? "simple-button active" : "simple-button"}
-              onClick={isConnected ? disconnect : connect}
-              disabled={connectionState === "connecting"}
-              aria-label={isConnected ? "Disconnect voice" : "Connect voice"}
-              title={isConnected ? "Disconnect voice" : "Connect voice"}
+              onClick={isConnected || connectionState === "connecting" ? disconnect : connect}
+              aria-label={
+                isConnected ? "Disconnect voice" : connectionState === "connecting" ? "Cancel connecting" : "Connect voice"
+              }
+              title={isConnected ? "Disconnect voice" : connectionState === "connecting" ? "Cancel connecting" : "Connect voice"}
             >
               {isConnected ? <MicOff size={16} /> : <Mic size={16} />}
             </button>
