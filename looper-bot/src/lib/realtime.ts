@@ -316,12 +316,16 @@ export class LooperRealtimeClient {
         void this.handleDrop("Voice session hit OpenAI's 60-minute limit");
         return;
       }
-      // Benign races (e.g. a response.create colliding with an active
-      // response) stay status-only; real server errors show the error face
-      // so the mood can't sit on "thinking"/"working" forever.
-      const benign =
-        event.error?.code === "conversation_already_has_active_response" ||
-        event.error?.code === "response_cancel_not_active";
+      // A response.create that raced a still-active response (typed barge-in
+      // right behind response.cancel) is not lost: retry it once the active
+      // response reaches response.done.
+      if (event.error?.code === "conversation_already_has_active_response") {
+        this.pendingResponseCreate = true;
+        return;
+      }
+      // Benign races stay status-only; real server errors show the error
+      // face so the mood can't sit on "thinking"/"working" forever.
+      const benign = event.error?.code === "response_cancel_not_active";
       if (!benign) this.setMood("error");
       this.callbacks.onStatus(event.error?.message || "Realtime API returned an error.");
       return;
@@ -391,10 +395,11 @@ export class LooperRealtimeClient {
       if (spoken) this.callbacks.onTranscript(newEntry("looper", cancelled ? `${spoken} … (interrupted)` : spoken));
       this.currentAssistantText = "";
 
-      this.maybeCreateResponse();
-
       // Safety net for function calls the output_item.done path didn't see.
-      // Half-emitted calls from a cancelled response are skipped.
+      // Half-emitted calls from a cancelled response are skipped. This must
+      // run BEFORE any deferred response.create fires, or the model answers
+      // without the missed call's output — executeFunctionCalls flushes the
+      // pending create itself once every call has returned.
       const functionCalls = output.filter(
         (item) =>
           item.type === "function_call" &&
@@ -408,8 +413,11 @@ export class LooperRealtimeClient {
           if (item.call_id) this.handledCallIds.add(item.call_id);
         }
         await this.executeFunctionCalls(functionCalls);
-      } else if (!this.toolRunning && this.mood !== "speaking" && this.mood !== "listening") {
-        this.setMood("idle");
+      } else {
+        this.maybeCreateResponse();
+        if (!this.toolRunning && this.mood !== "speaking" && this.mood !== "listening") {
+          this.setMood("idle");
+        }
       }
     }
   }
@@ -577,7 +585,10 @@ export class LooperRealtimeClient {
       // it starts when sound starts and ends when the sound actually ends.
       if (energy > 0.06) {
         this.lastAudibleAt = performance.now();
-        if (this.mood !== "speaking" && this.mood !== "listening" && !this.toolRunning) {
+        // Audible output wins even mid-tool: a spoken ack before a long tool
+        // call should show a talking face; the silence branch below restores
+        // "working" once the audio ends.
+        if (this.mood !== "speaking" && this.mood !== "listening") {
           this.setMood("speaking");
         }
       } else if (this.mood === "speaking" && performance.now() - this.lastAudibleAt > 450) {
