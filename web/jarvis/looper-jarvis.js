@@ -196,8 +196,13 @@
   // The dock's resting truth after a turn: listening face + hands-free hint
   // while the mic is hot — never "idle" with an open mic, never a stale ack.
   function settleUi() {
+    if (S.statusPinned) {
+      // "Looper brain offline" is pinned — keep the error face with it
+      // instead of settling to a healthy look mid-outage.
+      S.face.setMood("error");
+      return;
+    }
     S.face.setMood(S.listening ? "listening" : "idle");
-    if (S.statusPinned) return; // "Looper brain offline" stays until the next turn
     setStatus(S.listening
       ? (S.handsFree ? "Hands-free — say “Hey Looper …”" : "Listening… say “find me a café”")
       : "Tap my face to talk");

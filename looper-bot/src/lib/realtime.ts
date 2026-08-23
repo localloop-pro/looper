@@ -273,9 +273,11 @@ export class LooperRealtimeClient {
       this.sendEvent({ type: "response.cancel" });
     }
     // Generation can finish while the WebRTC audio is still buffered and
-    // audibly playing (the "speaking" mood tracks actual playback) — flush
-    // the server-side buffer so the old answer stops talking over this turn.
-    if (this.mood === "speaking" || this.responseActive) {
+    // audibly playing — flush the server-side buffer so the old answer stops
+    // talking over this turn. Recent audibility (not the mood, which decays
+    // to idle during natural sentence pauses) decides whether playback may
+    // still be mid-reply.
+    if (this.responseActive || performance.now() - this.lastAudibleAt < 2000) {
       this.sendEvent({ type: "output_audio_buffer.clear" });
     }
     this.sendEvent({
@@ -424,6 +426,15 @@ export class LooperRealtimeClient {
 
     if (event.type === "response.done") {
       this.responseActive = false;
+      // A failed generation has no usable output — surface it instead of
+      // silently settling to idle with no answer.
+      if (event.response?.status === "failed") {
+        this.currentAssistantText = "";
+        this.setMood("error");
+        this.callbacks.onStatus("Looper's reply failed on OpenAI's side — ask again.");
+        this.maybeCreateResponse();
+        return;
+      }
       const cancelled = event.response?.status === "cancelled";
       const output = event.response?.output || [];
       const spoken = this.currentAssistantText || output.map(collectOutputText).filter(Boolean).join("\n");
@@ -680,6 +691,9 @@ export class LooperRealtimeClient {
     this.audioContext = null;
     this.outputAnalyser = null;
     this.smoothedMouthShape = silentMouthShape();
+    // Publish the reset too — otherwise React keeps rendering the last
+    // open-mouth frame through a reconnect backoff.
+    this.callbacks.onMouthShape(silentMouthShape());
   }
 }
 
