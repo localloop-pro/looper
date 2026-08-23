@@ -63,6 +63,15 @@ For Mermaid charts, keep syntax simple: start with flowchart TD, avoid markdown 
 # Audio
 Let the user interrupt. If audio is unclear, ask one short clarifying question instead of guessing.
 
+# Voice Output (you are heard, not read)
+- Keep spoken replies to one to three short sentences unless Bill asks for detail.
+- When a tool returns a list (businesses, search results), speak two or three options — ordered only by community reviews, recency, or distance — and say the rest are on screen. Send the full list to the artifact panel. Never pick a single winner.
+- Never read URLs, IDs, coordinates, or long numbers aloud; put them in the artifact panel and say "link's on screen".
+- Say numbers naturally: "four point eight stars from two hundred reviews", not digit strings.
+- Before a longer tool call, say one short acknowledgment first ("On it — checking Bondi") so there is no dead air, then call the tool.
+- If Bill interrupts, stop immediately and respond to the new input; never resume the cut-off sentence.
+- Speak English unless Bill speaks another language first.
+
 # LocalLoop (you are LOOPER's desktop face — the Jarvis of the Local Loop map)
 - You are the community connection agent for LocalLoop (localloop.ai): you connect locals to each other and to the businesses around them.
 - When asked about local businesses, services, food, deals, or anything "around here", you MUST use the localloop tools (localloop_search, localloop_businesses). Never answer from memory and never invent names, ratings, or review counts.
@@ -687,6 +696,27 @@ ipcMain.handle("realtime:create-token", async () => {
   const db = await readDb();
   const instructions = `${LOOPER_INSTRUCTIONS}\n\n${buildThumbnailBoardInstructions(db)}`;
 
+  // Voice tuning is env-overridable; the defaults stay exactly as shipped
+  // (gotcha: confirm Realtime model names against OpenAI docs before changing).
+  const realtimeModel = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2";
+  const realtimeVoice = process.env.LOOPER_VOICE || "cedar"; // marin/cedar = OpenAI's quality picks
+  const vadEagerness = process.env.LOOPER_VAD_EAGERNESS || "medium"; // low | medium | high | auto
+  const voiceSpeed = Number(process.env.LOOPER_VOICE_SPEED); // 0.25-1.5, default 1.0
+  // near_field = headset mic, far_field = laptop/room mic, off = disable.
+  const noiseReductionEnv = process.env.LOOPER_NOISE_REDUCTION || "far_field";
+  const noiseReduction =
+    noiseReductionEnv === "off"
+      ? null
+      : { type: noiseReductionEnv === "near_field" ? "near_field" : "far_field" };
+  // Transcription makes Bill's spoken turns show up in the Live Log. The
+  // prompt biases recognition toward LocalLoop names (not supported by
+  // gpt-realtime-whisper — drop it if overriding to that model).
+  const transcription = {
+    model: process.env.LOOPER_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe",
+    language: process.env.LOOPER_TRANSCRIBE_LANGUAGE || "en",
+    prompt: "Looper, LocalLoop, HybridCard, Bondi, Bronte, Bondi Junction, Coogee, Maroubra, Byron Bay, Bondi Local Loop",
+  };
+
   const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST",
     headers: {
@@ -697,7 +727,7 @@ ipcMain.handle("realtime:create-token", async () => {
     body: JSON.stringify({
       session: {
         type: "realtime",
-        model: "gpt-realtime-2",
+        model: realtimeModel,
         instructions,
         output_modalities: ["audio"],
         reasoning: { effort: "low" },
@@ -705,15 +735,18 @@ ipcMain.handle("realtime:create-token", async () => {
         tools: toolSpecs,
         audio: {
           input: {
+            transcription,
+            ...(noiseReduction ? { noise_reduction: noiseReduction } : {}),
             turn_detection: {
               type: "semantic_vad",
-              eagerness: "medium",
+              eagerness: vadEagerness,
               create_response: true,
               interrupt_response: true,
             },
           },
           output: {
-            voice: "cedar",
+            voice: realtimeVoice,
+            ...(Number.isFinite(voiceSpeed) ? { speed: voiceSpeed } : {}),
           },
         },
         tracing: {
@@ -725,7 +758,19 @@ ipcMain.handle("realtime:create-token", async () => {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Realtime token request failed: ${response.status} ${text}`);
+    let detail = text;
+    try {
+      detail = JSON.parse(text)?.error?.message || text;
+    } catch {}
+    const friendly =
+      response.status === 401
+        ? "OpenAI rejected the API key. Check OPENAI_API_KEY in looper-bot/.env.local."
+        : response.status === 429
+          ? "OpenAI rate limit or quota reached. Check your OpenAI usage/billing, then reconnect."
+          : response.status >= 500
+            ? "OpenAI's Realtime service had a problem. Wait a moment and reconnect."
+            : `Could not start a voice session (HTTP ${response.status}).`;
+    throw new Error(`${friendly} (${detail})`);
   }
 
   const data = await response.json();

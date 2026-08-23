@@ -33,20 +33,27 @@ type ServerEvent = {
   delta?: string;
   transcript?: string;
   response?: {
+    status?: string;
     output?: ResponseOutputItem[];
   };
   item?: {
     type?: string;
     role?: string;
+    status?: string;
+    call_id?: string;
+    name?: string;
+    arguments?: string;
     content?: Array<{ transcript?: string; text?: string }>;
   };
   error?: {
+    code?: string;
     message?: string;
   };
 };
 
 type ResponseOutputItem = {
   type?: string;
+  status?: string;
   name?: string;
   call_id?: string;
   arguments?: string;
@@ -54,11 +61,13 @@ type ResponseOutputItem = {
 };
 
 const realtimeUrl = "https://api.openai.com/v1/realtime/calls";
+const maxReconnectAttempts = 4;
 
 export class LooperRealtimeClient {
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
   private micStream: MediaStream | null = null;
+  private audioEl: HTMLAudioElement | null = null;
   private callbacks: RealtimeCallbacks;
   private currentAssistantText = "";
   private toolSpecs: LooperToolSpec[] = [];
@@ -67,6 +76,18 @@ export class LooperRealtimeClient {
   private outputAnalyser: AnalyserNode | null = null;
   private outputMeterFrame = 0;
   private smoothedMouthShape: MouthShape = silentMouthShape();
+  // Lifecycle: the user closing voice is the only "final" disconnect — every
+  // other death (Wi-Fi drop, ICE failure, OpenAI's 60-minute session cap,
+  // data-channel close) reconnects automatically with a fresh client secret.
+  private closedByUser = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer = 0;
+  private disconnectGraceTimer = 0;
+  private responseActive = false;
+  private pendingResponseCreate = false;
+  private handledCallIds = new Set<string>();
+  private mood: LooperMood = "idle";
+  private lastAudibleAt = 0;
 
   constructor(callbacks: RealtimeCallbacks) {
     this.callbacks = callbacks;
@@ -74,8 +95,9 @@ export class LooperRealtimeClient {
 
   async connect(): Promise<void> {
     if (this.pc) return;
+    this.closedByUser = false;
     this.callbacks.onConnectionState("connecting");
-    this.callbacks.onMood("thinking");
+    this.setMood("thinking");
     this.callbacks.onStatus("Minting a Realtime client secret.");
 
     try {
@@ -84,29 +106,73 @@ export class LooperRealtimeClient {
       const pc = new RTCPeerConnection();
       const audio = document.createElement("audio");
       audio.autoplay = true;
+      this.audioEl = audio;
 
       pc.ontrack = (event) => {
         audio.srcObject = event.streams[0];
         this.startOutputMeter(event.streams[0]);
       };
 
-      this.micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+      try {
+        this.micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (error) {
+        const name = error instanceof DOMException ? error.name : "";
+        if (name === "NotAllowedError" || name === "SecurityError") {
+          throw new Error("Microphone permission denied — allow it in System Settings > Privacy & Security > Microphone, then reconnect.");
+        }
+        if (name === "NotFoundError" || name === "OverconstrainedError") {
+          throw new Error("No microphone found — plug one in and reconnect.");
+        }
+        throw error;
+      }
+      const micTrack = this.micStream.getAudioTracks()[0];
+      pc.addTrack(micTrack, this.micStream);
+      // Hot-unplugged headset: the track just ends. Reconnect picks up the
+      // new default input device instead of leaving Looper silently deaf.
+      micTrack.addEventListener("ended", () => {
+        this.callbacks.onStatus("Microphone disconnected.");
+        void this.handleDrop("Microphone lost");
       });
-      pc.addTrack(this.micStream.getAudioTracks()[0], this.micStream);
+
+      pc.addEventListener("connectionstatechange", () => {
+        if (pc !== this.pc) return; // stale connection from before a reconnect
+        if (pc.connectionState === "failed") {
+          void this.handleDrop("Connection lost");
+        } else if (pc.connectionState === "disconnected") {
+          // "disconnected" can self-heal on brief network blips — give it a
+          // grace period before tearing down and reconnecting.
+          this.clearGraceTimer();
+          this.disconnectGraceTimer = window.setTimeout(() => {
+            if (pc === this.pc && (pc.connectionState === "disconnected" || pc.connectionState === "failed")) {
+              void this.handleDrop("Connection lost");
+            }
+          }, 3000);
+        } else if (pc.connectionState === "connected") {
+          this.clearGraceTimer();
+        }
+      });
 
       const dc = pc.createDataChannel("oai-events");
       dc.addEventListener("open", () => {
+        this.reconnectAttempts = 0;
         this.callbacks.onConnectionState("connected");
-        this.callbacks.onMood("idle");
+        this.setMood("idle");
         this.callbacks.onStatus("Looper is live. Start talking naturally.");
       });
       dc.addEventListener("message", (event) => {
-        void this.handleServerEvent(event.data);
+        this.handleServerEvent(event.data).catch((error) => {
+          this.callbacks.onStatus(error instanceof Error ? error.message : String(error));
+        });
+      });
+      dc.addEventListener("close", () => {
+        if (dc !== this.dc) return; // closed by our own teardown
+        void this.handleDrop("Voice link closed");
       });
 
       const offer = await pc.createOffer();
@@ -133,24 +199,20 @@ export class LooperRealtimeClient {
       this.pc = pc;
       this.dc = dc;
     } catch (error) {
+      this.teardown();
       this.callbacks.onConnectionState("error");
-      this.callbacks.onMood("error");
-      this.callbacks.onStatus(error instanceof Error ? error.message : String(error));
-      this.disconnect();
+      this.setMood("error");
+      this.callbacks.onStatus(friendlyErrorMessage(error));
     }
   }
 
   disconnect(): void {
-    this.dc?.close();
-    this.pc?.close();
-    this.micStream?.getTracks().forEach((track) => track.stop());
-    this.stopOutputMeter();
-    this.dc = null;
-    this.pc = null;
-    this.micStream = null;
-    this.currentAssistantText = "";
+    this.closedByUser = true;
+    this.clearReconnectTimer();
+    this.clearGraceTimer();
+    this.teardown();
     this.callbacks.onConnectionState("idle");
-    this.callbacks.onMood("idle");
+    this.setMood("idle");
     this.callbacks.onMouthShape(silentMouthShape());
   }
 
@@ -160,6 +222,11 @@ export class LooperRealtimeClient {
       return;
     }
     this.callbacks.onTranscript(newEntry("user", text));
+    // Typing while Looper is mid-reply is a barge-in: cancel first, or the
+    // server rejects response.create with conversation_already_has_active_response.
+    if (this.responseActive) {
+      this.sendEvent({ type: "response.cancel" });
+    }
     this.sendEvent({
       type: "conversation.item.create",
       item: {
@@ -171,35 +238,83 @@ export class LooperRealtimeClient {
     this.sendEvent({ type: "response.create" });
   }
 
+  // Non-user connection death: tear down and dial back in with a fresh
+  // client secret (main.cjs re-sends full instructions + tools on every mint).
+  private async handleDrop(reason: string): Promise<void> {
+    if (this.closedByUser || !this.pc) return;
+    this.clearGraceTimer();
+    this.teardown();
+    if (this.reconnectAttempts >= maxReconnectAttempts) {
+      this.callbacks.onConnectionState("error");
+      this.setMood("error");
+      this.callbacks.onStatus(`${reason} — couldn't reconnect. Click the mic to try again.`);
+      return;
+    }
+    const delay = this.reconnectAttempts === 0 ? 0 : Math.min(2000 * 2 ** (this.reconnectAttempts - 1), 15000);
+    this.reconnectAttempts += 1;
+    this.callbacks.onConnectionState("connecting");
+    this.callbacks.onStatus(`${reason} — reconnecting… (Looper starts a fresh session; earlier chat context resets.)`);
+    this.clearReconnectTimer();
+    this.reconnectTimer = window.setTimeout(() => {
+      if (!this.closedByUser) void this.connect();
+    }, delay);
+  }
+
+  private teardown(): void {
+    const dc = this.dc;
+    const pc = this.pc;
+    this.dc = null;
+    this.pc = null;
+    dc?.close();
+    pc?.close();
+    this.micStream?.getTracks().forEach((track) => track.stop());
+    this.micStream = null;
+    if (this.audioEl) {
+      this.audioEl.srcObject = null;
+      this.audioEl = null;
+    }
+    this.stopOutputMeter();
+    this.currentAssistantText = "";
+    this.responseActive = false;
+    this.pendingResponseCreate = false;
+    this.toolRunning = false;
+    this.handledCallIds.clear();
+  }
+
   private async handleServerEvent(raw: string): Promise<void> {
     const event = safeParseEvent(raw);
     if (!event.type) return;
 
     if (event.type === "error") {
-      this.callbacks.onMood("error");
+      // OpenAI hard-stops Realtime sessions at 60 minutes — that's routine,
+      // not an error face: reconnect into a fresh session automatically.
+      if (event.error?.code === "session_expired") {
+        void this.handleDrop("Voice session hit OpenAI's 60-minute limit");
+        return;
+      }
       this.callbacks.onStatus(event.error?.message || "Realtime API returned an error.");
       return;
     }
 
+    if (event.type === "response.created") {
+      this.responseActive = true;
+      this.currentAssistantText = "";
+      return;
+    }
+
     if (event.type === "input_audio_buffer.speech_started") {
-      this.callbacks.onMood("listening");
+      this.setMood("listening");
       return;
     }
 
     if (event.type === "input_audio_buffer.speech_stopped") {
-      this.callbacks.onMood("thinking");
+      this.setMood("thinking");
       return;
     }
 
-    if (event.type === "response.audio.delta" || event.type === "response.output_audio.delta") {
-      this.callbacks.onMood("speaking");
-      return;
-    }
-
-    if (event.type === "response.output_audio.done" || event.type === "response.audio.done") {
-      if (!this.toolRunning) this.callbacks.onMood("idle");
-      return;
-    }
+    // Note: over WebRTC the reply audio arrives on the media track, not as
+    // response.output_audio.delta data-channel events — the "speaking" mood
+    // is driven by the output meter in startOutputMeter() instead.
 
     if (
       event.type === "response.audio_transcript.delta" ||
@@ -216,74 +331,132 @@ export class LooperRealtimeClient {
       return;
     }
 
+    if (event.type === "conversation.item.input_audio_transcription.failed") {
+      this.callbacks.onTranscript(newEntry("system", "(couldn't transcribe that — Looper still heard you)"));
+      return;
+    }
+
+    // Low-latency tool dispatch: a completed function_call item arrives here
+    // before response.done — start the tool immediately instead of waiting
+    // out the rest of the model's turn.
+    if (event.type === "response.output_item.done" && event.item?.type === "function_call") {
+      const item = event.item;
+      if (item.call_id && item.name && item.status === "completed" && !this.handledCallIds.has(item.call_id)) {
+        this.handledCallIds.add(item.call_id);
+        await this.executeFunctionCalls([
+          { type: "function_call", call_id: item.call_id, name: item.name, arguments: item.arguments },
+        ]);
+      }
+      return;
+    }
+
     if (event.type === "response.done") {
+      this.responseActive = false;
+      const cancelled = event.response?.status === "cancelled";
       const output = event.response?.output || [];
       const spoken = this.currentAssistantText || output.map(collectOutputText).filter(Boolean).join("\n");
-      if (spoken) this.callbacks.onTranscript(newEntry("looper", spoken));
+      // Transcript deltas stream ahead of audio — an interrupted reply's tail
+      // was never heard, so label it instead of logging it as said.
+      if (spoken) this.callbacks.onTranscript(newEntry("looper", cancelled ? `${spoken} … (interrupted)` : spoken));
       this.currentAssistantText = "";
 
-      const functionCalls = output.filter((item) => item.type === "function_call" && item.name && item.call_id);
+      if (this.pendingResponseCreate) {
+        this.pendingResponseCreate = false;
+        this.sendEvent({ type: "response.create" });
+      }
+
+      // Safety net for function calls the output_item.done path didn't see.
+      // Half-emitted calls from a cancelled response are skipped.
+      const functionCalls = output.filter(
+        (item) =>
+          item.type === "function_call" &&
+          item.name &&
+          item.call_id &&
+          item.status !== "incomplete" &&
+          !this.handledCallIds.has(item.call_id),
+      );
       if (functionCalls.length > 0) {
+        for (const item of functionCalls) {
+          if (item.call_id) this.handledCallIds.add(item.call_id);
+        }
         await this.executeFunctionCalls(functionCalls);
-      } else if (!this.toolRunning) {
-        this.callbacks.onMood("idle");
+      } else if (!this.toolRunning && this.mood !== "speaking" && this.mood !== "listening") {
+        this.setMood("idle");
       }
     }
   }
 
   private async executeFunctionCalls(items: ResponseOutputItem[]): Promise<void> {
     this.toolRunning = true;
-    this.callbacks.onMood("working");
+    this.setMood("working");
     let shouldCreateResponse = false;
 
-    for (const item of items) {
-      const callId = item.call_id;
-      const name = item.name;
-      if (!callId || !name) continue;
+    try {
+      for (const item of items) {
+        const callId = item.call_id;
+        const name = item.name;
+        if (!callId || !name) continue;
 
-      const parsedArgs = parseToolArguments(item.arguments || "{}");
-      const knownTool = this.toolSpecs.some((tool) => tool.name === name);
-      if (!knownTool) {
-        await this.returnToolOutput(callId, {
-          ok: false,
-          error: `Tool is not available: ${name}`,
-        });
-        shouldCreateResponse = true;
-        continue;
+        try {
+          const parsedArgs = parseToolArguments(item.arguments || "{}");
+          const knownTool = this.toolSpecs.some((tool) => tool.name === name);
+          if (!knownTool) {
+            await this.returnToolOutput(callId, {
+              ok: false,
+              error: `Tool is not available: ${name}`,
+            });
+            shouldCreateResponse = true;
+            continue;
+          }
+
+          this.callbacks.onTranscript(newEntry("tool", `Running ${name}`));
+          if (name === "image_generate") {
+            this.callbacks.onArtifact({
+              title: "Generating Image",
+              kind: "imageLoading",
+              content: typeof parsedArgs.prompt === "string" ? parsedArgs.prompt : "Looper is generating an image.",
+            });
+          }
+          if (name === "thumbnail_generate" || name === "thumbnail_edit") {
+            const loadingResult = await window.looper.executeTool({
+              name: "thumbnail_loading_prepare",
+              arguments: {
+                ...parsedArgs,
+                mode: name === "thumbnail_edit" ? "edit" : "generate",
+              },
+            } satisfies LooperToolCall);
+            if (typeof loadingResult.runId === "string") parsedArgs.runId = loadingResult.runId;
+            if (typeof loadingResult.targetId === "string") parsedArgs.targetId = loadingResult.targetId;
+            if (loadingResult.artifact) this.callbacks.onArtifact(loadingResult.artifact);
+          }
+          const result = await window.looper.executeTool({ name, arguments: parsedArgs } satisfies LooperToolCall);
+          if (result.mode === "display" || result.mode === "computer") {
+            this.callbacks.onMode(result.mode);
+          }
+          if (result.artifact) this.callbacks.onArtifact(result.artifact);
+          if (result.thumbnailReady === true) this.callbacks.onThumbnailReady();
+          if (result.silent !== true) shouldCreateResponse = true;
+          await this.returnToolOutput(callId, result);
+        } catch (error) {
+          // The model must always get an answer per call_id, or the
+          // conversation dead-ends waiting for a function_call_output.
+          await this.returnToolOutput(callId, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          shouldCreateResponse = true;
+        }
       }
 
-      this.callbacks.onTranscript(newEntry("tool", `Running ${name}`));
-      if (name === "image_generate") {
-        this.callbacks.onArtifact({
-          title: "Generating Image",
-          kind: "imageLoading",
-          content: typeof parsedArgs.prompt === "string" ? parsedArgs.prompt : "Looper is generating an image.",
-        });
+      if (shouldCreateResponse) {
+        // If the model's turn is still open, response.create would be
+        // rejected — defer it to the response.done handler.
+        if (this.responseActive) this.pendingResponseCreate = true;
+        else this.sendEvent({ type: "response.create" });
       }
-      if (name === "thumbnail_generate" || name === "thumbnail_edit") {
-        const loadingResult = await window.looper.executeTool({
-          name: "thumbnail_loading_prepare",
-          arguments: {
-            ...parsedArgs,
-            mode: name === "thumbnail_edit" ? "edit" : "generate",
-          },
-        } satisfies LooperToolCall);
-        if (typeof loadingResult.runId === "string") parsedArgs.runId = loadingResult.runId;
-        if (typeof loadingResult.targetId === "string") parsedArgs.targetId = loadingResult.targetId;
-        if (loadingResult.artifact) this.callbacks.onArtifact(loadingResult.artifact);
-      }
-      const result = await window.looper.executeTool({ name, arguments: parsedArgs } satisfies LooperToolCall);
-      if (result.mode === "display" || result.mode === "computer") {
-        this.callbacks.onMode(result.mode);
-      }
-      if (result.artifact) this.callbacks.onArtifact(result.artifact);
-      if (result.thumbnailReady === true) this.callbacks.onThumbnailReady();
-      if (result.silent !== true) shouldCreateResponse = true;
-      await this.returnToolOutput(callId, result);
+    } finally {
+      this.toolRunning = false;
     }
-
-    if (shouldCreateResponse) this.sendEvent({ type: "response.create" });
-    this.toolRunning = false;
   }
 
   private async returnToolOutput(callId: string, result: LooperToolResult): Promise<void> {
@@ -300,6 +473,28 @@ export class LooperRealtimeClient {
   private sendEvent(event: Record<string, unknown>): void {
     if (this.dc?.readyState === "open") {
       this.dc.send(JSON.stringify(event));
+    } else {
+      this.callbacks.onStatus("Voice link not open — an event was dropped.");
+    }
+  }
+
+  private setMood(mood: LooperMood): void {
+    if (this.mood === mood) return;
+    this.mood = mood;
+    this.callbacks.onMood(mood);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = 0;
+    }
+  }
+
+  private clearGraceTimer(): void {
+    if (this.disconnectGraceTimer) {
+      window.clearTimeout(this.disconnectGraceTimer);
+      this.disconnectGraceTimer = 0;
     }
   }
 
@@ -330,6 +525,18 @@ export class LooperRealtimeClient {
       const energy = clamp01(rms * 10.5);
       const bands = getSpeechBands(frequencies);
 
+      // Over WebRTC there are no audio-delta data-channel events, so the
+      // reply audio itself is the source of truth for the "speaking" mood:
+      // it starts when sound starts and ends when the sound actually ends.
+      if (energy > 0.06) {
+        this.lastAudibleAt = performance.now();
+        if (this.mood !== "speaking" && this.mood !== "listening" && !this.toolRunning) {
+          this.setMood("speaking");
+        }
+      } else if (this.mood === "speaking" && performance.now() - this.lastAudibleAt > 450) {
+        this.setMood(this.toolRunning ? "working" : "idle");
+      }
+
       // Simple realtime viseme approximation: low energy rounds the mouth,
       // mid energy opens it, high energy stretches it for consonants/ee sounds.
       const target: MouthShape = {
@@ -356,6 +563,12 @@ export class LooperRealtimeClient {
     this.outputAnalyser = null;
     this.smoothedMouthShape = silentMouthShape();
   }
+}
+
+function friendlyErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  // ipcMain.handle rejections arrive wrapped — strip the Electron noise.
+  return raw.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
 }
 
 function silentMouthShape(): MouthShape {
@@ -399,8 +612,8 @@ function clamp01(value: number): number {
 export function newEntry(role: TranscriptEntry["role"], text: string): TranscriptEntry {
   return {
     id: crypto.randomUUID(),
-    role,
     text,
+    role,
     at: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
   };
 }
