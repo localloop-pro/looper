@@ -309,6 +309,7 @@ export class LooperRealtimeClient {
     const delay = this.reconnectAttempts === 0 ? 0 : Math.min(2000 * 2 ** (this.reconnectAttempts - 1), 15000);
     this.reconnectAttempts += 1;
     this.callbacks.onConnectionState("connecting");
+    this.setMood("thinking"); // no live session — don't keep a speaking/working face through the backoff
     this.callbacks.onStatus(`${reason} — reconnecting… (Looper starts a fresh session; earlier chat context resets.)`);
     this.clearReconnectTimer();
     this.reconnectTimer = window.setTimeout(() => {
@@ -448,7 +449,11 @@ export class LooperRealtimeClient {
         for (const item of functionCalls) {
           if (item.call_id) this.handledCallIds.add(item.call_id);
         }
-        await this.executeFunctionCalls(functionCalls);
+        // A cancelled response's calls belong to the turn the user already
+        // interrupted — its tools still return output for context, but the
+        // turnGen bump preceded this dispatch, so suppress their follow-up
+        // explicitly rather than letting them capture the NEW turn.
+        await this.executeFunctionCalls(functionCalls, { suppressFollowUp: cancelled });
       } else {
         this.maybeCreateResponse();
         if (!this.toolRunning && this.mood !== "speaking" && this.mood !== "listening") {
@@ -469,7 +474,10 @@ export class LooperRealtimeClient {
     }
   }
 
-  private async executeFunctionCalls(items: ResponseOutputItem[]): Promise<void> {
+  private async executeFunctionCalls(
+    items: ResponseOutputItem[],
+    opts?: { suppressFollowUp?: boolean },
+  ): Promise<void> {
     const gen = this.sessionGen;
     const turn = this.turnGen;
     this.activeToolCalls += 1;
@@ -540,7 +548,7 @@ export class LooperRealtimeClient {
       // A tool whose turn was superseded (the user typed or spoke while it
       // ran) still posted its output above for context, but must not queue a
       // spoken follow-up on top of the new turn's answer.
-      if (shouldCreateResponse && gen === this.sessionGen && turn === this.turnGen) {
+      if (shouldCreateResponse && !opts?.suppressFollowUp && gen === this.sessionGen && turn === this.turnGen) {
         this.pendingResponseCreate = true;
       }
     } finally {
