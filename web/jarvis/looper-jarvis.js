@@ -293,15 +293,19 @@
   // robotic compact/eSpeak ones — the single biggest audible upgrade on
   // macOS (Karen vs Karen Premium), Edge (Natasha Online Natural) and Linux.
   function scoreVoice(v) {
+    // Tier gap (100) exceeds the max quality bonus (+60) so a premium en-US
+    // voice can never tie or beat a plain en-AU one. The one intended
+    // tier-break stays: a robotic engine's -60 drops an eSpeak-class en-AU
+    // (140) below a premium other-English voice (160).
     var s;
-    if (/en[-_]AU/i.test(v.lang)) s = 100; // Aussie accent first
-    else if (/^en([-_]|$)/i.test(v.lang)) s = 50; // any English second
+    if (/en[-_]AU/i.test(v.lang)) s = 200; // Aussie accent first
+    else if (/^en([-_]|$)/i.test(v.lang)) s = 100; // any English second
     else return -1;
     var n = String(v.name || "");
     if (/natural|neural|premium|enhanced/i.test(n)) s += 30;
     if (/google/i.test(n)) s += 20;
     if (/siri/i.test(n)) s += 10;
-    if (/compact|espeak|eloquence/i.test(n)) s -= 40; // known-robotic engines
+    if (/compact|espeak|eloquence/i.test(n)) s -= 60; // known-robotic engines
     return s;
   }
   function pickVoice() {

@@ -264,6 +264,9 @@ export class LooperRealtimeClient {
     }
     this.callbacks.onTranscript(newEntry("user", text));
     this.turnGen += 1;
+    // A follow-up deferred by the superseded turn's tool must not fire from
+    // the cancelled response's response.done on top of this turn's answer.
+    this.pendingResponseCreate = false;
     // Typing while Looper is mid-reply is a barge-in: cancel first, or the
     // server rejects response.create with conversation_already_has_active_response.
     if (this.responseActive) {
@@ -370,6 +373,7 @@ export class LooperRealtimeClient {
 
     if (event.type === "input_audio_buffer.speech_started") {
       this.turnGen += 1; // speaking over a running tool supersedes its turn
+      this.pendingResponseCreate = false; // the new speech creates its own response
       this.setMood("listening");
       return;
     }
