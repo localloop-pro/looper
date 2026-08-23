@@ -109,15 +109,20 @@ export class LooperRealtimeClient {
     this.setMood("thinking");
     this.callbacks.onStatus("Minting a Realtime client secret.");
 
+    // Attempt-local peer lives outside the try so a failed dial can close it
+    // — teardown() only knows about this.pc, which isn't assigned yet.
+    let pc: RTCPeerConnection | null = null;
     try {
       this.toolSpecs = await window.looper.getToolSpecs();
       const token = await window.looper.createRealtimeToken();
-      const pc = new RTCPeerConnection();
+      if (this.closedByUser) return; // cancelled while the token minted
+      pc = new RTCPeerConnection();
+      const peer = pc; // non-null alias for the closures below
       const audio = document.createElement("audio");
       audio.autoplay = true;
       this.audioEl = audio;
 
-      pc.ontrack = (event) => {
+      peer.ontrack = (event) => {
         audio.srcObject = event.streams[0];
         this.startOutputMeter(event.streams[0]);
       };
@@ -140,8 +145,15 @@ export class LooperRealtimeClient {
         }
         throw error;
       }
+      if (this.closedByUser) {
+        // cancelled while the mic opened — release it and abandon the dial
+        this.micStream.getTracks().forEach((track) => track.stop());
+        this.micStream = null;
+        peer.close();
+        return;
+      }
       const micTrack = this.micStream.getAudioTracks()[0];
-      pc.addTrack(micTrack, this.micStream);
+      peer.addTrack(micTrack, this.micStream);
       // Hot-unplugged headset: the track just ends. Reconnect picks up the
       // new default input device instead of leaving Looper silently deaf.
       micTrack.addEventListener("ended", () => {
@@ -149,25 +161,25 @@ export class LooperRealtimeClient {
         void this.handleDrop("Microphone lost");
       });
 
-      pc.addEventListener("connectionstatechange", () => {
-        if (pc !== this.pc) return; // stale connection from before a reconnect
-        if (pc.connectionState === "failed") {
+      peer.addEventListener("connectionstatechange", () => {
+        if (peer !== this.pc) return; // stale connection from before a reconnect
+        if (peer.connectionState === "failed") {
           void this.handleDrop("Connection lost");
-        } else if (pc.connectionState === "disconnected") {
+        } else if (peer.connectionState === "disconnected") {
           // "disconnected" can self-heal on brief network blips — give it a
           // grace period before tearing down and reconnecting.
           this.clearGraceTimer();
           this.disconnectGraceTimer = window.setTimeout(() => {
-            if (pc === this.pc && (pc.connectionState === "disconnected" || pc.connectionState === "failed")) {
+            if (peer === this.pc && (peer.connectionState === "disconnected" || peer.connectionState === "failed")) {
               void this.handleDrop("Connection lost");
             }
           }, 3000);
-        } else if (pc.connectionState === "connected") {
+        } else if (peer.connectionState === "connected") {
           this.clearGraceTimer();
         }
       });
 
-      const dc = pc.createDataChannel("oai-events");
+      const dc = peer.createDataChannel("oai-events");
       dc.addEventListener("open", () => {
         this.reconnectAttempts = 0;
         this.callbacks.onConnectionState("connected");
@@ -184,8 +196,8 @@ export class LooperRealtimeClient {
         void this.handleDrop("Voice link closed");
       });
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
 
       const sdpResponse = await fetch(realtimeUrl, {
         method: "POST",
@@ -200,7 +212,7 @@ export class LooperRealtimeClient {
         throw new Error(`Realtime WebRTC call failed: ${sdpResponse.status} ${await sdpResponse.text()}`);
       }
 
-      await pc.setRemoteDescription({
+      await peer.setRemoteDescription({
         type: "answer",
         sdp: await sdpResponse.text(),
       });
@@ -209,16 +221,20 @@ export class LooperRealtimeClient {
       // clickable during "connecting") — abandon the finished dial quietly.
       if (this.closedByUser) {
         dc.close();
-        pc.close();
+        peer.close();
         this.micStream?.getTracks().forEach((track) => track.stop());
         this.micStream = null;
         return;
       }
 
-      this.pc = pc;
+      this.pc = peer;
       this.dc = dc;
     } catch (error) {
+      // teardown() only closes this.pc — the attempt-local peer from a
+      // failed dial must be closed here or each retry leaks a connection.
+      pc?.close();
       this.teardown();
+      if (this.closedByUser) return; // cancelled mid-dial — stay quietly idle
       // A failed REDIAL (Wi-Fi still down during the immediate retry) must
       // keep walking the backoff schedule, not stop at attempt one.
       if (!this.closedByUser && this.reconnectAttempts > 0) {

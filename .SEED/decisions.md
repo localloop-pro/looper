@@ -247,6 +247,7 @@
   or show idle with a hot mic. Router tests 165→173; all gates green
   (typecheck/build, 15 gateway tests, backend 80 pass/1 skip, Playwright
   smoke). Bill's live-mic acceptance still owed as before.
+- 2026-08-12: F4.3 Looper client is code-complete and checkpointed in
   coordinator commits `854e1e7` (integration) and `7a91cb5` (gateway module,
   15 tests, evidence). LocalLoop confirmed no contract mismatch against merged
   SPEC-055. Remaining work is owner-gated only: Bill applies the audit

@@ -722,7 +722,10 @@
     }).catch(function () {
       if (seq !== S.reqSeq) return; // superseded — don't clobber the newer UI
       Bus.clearResults(); // stale marker next to "brain offline" reads as current
-      settleUi();
+      // same offline treatment as runSearch — the dock must not look healthy
+      S.face.setMood("error");
+      setStatus("Looper brain offline");
+      S.statusPinned = true; // keep the offline message up until the next turn
       showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.apiDown)) + "</p>");
       speak(pick(PERSONA.apiDown));
     });
