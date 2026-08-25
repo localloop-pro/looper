@@ -55,12 +55,14 @@
 > public health read are green. LocalLoop provider branch `cd4c751` (core
 > `71c3052`, hardening `af31947`) subsequently merged through PR #80 to main
 > at `d77ccf8659638f71ee39f813691ecd597d1aa0d3`; all remote gates passed and
-> issue #78 closed. Gates 1–3 were **activated 2026-08-22** under owner
-> direction: audit migration applied, shared token provisioned in Worker +
-> Looper, Worker deployed (version `0fb82412`), and a live audited 200 proven
-> by direct endpoint probe (audit row `12957da6`). Keep F4.3 unchecked until the
-> remaining gate — the `localloop_pending_pins` tool invoked through Electron
-> (voice acceptance) — is completed; the HTTP probe does not establish it.
+> issue #78 closed. Gates 1–2 + Worker deploy + HTTP-layer proof were
+> **activated 2026-08-22** under owner direction: audit migration applied,
+> shared token provisioned in Worker + Looper, Worker deployed (version
+> `0fb82412`), and a live audited 200 proven by a direct endpoint probe (audit
+> row `12957da6`, `action pin_pending_list_read`). Gate 3 is only PARTIAL — the
+> `localloop_pending_pins` tool has NOT been invoked through Electron. Keep F4.3
+> unchecked until the direct-tool invocation (gate 3) + voice acceptance
+> (gate 4) are completed; the HTTP probe does not establish them.
 
 ---
 

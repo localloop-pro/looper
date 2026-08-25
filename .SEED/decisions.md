@@ -255,9 +255,14 @@
   Worker, proves a live audited HTTP 200, and completes voice acceptance.
   Keep the F4.3 checkbox open until those production gates pass.
 
-### F4.3 owner gates 1–3 executed (2026-08-22)
+### F4.3 owner gates: 1–2 + deploy + HTTP-layer proof executed; gate 3 partial (2026-08-22)
 
 - Owner (Bill) directed the coordinator to run the SPEC-055 owner-gate chain.
+  Executed: the audit migration, shared-token provisioning, Worker deploy, and
+  a live audited 200 at the HTTP layer (direct endpoint probe). Gate 3's direct
+  `localloop_pending_pins` Electron-tool invocation is NOT done (evidence README
+  marks item 3 `[~]`), so the production-client proof and voice acceptance
+  (gate 4) remain outstanding — do not treat F4.3 as fully accepted.
   These steps ARE hot-zone work (a production migration, an auth-secret
   provisioning, and a Worker deployment) — executed here specifically because
   the owner authorized this chain. The scope boundary was: execute the F4.3
