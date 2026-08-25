@@ -26,8 +26,9 @@ LocalLoop provider merge:
   contract/secret scan, build, and Wrangler dry-run green
 - merge checks: Install+Secret Scan+Lint, Unit/Integration, Playwright E2E,
   and `ci-required` all green; issue #78 closed
-- gates 1–3 activated 2026-08-22 (see live smoke record below); the direct
-  `localloop_pending_pins` tool invocation (gate 4) is not yet claimed
+- gates 1–2 + Worker deploy + HTTP-layer proof activated 2026-08-22 (see live
+  smoke record below); the direct `localloop_pending_pins` tool invocation
+  (gate 3, partial) and voice acceptance (gate 4) are not yet claimed
 
 ## Looper implementation
 
@@ -105,7 +106,7 @@ Worker deploy is complete; the live endpoint is proven at the HTTP layer (item 3
 partial); the direct tool invocation + voice acceptance (item 4) remain — and
 item 4 can be closed via the empty-state pass above.
 
-## Live smoke record — 2026-08-22 (gates 1–3)
+## Live smoke record — 2026-08-22 (gates 1–2, deploy, HTTP-layer proof)
 
 Owner (Bill) directed the coordinator session to run the SPEC-055 owner-gate
 runbook (llx11 `dox/runbooks/spec-055-owner-gate.md`, adapted: deploy from a

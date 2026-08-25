@@ -29,7 +29,7 @@ Do not start untouched scope while an item below is waiting on its named gate.
 | F2.5 telemetry | search/discover logging + PII scrubbing tested | F2.4 archetype counters; do not begin unless that existing dependency is approved |
 | F3.1–F3.4 voice/map | Looper code complete; llx11 wiring merged at `158299a` with remote checks green | LocalLoop direct tests for map bus + deep links; Bill Chrome mic/Firefox fallback review |
 | F4.1–F4.2 desktop/deep links | search/discover/business/open-map/bridge-status + gateway-health tools build; llx11 integration merged | Looper still lacks planned `localloop_pins`; archetype-skills waits on F2.4; then Bill manual voice + live deep-link acceptance |
-| F4.3 bridge cockpit | **Code complete/checkpointed:** Looper machine client/tool against merged SPEC-055; fixed filters, bearer auth, bounded pagination, strict allowlist, exact count/table, HTTPS/redirect controls, timeout, fail-closed errors; 15/15 tests green. Checkpoints: `854e1e7`, `7a91cb5`. LocalLoop PR #80 merged main at `d77ccf8659638f71ee39f813691ecd597d1aa0d3`, all remote gates green, issue #78 closed | **Gates 1–3 PASSED 2026-08-22** (owner-directed): audit migration applied, shared secret in Worker + Looper `.env.local`, Worker deployed (version `0fb82412`), live audited 200 proven (audit row `12957da6`, see `plans/evidence/F4.3-pending-pins/`). **Remaining: voice acceptance only** — restart looper-bot, Bill asks “any card deals waiting for approval?” |
+| F4.3 bridge cockpit | **Code complete/checkpointed:** Looper machine client/tool against merged SPEC-055; fixed filters, bearer auth, bounded pagination, strict allowlist, exact count/table, HTTPS/redirect controls, timeout, fail-closed errors; 15/15 tests green. Checkpoints: `854e1e7`, `7a91cb5`. LocalLoop PR #80 merged main at `d77ccf8659638f71ee39f813691ecd597d1aa0d3`, all remote gates green, issue #78 closed | **Gates 1–2 + deploy + HTTP-layer proof PASSED 2026-08-22** (owner-directed): audit migration applied, shared secret in Worker + Looper `.env.local`, Worker deployed (version `0fb82412`), and the live route proven at the HTTP layer — a direct endpoint probe returned 200 matched to audit row `12957da6` (`action pin_pending_list_read`). **Gate 3 is only PARTIAL:** the `localloop_pending_pins` Electron tool has NOT yet been invoked (see evidence README item 3 `[~]`), so the production-client proof is not complete. **Remaining: the direct-tool invocation (gate 3) + voice acceptance (gate 4)** — `cd looper-bot && npm run dev`, then Bill asks “any card deals waiting for approval?” (empty-state reply is a valid pass; see evidence README). |
 | F6.1 news audio | worker + 4 unit tests | Bill: bucket/service secrets/TTS-cost approval/cron/existing-player smoke |
 | F9.3–F9.4 go-live | runbooks/evidence exist | Bill-only production smoke and ordered hot-zone flag flips |
 
@@ -58,7 +58,8 @@ finish. The public gateway health route itself is live (`GET
 https://looper.localloop.ai/health` returned HTTP 200), but its desktop Looper
 tool is not yet implemented.
 
-**Merged AND activated (gates 1–3, 2026-08-22):** LocalLoop merged the
+**Merged; gates 1–2 + deploy + HTTP-layer proof activated (2026-08-22; gate 3
+direct-tool invocation still outstanding):** LocalLoop merged the
 sanctioned provider through PR #80 to main at
 `d77ccf8659638f71ee39f813691ecd597d1aa0d3`
 (feature PR #79 squash `7043938`; core `71c3052`, outage hardening `af31947`): machine-authenticated
