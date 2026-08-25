@@ -58,16 +58,23 @@ finish. The public gateway health route itself is live (`GET
 https://looper.localloop.ai/health` returned HTTP 200), but its desktop Looper
 tool is not yet implemented.
 
-**Merged, but not activated:** LocalLoop merged the sanctioned provider through
-PR #80 to main at `d77ccf8659638f71ee39f813691ecd597d1aa0d3`
+**Merged AND activated (gates 1–3, 2026-08-22):** LocalLoop merged the
+sanctioned provider through PR #80 to main at
+`d77ccf8659638f71ee39f813691ecd597d1aa0d3`
 (feature PR #79 squash `7043938`; core `71c3052`, outage hardening `af31947`): machine-authenticated
 `GET /api/bot/map/pins`, fixed HybridCard/`pending_review` filters, bounded
 page/limit pagination, allowlisted fields, and fail-closed audit creation before
 every 200. LocalLoop reported focused 14/14, full unit 129/129, smoke,
 contract/secret scan, build, and Wrangler dry-run green; the merge's remote
 Install+Secret Scan+Lint, Unit/Integration, Playwright E2E, and `ci-required`
-checks also passed, and issue #78 closed. The production route is still not
-enabled/proven.
+checks also passed, and issue #78 closed. Under owner direction the three
+mechanical hot-zone gates were then executed: the `audit_log` migration was
+applied, the shared `LOOPER_BOT_READ_TOKEN` was provisioned in the Worker and
+looper-bot, the Worker was deployed (Cloudflare version `0fb82412`), and a live
+audited HTTP 200 was proven by a direct endpoint probe matched to audit row
+`12957da6` (see `plans/evidence/F4.3-pending-pins/`). Still outstanding: the
+direct `localloop_pending_pins` tool invocation through the Electron app (gate 4
+voice acceptance), which the raw HTTP probe does not establish.
 
 Looper's side is code-complete and checkpointed (`854e1e7` integration,
 `7a91cb5` module/tests/evidence) with `localloop_pending_pins` and
@@ -76,7 +83,11 @@ The pending reader uses only the sanctioned gateway, keeps the bearer token in
 Electron main, fixes filters, validates pagination/allowlisted response fields,
 redacts errors, rejects redirects/insecure token destinations, and returns an
 exact total + table artifact. Evidence: `plans/evidence/F4.3-pending-pins/`.
-Do **not** claim production acceptance until Bill approves/applies
-`db/migrations/looper_gateway_audit_log.sql`, configures the identical random
-32+ byte token in the Worker and Looper, deploys the Worker, and a live 200 is
-matched to its `pin_pending_list_read` audit row.
+The migration, shared-token provisioning, Worker deploy, and a live audited 200
+matched to its `pin_pending_list_read` audit row were completed 2026-08-22 under
+owner direction (evidence above). Do **not** yet claim full F4.3 acceptance:
+the remaining gate is the direct `localloop_pending_pins` invocation through the
+Electron app — restart looper-bot so it loads the token, then have Bill ask "any
+card deals waiting for approval?" and confirm the spoken exact count + table.
+The raw HTTP probe proved the Worker/token/audit path but not that Electron
+loaded the secret or that the production client itself succeeds.

@@ -257,8 +257,14 @@
 
 ### F4.3 owner gates 1–3 executed (2026-08-22)
 
-- Owner (Bill) directed the coordinator to run the SPEC-055 owner-gate chain;
-  scope explicitly limited to the mechanical gates (no voice/TTS/hot-zone).
+- Owner (Bill) directed the coordinator to run the SPEC-055 owner-gate chain.
+  These steps ARE hot-zone work (a production migration, an auth-secret
+  provisioning, and a Worker deployment) — executed here specifically because
+  the owner authorized this chain. The scope boundary was: execute the F4.3
+  activation hot-zone steps only, and do NOT touch the separately-gated
+  news-audio/TTS-cost approval or the go-live feature-flag flips
+  (`LOOPER_INGEST_URL`/`LOCALLOOP_BRIDGE_URL`/`LIVE_ALERT_FANOUT`/`SMS_LIVE`/
+  `PAYMENTS_LIVE`), nor the voice acceptance — those remain untouched.
 - Applied `looper_gateway_audit_log.sql` to production Supabase (RLS enforced),
   provisioned one fresh 32-byte `LOOPER_BOT_READ_TOKEN` in the Worker secret
   store and `looper-bot/.env.local` (0600), deployed `localloop-looper-gateway`

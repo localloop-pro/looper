@@ -26,7 +26,8 @@ LocalLoop provider merge:
   contract/secret scan, build, and Wrangler dry-run green
 - merge checks: Install+Secret Scan+Lint, Unit/Integration, Playwright E2E,
   and `ci-required` all green; issue #78 closed
-- **not live/activated yet** — no production pending-pin request is claimed
+- gates 1–3 activated 2026-08-22 (see live smoke record below); the direct
+  `localloop_pending_pins` tool invocation (gate 4) is not yet claimed
 
 ## Looper implementation
 
@@ -75,13 +76,21 @@ Public gateway health through the new client:
    deploys the merged Worker route. — DONE 2026-08-22 (owner-directed session)
 2. [x] Owner configures the same random 32+ byte `LOOPER_BOT_READ_TOKEN` in the
    Worker secret store and Looper `.env.local` (never browser config). — DONE 2026-08-22
-3. [x] Invoke `localloop_pending_pins` against the live route and record a 200 plus
-   corresponding `pin_pending_list_read` audit row. — DONE 2026-08-22 (see below)
-4. [ ] Bill asks, “any card deals waiting for approval?” and verifies the spoken
-   exact count + table artifact.
+3. [~] Invoke `localloop_pending_pins` against the live route and record a 200
+   plus corresponding `pin_pending_list_read` audit row. — **PARTIAL** 2026-08-22:
+   the live route was proven with a 200 + matching audit row `12957da6`, but via
+   a *direct endpoint probe* (Node client reusing looper-bot `.env.local` and the
+   gateway-tools header path), **not** the `localloop_pending_pins` tool running
+   inside Electron. The direct-tool invocation is still pending — it belongs with
+   item 4, since running looper-bot proves both the Electron secret load and the
+   tool path in one step.
+4. [ ] Bill asks, “any card deals waiting for approval?” — this drives
+   `localloop_pending_pins` through the real Electron app (proving the token load
+   + production client) and verifies the spoken exact count + table artifact.
 
-Until all four pass, F4.3 remains unchecked. Items 1–3 passed on 2026-08-22;
-only item 4 (voice acceptance) remains.
+Until all four pass, F4.3 remains unchecked. Gates 1 and 2 are complete; the
+Worker deploy is complete; the live endpoint is proven at the HTTP layer (item 3
+partial); the direct tool invocation + voice acceptance (item 4) remain.
 
 ## Live smoke record — 2026-08-22 (gates 1–3)
 
@@ -98,8 +107,10 @@ untouched).
 - Deploy: `localloop-looper-gateway` from `origin/main` (merge `4e44c44`),
   Cloudflare version `0fb82412-f2e1-460b-87c5-000acb30850f`, route
   `looper.localloop.ai/*`.
-- Live smoke (node client using looper-bot `.env.local`, same header path as
-  `localloop-gateway-tools.cjs`):
+- Live smoke — **direct endpoint probe, not the Electron tool**: a Node client
+  reusing looper-bot `.env.local` and the same header path as
+  `localloop-gateway-tools.cjs` (proves the Worker + token + audit path, but not
+  that Electron loaded the secret or that `localloop_pending_pins` itself runs):
   - `GET /api/bot/map/pins?source=hybridcard&status=pending_review&page=1&limit=20`
     → `200`, shape PASS, pagination
     `{"page":1,"limit":20,"returned":0,"total":0,"total_pages":0,"has_next":false}`
@@ -108,5 +119,7 @@ untouched).
   `created_at 2026-08-22 16:38:20 UTC`,
   `target_id source=hybridcard;status=pending_review;page=1;limit=20`.
 - Next: restart Looper Bot (`npm run dev`) before the item-4 voice test so
-  Electron loads the token; TTS-cost and hot-zone approvals remain separately
-  gated and were NOT touched.
+  Electron loads the token, then invoke `localloop_pending_pins` through the app
+  (this is what completes item 3's direct-tool proof and item 4). The separately
+  gated news-audio/TTS-cost approval and the go-live feature-flag flips remain
+  untouched.
