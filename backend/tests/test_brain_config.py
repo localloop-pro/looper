@@ -7,6 +7,8 @@ must therefore behave the same as absent values across every brain entry point.
 from __future__ import annotations
 
 import importlib
+import sys
+import types
 
 import pytest
 
@@ -47,6 +49,17 @@ def test_zero_coordinates_are_not_treated_as_missing(monkeypatch):
     """Latitude/longitude 0 are valid coordinates, not falsey missing data."""
     module = importlib.import_module("brain.sync")
     monkeypatch.setattr(module, "_TYPEDB_ENABLED", True)
+
+    # This unit test verifies the coordinate-presence branch, not the optional
+    # TypeDB dependency.  Supply only the symbol sync_business imports before
+    # it reaches the deliberately failing driver path below.
+    typedb_module = types.ModuleType("typedb")
+    typedb_driver_module = types.ModuleType("typedb.driver")
+    typedb_driver_module.SessionType = object()
+    typedb_module.driver = typedb_driver_module
+    monkeypatch.setitem(sys.modules, "typedb", typedb_module)
+    monkeypatch.setitem(sys.modules, "typedb.driver", typedb_driver_module)
+
     seen: list[tuple[float, float]] = []
     monkeypatch.setattr(
         module,
