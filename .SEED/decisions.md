@@ -254,3 +254,28 @@
   migration, provisions the identical token in Worker + Looper, deploys the
   Worker, proves a live audited HTTP 200, and completes voice acceptance.
   Keep the F4.3 checkbox open until those production gates pass.
+
+### F4.3 owner gates: 1–2 + deploy + HTTP-layer proof executed; gate 3 partial (2026-08-22)
+
+- Owner (Bill) directed the coordinator to run the SPEC-055 owner-gate chain.
+  Executed: the audit migration, shared-token provisioning, Worker deploy, and
+  a live audited 200 at the HTTP layer (direct endpoint probe). Gate 3's direct
+  `localloop_pending_pins` Electron-tool invocation is NOT done (evidence README
+  marks item 3 `[~]`), so the production-client proof and voice acceptance
+  (gate 4) remain outstanding — do not treat F4.3 as fully accepted.
+  These steps ARE hot-zone work (a production migration, an auth-secret
+  provisioning, and a Worker deployment) — executed here specifically because
+  the owner authorized this chain. The scope boundary was: execute the F4.3
+  activation hot-zone steps only, and do NOT touch the separately-gated
+  news-audio/TTS-cost approval or the go-live feature-flag flips
+  (`LOOPER_INGEST_URL`/`LOCALLOOP_BRIDGE_URL`/`LIVE_ALERT_FANOUT`/`SMS_LIVE`/
+  `PAYMENTS_LIVE`), nor the voice acceptance — those remain untouched.
+- Applied `looper_gateway_audit_log.sql` to production Supabase (RLS enforced),
+  provisioned one fresh 32-byte `LOOPER_BOT_READ_TOKEN` in the Worker secret
+  store and `looper-bot/.env.local` (0600), deployed `localloop-looper-gateway`
+  from `origin/main` (Cloudflare version `0fb82412`), and proved the live
+  audited 200 (+401/+422 negatives; audit row `12957da6`, 16:38:20Z).
+- Evidence: `plans/evidence/F4.3-pending-pins/README.md` (live smoke record).
+- F4.3 now blocks ONLY on voice acceptance (restart looper-bot first so
+  Electron loads the token). TTS-cost and hot-zone flags remain untouched and
+  separately gated.
