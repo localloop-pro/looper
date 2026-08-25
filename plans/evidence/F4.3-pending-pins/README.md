@@ -86,11 +86,24 @@ Public gateway health through the new client:
    tool path in one step.
 4. [ ] Bill asks, “any card deals waiting for approval?” — this drives
    `localloop_pending_pins` through the real Electron app (proving the token load
-   + production client) and verifies the spoken exact count + table artifact.
+   + production client) and verifies the spoken exact count + artifact.
+   **Acceptance path (production queue is currently empty, total:0):**
+   - **Empty-state is a valid pass.** With no pending pins, `pendingPinsArtifact`
+     (`looper-bot/electron/localloop-gateway-tools.cjs:123-125`) emits the count
+     header + “_No pending HybridCard pins on this page._”, and the spoken reply
+     is the exact count (zero). Accept that as the F4.3 tool-path proof — no
+     production-data mutation is required to close the gate.
+   - **Populated-table check (optional, owner-approved fixture only):** to also
+     exercise the row-rendering branch, Bill may create one throwaway
+     `moderation_status='pending_review'`, `source='hybridcard'` pin in the
+     production Supabase, confirm it appears as a table row, then delete it.
+     This is a hot-zone production write and is done at the owner's discretion,
+     not required for acceptance.
 
-Until all four pass, F4.3 remains unchecked. Gates 1 and 2 are complete; the
+Until item 4 passes, F4.3 remains unchecked. Gates 1 and 2 are complete; the
 Worker deploy is complete; the live endpoint is proven at the HTTP layer (item 3
-partial); the direct tool invocation + voice acceptance (item 4) remain.
+partial); the direct tool invocation + voice acceptance (item 4) remain — and
+item 4 can be closed via the empty-state pass above.
 
 ## Live smoke record — 2026-08-22 (gates 1–3)
 
@@ -115,11 +128,16 @@ untouched).
     → `200`, shape PASS, pagination
     `{"page":1,"limit":20,"returned":0,"total":0,"total_pages":0,"has_next":false}`
   - no Authorization header → `401`; extra `bogus=1` param → `422`.
-- Audit row: `id 12957da6-dc5e-4ffb-9040-fe69a0a9bcaf`,
+- Audit row (queried from `audit_log` filtered on
+  `action='pin_pending_list_read' AND target_table='pin'`):
+  `action pin_pending_list_read`, `target_table pin`,
+  `id 12957da6-dc5e-4ffb-9040-fe69a0a9bcaf`,
   `created_at 2026-08-22 16:38:20 UTC`,
   `target_id source=hybridcard;status=pending_review;page=1;limit=20`.
-- Next: restart Looper Bot (`npm run dev`) before the item-4 voice test so
-  Electron loads the token, then invoke `localloop_pending_pins` through the app
-  (this is what completes item 3's direct-tool proof and item 4). The separately
+  This is the specific event `plans/COMPLETION_STATUS.md` matches to the 200.
+- Next: restart Looper Bot (`cd looper-bot && npm run dev` — the script lives in
+  `looper-bot/`, not the repo root) before the item-4 voice test so Electron
+  loads the token, then invoke `localloop_pending_pins` through the app (this is
+  what completes item 3's direct-tool proof and item 4). The separately
   gated news-audio/TTS-cost approval and the go-live feature-flag flips remain
   untouched.
