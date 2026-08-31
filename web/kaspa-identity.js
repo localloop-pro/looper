@@ -1,0 +1,73 @@
+(function (root) {
+  'use strict';
+
+  function short(value, head, tail) {
+    if (!value) return 'Not available';
+    return value.length > head + tail + 1 ? value.slice(0, head) + '…' + value.slice(-tail) : value;
+  }
+
+  function stateCopy(state) {
+    return {
+      fresh: ['Verified on KNS', 'Chain record checked recently'],
+      stale: ['Previously verified', 'KNS is temporarily unavailable; no privileged action is permitted'],
+      mismatch: ['Verification mismatch', 'The current KNS record does not match LocalLoop’s configured identity'],
+      unavailable: ['Verification unavailable', 'No current KNS verification is available'],
+    }[state] || ['Verification unavailable', 'No current KNS verification is available'];
+  }
+
+  function render(host, record, label) {
+    var state = record && record.verificationState || 'unavailable';
+    var copy = stateCopy(state);
+    host.dataset.state = state;
+    host.innerHTML = '';
+
+    var details = document.createElement('details');
+    details.className = 'kaspa-identity';
+    var summary = document.createElement('summary');
+    summary.innerHTML = '<span class="kaspa-identity__mark" aria-hidden="true">K</span><span>' +
+      (state === 'fresh' ? label : copy[0]) + '</span><span class="kaspa-identity__state">' + state + '</span>';
+    details.appendChild(summary);
+
+    var panel = document.createElement('div');
+    panel.className = 'kaspa-identity__panel';
+    var verifiedAt = record && record.verifiedAt ? new Date(record.verifiedAt).toLocaleString() : 'Not available';
+    panel.innerHTML = '<strong>' + copy[0] + '</strong><p>' + copy[1] + '</p>' +
+      '<dl><div><dt>Domain</dt><dd>' + (record && record.domain || 'localloop.kas') + '</dd></div>' +
+      '<div><dt>Owner</dt><dd>' + short(record && record.ownerAddress, 14, 8) + '</dd></div>' +
+      '<div><dt>Asset</dt><dd>' + short(record && record.assetId, 12, 6) + '</dd></div>' +
+      '<div><dt>Checked</dt><dd>' + verifiedAt + '</dd></div></dl>';
+    if (record && record.explorerUrl && (state === 'fresh' || state === 'stale')) {
+      var link = document.createElement('a');
+      link.href = record.explorerUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Inspect transaction ↗';
+      panel.appendChild(link);
+    }
+    var note = document.createElement('small');
+    note.textContent = 'Organization identity only — this does not verify individual listings or users.';
+    panel.appendChild(note);
+    details.appendChild(panel);
+    host.appendChild(details);
+  }
+
+  async function mount(hostOrSelector, options) {
+    var host = typeof hostOrSelector === 'string' ? document.querySelector(hostOrSelector) : hostOrSelector;
+    if (!host) return;
+    options = options || {};
+    var domain = options.domain || 'localloop.kas';
+    var apiBase = (options.apiBase || (root.LocalLoopConfig && root.LocalLoopConfig.looperApi) || root.location.origin).replace(/\/$/, '');
+    render(host, null, options.label || ('Official · ' + domain));
+    try {
+      var response = await fetch(apiBase + '/api/identity/domains/' + encodeURIComponent(domain), {
+        headers: { Accept: 'application/json' }, credentials: 'omit'
+      });
+      if (!response.ok) throw new Error('identity unavailable');
+      render(host, await response.json(), options.label || ('Official · ' + domain));
+    } catch (_) {
+      render(host, null, options.label || ('Official · ' + domain));
+    }
+  }
+
+  root.LocalLoopKaspaIdentity = { mount: mount };
+})(typeof window !== 'undefined' ? window : this);

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LOOPER Widget Demo</title>
   <link rel="stylesheet" href="looper-widget.css">
+  <link rel="stylesheet" href="kaspa-identity.css">
   <style>
     body {
       margin: 0;
@@ -27,6 +28,7 @@
       border-radius: 4px;
       font-size: 14px;
     }
+    #organization-identity { margin-top: 24px; }
   </style>
 </head>
 <body>
@@ -44,8 +46,11 @@
       The LOOPER API must be running at <code>http://localhost:8000</code>
       for the widget to respond.
     </p>
+    <div id="organization-identity" aria-live="polite"></div>
   </div>
   <script>window.LocalLoopConfig = { looperApi: window.location.origin };</script>
+  <script src="kaspa-identity.js"></script>
+  <script>LocalLoopKaspaIdentity.mount('#organization-identity', { label: 'Official · localloop.kas' });</script>
   <script src="looper-widget.js"></script>
 </body>
 </html>
