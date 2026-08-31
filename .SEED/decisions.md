@@ -1,5 +1,12 @@
 # .SEED/decisions.md — looper decisions log
 
+- 2026-09-01: Kaspa integration v1 is a read-only organization identity
+  boundary in Looper, not a wallet or authorization system. Only the configured
+  ASCII `localloop.kas` and `qikflo.kas` mainnet records may resolve. Exact
+  domain/asset/inscription/transaction/owner/status/verified-domain agreement
+  is required; mismatch fails immediately, provider failure uses only a bounded
+  validated cache, and every UI must scope the claim to the organization.
+
 - 2026-07-10: `plans/IMPLEMENTATION_PLAN.md` created — this repo owns the
   cross-system bridge plan (looper ↔ llx11 map ↔ HybridCard). llx11 keeps its
   own separate `plans/IMPLEMENTATION_PLAN.md` (Site A/B rebuild PRD) — do not

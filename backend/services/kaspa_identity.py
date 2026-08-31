@@ -138,6 +138,20 @@ class KaspaIdentityVerifier:
             raise IdentityProviderError("provider returned an unexpected asset set")
         return assets[0], raw_hash
 
+    def _cache_is_valid(self, cached: dict[str, Any], now: datetime) -> bool:
+        try:
+            verified = parse_time(cached["verifiedAt"])
+            expires = parse_time(cached["expiresAt"])
+            stale_until = parse_time(cached["staleUntil"])
+            return (
+                cached.get("provider") == PROVIDER
+                and verified <= now
+                and expires == verified + timedelta(seconds=self.ttl)
+                and stale_until == verified + timedelta(seconds=self.stale_window)
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+
     @staticmethod
     def _matches(expected: ExpectedIdentity, asset: dict[str, Any]) -> bool:
         try:
@@ -161,6 +175,9 @@ class KaspaIdentityVerifier:
         with self._lock:
             cache = self._read_cache()
             cached = cache.get(normalized) if isinstance(cache.get(normalized), dict) else None
+            if cached and not self._cache_is_valid(cached, now):
+                LOGGER.warning(json.dumps({"event": "kaspa_identity.cache_rejected", "domain": normalized}))
+                cached = None
             if cached and not force:
                 try:
                     if now < parse_time(cached["expiresAt"]):

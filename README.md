@@ -178,7 +178,22 @@ Deep links work out of the box: `/?cat=Food&q=coffee&fly=151.2743,-33.8908,16`.
 | POST | `/api/ingest/hybridcard-deal` | BRIDGE-CONTRACT-v1 deal receiver (HMAC) |
 | POST | `/api/ingest/hybridcard-card` | BRIDGE-CONTRACT-v1 card receiver (HMAC) |
 | GET  | `/api/ingest/status` | Read-only bridge cockpit (counts + recent events) |
+| GET  | `/api/identity/domains` | Read-only verified organization KNS identities |
+| GET  | `/api/identity/domains/{domain}` | One allowlisted organization KNS identity |
+| GET  | `/api/identity/health` | Operator freshness/mismatch health summary |
 | GET  | `/demo` | Jarvis voice-map demo (serves `web/jarvis/`) |
+
+### Kaspa organization identity operations
+
+The API verifies only the configured `localloop.kas` and `qikflo.kas` mainnet
+records. It never holds a wallet key and never grants authorization. Production
+defaults are `KNS_API_BASE_URL=https://api.knsdomains.org/mainnet`, a one-hour
+fresh TTL, and a 24-hour bounded stale window. A `mismatch` is a security event:
+the UI removes verified wording immediately. `stale` is display-only. Monitor
+`GET /api/identity/health`; investigate any `degraded` response before changing
+the configured owner or cache window. The cache defaults to
+`backend/data/kaspa_identity_cache.json` and should be on writable persistent
+storage in Coolify.
 
 ## Database Schema
 

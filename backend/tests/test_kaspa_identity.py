@@ -69,6 +69,35 @@ def test_malformed_provider_payload_is_unavailable(tmp_path):
     assert service.verify("qikflo.kas")["verificationState"] == "unavailable"
 
 
+def test_invalid_json_and_timeout_are_unavailable(tmp_path):
+    invalid = verifier_for(tmp_path, lambda request: httpx.Response(200, content=b"not-json"))
+    assert invalid.verify("qikflo.kas")["verificationState"] == "unavailable"
+    def timeout(_request):
+        raise httpx.ReadTimeout("timed out")
+    timed_out = verifier_for(tmp_path / "timeout", timeout)
+    assert timed_out.verify("qikflo.kas")["verificationState"] == "unavailable"
+
+
+def test_tampered_future_cache_is_rejected(tmp_path):
+    cache_path = tmp_path / "identity.json"
+    cache_path.write_text('{"localloop.kas":{"verifiedAt":"2099-01-01T00:00:00Z","expiresAt":"2099-01-01T01:00:00Z","staleUntil":"2099-01-02T00:00:00Z","provider":"kns-mainnet-v1"}}')
+    service = KaspaIdentityVerifier(cache_path=cache_path,
+        transport=httpx.MockTransport(lambda request: httpx.Response(503)), clock=lambda: NOW)
+    assert service.verify("localloop.kas")["verificationState"] == "unavailable"
+
+
+def test_provider_recovers_from_unavailable_to_fresh(tmp_path):
+    attempts = {"count": 0}
+    def handler(request):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            return httpx.Response(503, json={"error": "maintenance"})
+        return httpx.Response(200, json=provider_payload())
+    service = verifier_for(tmp_path, handler)
+    assert service.verify("localloop.kas", force=True)["verificationState"] == "unavailable"
+    assert service.verify("localloop.kas", force=True)["verificationState"] == "fresh"
+
+
 def test_public_contract_and_unknown_domain(tmp_path, monkeypatch):
     def handler(request):
         domain = request.url.params["asset"]
