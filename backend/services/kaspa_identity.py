@@ -388,10 +388,13 @@ class KaspaIdentityVerifier:
                 self._clear_failure(normalized)
                 return public_record(expected, "mismatch")
 
-            expires = now + timedelta(seconds=self.ttl)
+            # Windows start when verification COMPLETES (`after`), not when the
+            # refresh started: a slow provider call must not shorten the TTL or
+            # hand back a "fresh" record whose expiresAt is already in the past.
+            expires = after + timedelta(seconds=self.ttl)
             entry = {
-                "verifiedAt": isoformat(now), "expiresAt": isoformat(expires),
-                "staleUntil": isoformat(now + timedelta(seconds=self.stale_window)),
+                "verifiedAt": isoformat(after), "expiresAt": isoformat(expires),
+                "staleUntil": isoformat(after + timedelta(seconds=self.stale_window)),
                 "provider": PROVIDER, "rawResponseHash": raw_hash,
                 "fingerprint": self._fingerprint(expected),
             }
@@ -399,7 +402,7 @@ class KaspaIdentityVerifier:
             self._clear_failure(normalized)
             self._clear_mismatch(normalized)
             LOGGER.info(json.dumps({"event": "kaspa_identity.verified", "domain": normalized, "provider": PROVIDER}))
-            return public_record(expected, "fresh", isoformat(now), isoformat(expires))
+            return public_record(expected, "fresh", isoformat(after), isoformat(expires))
         finally:
             lock.release()
 

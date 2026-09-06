@@ -327,3 +327,20 @@ def test_stale_window_is_judged_after_provider_io_not_before(tmp_path):
     service = KaspaIdentityVerifier(cache_path=tmp_path / "identity.json", transport=httpx.MockTransport(slow_failure),
                                     ttl_seconds=60, stale_seconds=300, clock=lambda: current["now"])
     assert service.verify("localloop.kas")["verificationState"] == "unavailable"
+
+
+def test_successful_verification_windows_start_at_completion_time(tmp_path):
+    current = {"now": NOW}
+
+    def slow_success(_request):
+        current["now"] = NOW + timedelta(seconds=90)  # provider took longer than the 60s TTL
+        return httpx.Response(200, json=provider_payload())
+
+    service = KaspaIdentityVerifier(cache_path=tmp_path / "identity.json", transport=httpx.MockTransport(slow_success),
+                                    ttl_seconds=60, stale_seconds=300, clock=lambda: current["now"])
+    result = service.verify("localloop.kas")
+    assert result["verificationState"] == "fresh"
+    assert result["verifiedAt"] == "2026-09-01T00:01:30Z"
+    assert result["expiresAt"] == "2026-09-01T00:02:30Z"  # still a full TTL ahead, not already expired
+    # And the entry is served fresh from cache afterwards without another fetch.
+    assert service.verify("localloop.kas")["verificationState"] == "fresh"

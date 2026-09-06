@@ -201,14 +201,16 @@ entry is fingerprinted to the provider URL and expected identity, and a
 
 #### Run and verify (copy-paste)
 
-Local checkout — start the API the usual way, then hit the three identity routes:
+Local checkout — start the API on **8010** (port 8000 is taken by the local
+TypeDB server on Bill's machine; see `.SEED/gotchas.md`), then hit the three
+identity routes:
 
 ```bash
-cd backend && python main.py        # serves http://localhost:8000 (see "Looper backend" above)
+cd backend && LOOPER_PORT=8010 python main.py        # serves http://localhost:8010
 ```
 
 ```bash
-curl -s http://localhost:8000/api/identity/domains | python3 -m json.tool
+curl -s http://localhost:8010/api/identity/domains | python3 -m json.tool
 ```
 
 Expected: `{"domains": [ ... ]}` with two records, `localloop.kas` and
@@ -217,7 +219,7 @@ internet access to `api.knsdomains.org` (`unavailable` if you are offline —
 that is the bounded fail-closed answer, not an error).
 
 ```bash
-curl -s http://localhost:8000/api/identity/domains/localloop.kas | python3 -m json.tool
+curl -s http://localhost:8010/api/identity/domains/localloop.kas | python3 -m json.tool
 ```
 
 Expected: one record whose `assetId` ends in `i0`, `transactionId` equals the
@@ -226,7 +228,7 @@ Expected: one record whose `assetId` ends in `i0`, `transactionId` equals the
 (`/api/identity/domains/attacker.kas`) returns **404**.
 
 ```bash
-curl -s http://localhost:8000/api/identity/health | python3 -m json.tool
+curl -s http://localhost:8010/api/identity/health | python3 -m json.tool
 ```
 
 Expected: `{"status": "healthy", "provider": "kns-mainnet-v1", "domains":
@@ -238,8 +240,11 @@ configured identity).
 Docker / Coolify deployment — same checks against the deployed host:
 
 ```bash
-docker compose up -d --build && sleep 5 && curl -s http://localhost:8000/api/identity/health
+LOOPER_PORT=8010 docker compose up -d --build && sleep 5 && curl -s http://localhost:8010/api/identity/health
 ```
+
+(`LOOPER_PORT` is the host port mapping in `docker-compose.yml`; the container
+itself always listens on 8000.)
 
 ```bash
 curl -s https://api.localloop.ai/api/identity/health | python3 -m json.tool
