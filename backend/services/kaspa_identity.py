@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import threading
 import unicodedata
 from dataclasses import dataclass
@@ -289,21 +290,32 @@ class KaspaIdentityVerifier:
 
     @staticmethod
     def _exact_int(value: Any) -> int | None:
-        """Only a real integer or a canonical decimal string counts; floats such
-        as 47164.5 (which int() would truncate) and booleans are rejected."""
+        """Only a real integer or a canonical ASCII decimal string counts. Floats
+        such as 47164.5 (which int() would truncate), booleans, and Unicode digit
+        strings such as "٤٧١٦٤" / "４７１６４" (which str.isdigit()/int() would
+        normalise) are rejected."""
         if isinstance(value, bool):
             return None
         if isinstance(value, int):
             return value
-        if isinstance(value, str) and value.isdigit():
+        if isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
             return int(value)
         return None
+
+    @staticmethod
+    def _exact_domain(value: Any) -> str | None:
+        """Provider-supplied domain must be ASCII before case folding: a Kelvin
+        sign (U+212A) lowercases to ASCII "k", so "localloop.Kas" would
+        otherwise equal the configured record."""
+        if not isinstance(value, str) or not value.isascii():
+            return None
+        return value.strip().lower()
 
     @staticmethod
     def _matches(expected: ExpectedIdentity, asset: dict[str, Any]) -> bool:
         try:
             return (
-                str(asset["asset"]).strip().lower() == expected.domain
+                KaspaIdentityVerifier._exact_domain(asset["asset"]) == expected.domain
                 and str(asset["assetId"]) == expected.asset_id
                 and KaspaIdentityVerifier._exact_int(asset["id"]) == expected.inscription_number
                 and str(asset["transactionId"]) == expected.transaction_id

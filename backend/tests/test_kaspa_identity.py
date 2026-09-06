@@ -361,3 +361,18 @@ def test_verified_entry_is_retained_in_memory_when_the_disk_write_fails(tmp_path
     assert service.verify("localloop.kas")["verificationState"] == "fresh"
     assert service.verify("localloop.kas")["verificationState"] == "fresh"
     assert attempts["count"] == 1  # TTL honoured from memory despite the unwritable cache
+
+
+def test_unicode_lookalike_domains_and_digits_never_match(tmp_path):
+    kelvin = "localloop.\u212aas"  # Kelvin sign lowercases to ASCII "k"
+    assert kelvin.lower() == "localloop.kas"  # the trap this guards against
+    cases = [
+        provider_payload(asset=kelvin),
+        provider_payload(id="\u0664\u0667\u0661\u0666\u0664"),  # Arabic-Indic 47164
+        provider_payload(id="\uff14\uff17\uff11\uff16\uff14"),  # fullwidth 47164
+    ]
+    for index, payload in enumerate(cases):
+        service = verifier_for(tmp_path / f"uni-{index}", lambda request, body=payload: httpx.Response(200, json=body))
+        assert service.verify("localloop.kas")["verificationState"] == "mismatch", payload["data"]["assets"][0]
+    ascii_ok = verifier_for(tmp_path / "ascii", lambda request: httpx.Response(200, json=provider_payload(asset="LocalLoop.KAS", id="47164")))
+    assert ascii_ok.verify("localloop.kas")["verificationState"] == "fresh"
