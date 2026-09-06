@@ -56,24 +56,53 @@
     host.appendChild(details);
   }
 
+  // Refresh cadence: a fresh record is re-checked when its expiresAt passes
+  // (plus a little jitter); anything else is re-checked on a bounded interval,
+  // so a long-lived tab never keeps "Verified on KNS" past the verification
+  // window and surfaces a later mismatch.
+  var MIN_REFRESH_MS = 30 * 1000;
+  var FALLBACK_REFRESH_MS = 5 * 60 * 1000;
+  var MAX_REFRESH_MS = 6 * 60 * 60 * 1000;
+
+  function nextRefreshMs(record) {
+    var due = FALLBACK_REFRESH_MS;
+    if (record && record.verificationState === 'fresh' && record.expiresAt) {
+      var until = new Date(record.expiresAt).getTime() - Date.now();
+      if (!isNaN(until)) due = until + Math.floor(Math.random() * 15000);
+    }
+    return Math.min(MAX_REFRESH_MS, Math.max(MIN_REFRESH_MS, due));
+  }
+
   async function mount(hostOrSelector, options) {
     var host = typeof hostOrSelector === 'string' ? document.querySelector(hostOrSelector) : hostOrSelector;
     if (!host) return;
     options = options || {};
     var domain = options.domain || 'localloop.kas';
+    var label = options.label || ('Official · ' + domain);
     var apiBase = (options.apiBase || (root.LocalLoopConfig && root.LocalLoopConfig.looperApi) || root.location.origin).replace(/\/$/, '');
-    // The requested domain is shown while loading and on failure, so a
-    // qikflo.kas badge never discloses localloop.kas during an outage.
-    render(host, null, options.label || ('Official · ' + domain), domain);
-    try {
-      var response = await fetch(apiBase + '/api/identity/domains/' + encodeURIComponent(domain), {
-        headers: { Accept: 'application/json' }, credentials: 'omit'
-      });
-      if (!response.ok) throw new Error('identity unavailable');
-      render(host, await response.json(), options.label || ('Official · ' + domain), domain);
-    } catch (_) {
-      render(host, null, options.label || ('Official · ' + domain), domain);
+    // Re-mounting the same host replaces its refresh timer instead of stacking.
+    if (host.__kaspaIdentityTimer) clearTimeout(host.__kaspaIdentityTimer);
+
+    async function refresh(initial) {
+      // The requested domain is shown while loading and on failure, so a
+      // qikflo.kas badge never discloses localloop.kas during an outage.
+      if (initial) render(host, null, label, domain);
+      var record = null;
+      try {
+        var response = await fetch(apiBase + '/api/identity/domains/' + encodeURIComponent(domain), {
+          headers: { Accept: 'application/json' }, credentials: 'omit', cache: 'no-store'
+        });
+        if (!response.ok) throw new Error('identity unavailable');
+        record = await response.json();
+      } catch (_) {
+        record = null;
+      }
+      render(host, record, label, domain);
+      if (!host.isConnected) return; // badge removed from the page: stop polling
+      host.__kaspaIdentityTimer = setTimeout(function () { refresh(false); }, nextRefreshMs(record));
     }
+
+    await refresh(true);
   }
 
   root.LocalLoopKaspaIdentity = { mount: mount };

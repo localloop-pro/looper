@@ -185,6 +185,23 @@ class KaspaIdentityVerifier:
                 LOGGER.warning(json.dumps({"event": "kaspa_identity.cache_write_failed", "domain": normalized,
                                            "error": exc.__class__.__name__}))
 
+    def _tombstone(self, normalized: str, mismatch_until: datetime) -> None:
+        """Record an authoritative mismatch ATOMICALLY: memory entry dropped,
+        in-memory tombstone set, shared mismatch window armed, disk entry removed
+        (best effort) — all under one lock, so no reader can observe the
+        tombstone without the mismatch marker or vice versa."""
+        with self._lock:
+            self._memory.pop(normalized, None)
+            self._tombstoned.add(normalized)
+            self._mismatch_until[normalized] = mismatch_until
+            cache = self._read_cache()
+            cache.pop(normalized, None)
+            try:
+                self._write_cache(cache)
+            except OSError as exc:
+                LOGGER.warning(json.dumps({"event": "kaspa_identity.cache_write_failed", "domain": normalized,
+                                           "error": exc.__class__.__name__}))
+
     # ── cache entries ────────────────────────────────────────────────────
 
     def _fingerprint(self, expected: ExpectedIdentity) -> str:
@@ -365,7 +382,12 @@ class KaspaIdentityVerifier:
         # NOW rather than parking a FastAPI worker thread behind an 8s fetch.
         lock = self._refresh_lock(normalized)
         if not lock.acquire(blocking=False):
-            return self._degraded(expected, cached, now)
+            # Follower: the leader may have recorded a mismatch between our
+            # snapshot above and this point — never degrade from a stale
+            # snapshot. Re-read the authoritative state first.
+            if self._mismatch_active(normalized, now):
+                return public_record(expected, "mismatch")
+            return self._degraded(expected, self._read_valid_entry(normalized, expected, now), now)
         try:
             cached = self._read_valid_entry(normalized, expected, now)
             if cached and not force:
@@ -402,9 +424,9 @@ class KaspaIdentityVerifier:
                                          "reason": reason, "assetCount": len(assets), "observedOwner": observed}))
                 # Tombstone the cached verification so a later provider failure can
                 # never resurrect "Previously verified"; share the result with every
-                # caller for the backoff window instead of refetching.
-                self._persist(normalized, None)
-                self._note_mismatch(normalized, after)
+                # caller for the backoff window instead of refetching. One atomic
+                # step, so followers can never see the tombstone without the marker.
+                self._tombstone(normalized, after + timedelta(seconds=self.failure_backoff))
                 self._clear_failure(normalized)
                 return public_record(expected, "mismatch")
 

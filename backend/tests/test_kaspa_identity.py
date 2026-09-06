@@ -376,3 +376,35 @@ def test_unicode_lookalike_domains_and_digits_never_match(tmp_path):
         assert service.verify("localloop.kas")["verificationState"] == "mismatch", payload["data"]["assets"][0]
     ascii_ok = verifier_for(tmp_path / "ascii", lambda request: httpx.Response(200, json=provider_payload(asset="LocalLoop.KAS", id="47164")))
     assert ascii_ok.verify("localloop.kas")["verificationState"] == "fresh"
+
+
+def test_follower_never_degrades_from_a_pre_mismatch_snapshot(tmp_path):
+    good = verifier_for(tmp_path, lambda request: httpx.Response(200, json=provider_payload()))
+    assert good.verify("localloop.kas")["verificationState"] == "fresh"
+    later = NOW + timedelta(seconds=61)
+    service = KaspaIdentityVerifier(cache_path=tmp_path / "identity.json",
+                                    transport=httpx.MockTransport(lambda request: httpx.Response(503)),
+                                    ttl_seconds=60, stale_seconds=300, clock=lambda: later)
+    expected = EXPECTED_IDENTITIES["localloop.kas"]
+    # Reproduce the race deterministically: the follower's first snapshot is the
+    # still-valid entry taken BEFORE the leader records a mismatch...
+    snapshot = service._read_valid_entry("localloop.kas", expected, later)
+    assert snapshot is not None
+    original = service._read_valid_entry
+    calls = {"count": 0}
+
+    def first_call_returns_stale_snapshot(normalized, exp, now):
+        calls["count"] += 1
+        return snapshot if calls["count"] == 1 else original(normalized, exp, now)
+
+    service._read_valid_entry = first_call_returns_stale_snapshot  # type: ignore[method-assign]
+    # ...the leader (holding the refresh lock) then records the mismatch...
+    leader_lock = service._refresh_lock("localloop.kas")
+    assert leader_lock.acquire(blocking=False)
+    try:
+        service._tombstone("localloop.kas", later + timedelta(seconds=30))
+        # ...and the follower, failing to acquire the lock, must report the
+        # mismatch — not "stale" from its outdated snapshot.
+        assert service.verify("localloop.kas")["verificationState"] == "mismatch"
+    finally:
+        leader_lock.release()
