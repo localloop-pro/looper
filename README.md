@@ -192,8 +192,12 @@ fresh TTL, and a 24-hour bounded stale window. A `mismatch` is a security event:
 the UI removes verified wording immediately. `stale` is display-only. Monitor
 `GET /api/identity/health`; investigate any `degraded` response before changing
 the configured owner or cache window. The cache defaults to
-`backend/data/kaspa_identity_cache.json` and should be on writable persistent
-storage in Coolify.
+`backend/data/kaspa_identity_cache.json` for a plain checkout; in Docker/Coolify
+`docker-compose.yml` sets `KASPA_IDENTITY_CACHE_PATH=/app/data/kaspa_identity_cache.json`
+so it lives on the `looper-data` volume and survives redeploys. Cache writes are
+best-effort (an unwritable path logs a warning and still returns `fresh`); each
+entry is fingerprinted to the provider URL and expected identity, and a
+`mismatch` tombstones the entry so a later outage can never report `stale`.
 
 ## Database Schema
 

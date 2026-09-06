@@ -113,3 +113,90 @@ def test_public_contract_and_unknown_domain(tmp_path, monkeypatch):
     assert set(item.json()) == {"domain", "network", "assetId", "inscriptionNumber", "transactionId",
                                 "ownerAddress", "status", "verificationState", "verifiedAt", "expiresAt", "explorerUrl"}
     assert client.get("/api/identity/domains/attacker.kas").status_code == 404
+
+
+# ── review round (Codex) ─────────────────────────────────────────────────
+
+def test_malformed_nested_data_member_is_unavailable_not_500(tmp_path):
+    for index, payload in enumerate(({"data": None}, {"data": []}, {"data": "x"}, {"success": True})):
+        service = verifier_for(tmp_path / f"case-{index}", lambda request, body=payload: httpx.Response(200, json=body))
+        assert service.verify("qikflo.kas")["verificationState"] == "unavailable"
+
+
+def test_mismatch_tombstones_cache_so_a_later_failure_is_unavailable(tmp_path):
+    good = verifier_for(tmp_path, lambda request: httpx.Response(200, json=provider_payload()))
+    assert good.verify("localloop.kas")["verificationState"] == "fresh"
+    bad = verifier_for(tmp_path, lambda request: httpx.Response(200, json=provider_payload(owner="kaspa:attacker")),
+                       clock=lambda: NOW + timedelta(seconds=61))
+    assert bad.verify("localloop.kas")["verificationState"] == "mismatch"
+    # Still inside the old stale window — must NOT report "stale"/previously verified.
+    failing = verifier_for(tmp_path, lambda request: httpx.Response(503), clock=lambda: NOW + timedelta(seconds=62))
+    assert failing.verify("localloop.kas")["verificationState"] == "unavailable"
+
+
+def test_cache_is_bound_to_provider_url_and_expected_identity(tmp_path):
+    good = verifier_for(tmp_path, lambda request: httpx.Response(200, json=provider_payload()))
+    assert good.verify("localloop.kas")["verificationState"] == "fresh"
+    reconfigured = KaspaIdentityVerifier(
+        provider_url="https://mock.example/kns", cache_path=tmp_path / "identity.json",
+        transport=httpx.MockTransport(lambda request: httpx.Response(503)),
+        ttl_seconds=60, stale_seconds=300, clock=lambda: NOW + timedelta(seconds=1))
+    # The surviving entry verified a different provider configuration: rejected,
+    # so neither "fresh" nor "stale" can be claimed for it.
+    assert reconfigured.verify("localloop.kas")["verificationState"] == "unavailable"
+
+
+def test_unwritable_cache_is_best_effort_and_still_verifies(tmp_path):
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory")
+    service = KaspaIdentityVerifier(
+        cache_path=blocker / "cache.json",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=provider_payload())),
+        ttl_seconds=60, stale_seconds=300, clock=lambda: NOW)
+    assert service.verify("localloop.kas")["verificationState"] == "fresh"
+
+
+def test_provider_failures_are_negatively_cached_with_backoff(tmp_path):
+    attempts = {"count": 0}
+    current = {"now": NOW}
+
+    def handler(_request):
+        attempts["count"] += 1
+        return httpx.Response(503)
+
+    service = KaspaIdentityVerifier(cache_path=tmp_path / "identity.json", transport=httpx.MockTransport(handler),
+                                    ttl_seconds=60, stale_seconds=300, failure_backoff_seconds=30,
+                                    clock=lambda: current["now"])
+    assert service.verify("localloop.kas")["verificationState"] == "unavailable"
+    assert service.verify("localloop.kas")["verificationState"] == "unavailable"
+    assert attempts["count"] == 1  # second call served from the failure cache
+    current["now"] = NOW + timedelta(seconds=31)
+    assert service.verify("localloop.kas")["verificationState"] == "unavailable"
+    assert attempts["count"] == 2  # backoff elapsed → one more upstream attempt
+
+
+def test_concurrent_refreshes_share_one_provider_request(tmp_path):
+    import threading
+
+    attempts = {"count": 0}
+    started = threading.Event()
+    release = threading.Event()
+
+    def handler(_request):
+        attempts["count"] += 1
+        started.set()
+        release.wait(5)
+        return httpx.Response(200, json=provider_payload())
+
+    service = verifier_for(tmp_path, handler)
+    results: list[dict] = []
+    first = threading.Thread(target=lambda: results.append(service.verify("localloop.kas")))
+    first.start()
+    assert started.wait(5)
+    second = threading.Thread(target=lambda: results.append(service.verify("localloop.kas")))
+    second.start()
+    release.set()
+    first.join(5)
+    second.join(5)
+    assert attempts["count"] == 1
+    assert [item["verificationState"] for item in results] == ["fresh", "fresh"]
