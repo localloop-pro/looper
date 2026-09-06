@@ -144,6 +144,9 @@ class KaspaIdentityVerifier:
         # cannot be deleted (read-only volume, full disk). Cleared by the next
         # successful verification.
         self._tombstoned: set[str] = set()
+        # In-memory copy of verified entries: the TTL must hold even when the
+        # disk write fails, or every request would re-hit the provider.
+        self._memory: dict[str, dict[str, Any]] = {}
 
     # ── cache file (always under self._lock) ─────────────────────────────
 
@@ -169,9 +172,11 @@ class KaspaIdentityVerifier:
             cache = self._read_cache()
             if entry is None:
                 cache.pop(normalized, None)
+                self._memory.pop(normalized, None)
                 self._tombstoned.add(normalized)
             else:
                 cache[normalized] = entry
+                self._memory[normalized] = entry
                 self._tombstoned.discard(normalized)
             try:
                 self._write_cache(cache)
@@ -209,8 +214,11 @@ class KaspaIdentityVerifier:
         with self._lock:
             if normalized in self._tombstoned:
                 return None
-            cache = self._read_cache()
-        cached = cache.get(normalized)
+            # Memory first: it is authoritative for this process and survives a
+            # failed disk write; disk covers restarts.
+            cached = self._memory.get(normalized)
+            if cached is None:
+                cached = self._read_cache().get(normalized)
         if not isinstance(cached, dict):
             return None
         if not self._cache_is_valid(cached, now, expected):

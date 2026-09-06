@@ -344,3 +344,20 @@ def test_successful_verification_windows_start_at_completion_time(tmp_path):
     assert result["expiresAt"] == "2026-09-01T00:02:30Z"  # still a full TTL ahead, not already expired
     # And the entry is served fresh from cache afterwards without another fetch.
     assert service.verify("localloop.kas")["verificationState"] == "fresh"
+
+
+def test_verified_entry_is_retained_in_memory_when_the_disk_write_fails(tmp_path):
+    attempts = {"count": 0}
+
+    def handler(_request):
+        attempts["count"] += 1
+        return httpx.Response(200, json=provider_payload())
+
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory")
+    service = KaspaIdentityVerifier(cache_path=blocker / "cache.json", transport=httpx.MockTransport(handler),
+                                    ttl_seconds=60, stale_seconds=300, clock=lambda: NOW)
+    assert service.verify("localloop.kas")["verificationState"] == "fresh"
+    assert service.verify("localloop.kas")["verificationState"] == "fresh"
+    assert service.verify("localloop.kas")["verificationState"] == "fresh"
+    assert attempts["count"] == 1  # TTL honoured from memory despite the unwritable cache

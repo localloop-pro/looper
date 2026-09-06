@@ -24,8 +24,13 @@
     var details = document.createElement('details');
     details.className = 'kaspa-identity';
     var summary = document.createElement('summary');
+    // Every collapsed state names the organization (.SEED/decisions.md: every UI
+    // must scope the claim), so a stale/mismatch/unavailable badge can never be
+    // read as belonging to an adjacent listing or user.
+    var scope = (record && record.domain) || domain || 'localloop.kas';
+    var collapsed = state === 'fresh' ? label : copy[0] + ' \u00b7 ' + scope;
     summary.innerHTML = '<span class="kaspa-identity__mark" aria-hidden="true">K</span><span>' +
-      (state === 'fresh' ? label : copy[0]) + '</span><span class="kaspa-identity__state">' + state + '</span>';
+      collapsed + '</span><span class="kaspa-identity__state">' + state + '</span>';
     details.appendChild(summary);
 
     var panel = document.createElement('div');
