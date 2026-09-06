@@ -64,7 +64,11 @@ def isoformat(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def parse_time(value: str) -> datetime:
+def parse_time(value: Any) -> datetime:
+    # Corrupt/hand-edited caches may hold numbers, lists or objects here; that is
+    # an invalid entry, never a 500 (review P2).
+    if not isinstance(value, str):
+        raise ValueError("timestamp must be an ISO-8601 string")
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
@@ -103,10 +107,13 @@ class KaspaIdentityVerifier:
     """Verifies the configured identities against the KNS provider.
 
     Locking model (review P1): ``self._lock`` guards only in-memory state and the
-    cache file, never provider I/O. Provider refreshes run under a per-domain
-    single-flight lock so concurrent callers for one domain share one upstream
-    request instead of queueing on a process-wide lock while occupying thread-pool
-    slots; failures are negatively cached for ``failure_backoff`` seconds.
+    cache file, never provider I/O. One request per domain (the leader) performs
+    the provider refresh under a per-domain lock acquired WITHOUT blocking;
+    every other request for that domain returns the bounded cached/unavailable
+    state immediately instead of parking a worker thread behind the refresh.
+    Provider failures and authoritative mismatches are negatively cached for
+    ``failure_backoff`` seconds so a burst during an outage or a security event
+    produces one upstream request, not one per caller.
     """
 
     def __init__(self, *, provider_url: str | None = None, cache_path: str | Path | None = None,
@@ -131,6 +138,12 @@ class KaspaIdentityVerifier:
         self._lock = threading.Lock()
         self._refresh_locks: dict[str, threading.Lock] = {}
         self._failed_until: dict[str, datetime] = {}
+        # Short-lived authoritative mismatch results (shared across callers).
+        self._mismatch_until: dict[str, datetime] = {}
+        # In-memory tombstones: a mismatch must hold even when the on-disk entry
+        # cannot be deleted (read-only volume, full disk). Cleared by the next
+        # successful verification.
+        self._tombstoned: set[str] = set()
 
     # ── cache file (always under self._lock) ─────────────────────────────
 
@@ -148,14 +161,18 @@ class KaspaIdentityVerifier:
         temporary.replace(self.cache_path)
 
     def _persist(self, normalized: str, entry: dict[str, Any] | None) -> None:
-        """Store (or tombstone, when ``entry`` is None) one domain. Best effort:
-        an unwritable cache must never turn a verified identity into a 500."""
+        """Store (or tombstone, when ``entry`` is None) one domain. Best effort on
+        disk: an unwritable cache must never turn a verified identity into a 500,
+        and the tombstone is kept in memory regardless of whether the disk write
+        succeeds."""
         with self._lock:
             cache = self._read_cache()
             if entry is None:
                 cache.pop(normalized, None)
+                self._tombstoned.add(normalized)
             else:
                 cache[normalized] = entry
+                self._tombstoned.discard(normalized)
             try:
                 self._write_cache(cache)
             except OSError as exc:
@@ -190,6 +207,8 @@ class KaspaIdentityVerifier:
 
     def _read_valid_entry(self, normalized: str, expected: ExpectedIdentity, now: datetime) -> dict[str, Any] | None:
         with self._lock:
+            if normalized in self._tombstoned:
+                return None
             cache = self._read_cache()
         cached = cache.get(normalized)
         if not isinstance(cached, dict):
@@ -216,9 +235,25 @@ class KaspaIdentityVerifier:
         with self._lock:
             self._failed_until.pop(normalized, None)
 
+    def _mismatch_active(self, normalized: str, now: datetime) -> bool:
+        with self._lock:
+            until = self._mismatch_until.get(normalized)
+        return until is not None and now < until
+
+    def _note_mismatch(self, normalized: str, now: datetime) -> None:
+        with self._lock:
+            self._mismatch_until[normalized] = now + timedelta(seconds=self.failure_backoff)
+
+    def _clear_mismatch(self, normalized: str) -> None:
+        with self._lock:
+            self._mismatch_until.pop(normalized, None)
+
     # ── provider ─────────────────────────────────────────────────────────
 
-    def _fetch(self, expected: ExpectedIdentity) -> tuple[dict[str, Any], str]:
+    def _fetch(self, expected: ExpectedIdentity) -> tuple[dict[str, Any] | None, str]:
+        """Returns ``(asset, raw_hash)``; ``asset`` is None for a well-formed EMPTY
+        result (the provider authoritatively has no such record — a mismatch, not
+        an outage). Malformed shapes raise IdentityProviderError."""
         url = f"{self.provider_url}/api/v1/assets"
         try:
             with httpx.Client(transport=self.transport, timeout=8.0, follow_redirects=False,
@@ -234,7 +269,11 @@ class KaspaIdentityVerifier:
         # is a provider fault (unavailable), never a 500 (review P2).
         data = payload.get("data") if isinstance(payload, dict) else None
         assets = data.get("assets") if isinstance(data, dict) else None
-        if not isinstance(assets, list) or len(assets) != 1 or not isinstance(assets[0], dict):
+        if not isinstance(assets, list):
+            raise IdentityProviderError("provider returned an unexpected asset set")
+        if len(assets) == 0:
+            return None, raw_hash
+        if len(assets) != 1 or not isinstance(assets[0], dict):
             raise IdentityProviderError("provider returned an unexpected asset set")
         return assets[0], raw_hash
 
@@ -285,15 +324,22 @@ class KaspaIdentityVerifier:
             fresh = self._fresh(expected, cached, now)
             if fresh:
                 return fresh
+        if not force and self._mismatch_active(normalized, now):
+            return public_record(expected, "mismatch")
 
-        # Single-flight per domain: provider I/O happens here, outside the global
-        # lock, and concurrent callers for this domain wait for one refresh.
-        with self._refresh_lock(normalized):
+        # One leader refreshes per domain. Everyone else gets the bounded answer
+        # NOW rather than parking a FastAPI worker thread behind an 8s fetch.
+        lock = self._refresh_lock(normalized)
+        if not lock.acquire(blocking=False):
+            return self._degraded(expected, cached, now)
+        try:
             cached = self._read_valid_entry(normalized, expected, now)
             if cached and not force:
                 fresh = self._fresh(expected, cached, now)
                 if fresh:
                     return fresh
+            if not force and self._mismatch_active(normalized, now):
+                return public_record(expected, "mismatch")
             if not force and self._failure_backoff_active(normalized, now):
                 return self._degraded(expected, cached, now)
 
@@ -305,12 +351,16 @@ class KaspaIdentityVerifier:
                 self._note_failure(normalized, now)
                 return self._degraded(expected, cached, now)
 
-            if not self._matches(expected, asset):
+            if asset is None or not self._matches(expected, asset):
                 LOGGER.error(json.dumps({"event": "kaspa_identity.mismatch", "domain": normalized,
-                                         "observedOwner": str(asset.get("owner", ""))[:80]}))
-                # An authoritative mismatch tombstones the cached verification so a
-                # later provider failure can never resurrect "Previously verified".
+                                         "reason": "absent" if asset is None else "fields",
+                                         "observedOwner": "" if asset is None else str(asset.get("owner", ""))[:80]}))
+                # An authoritative mismatch (wrong fields OR the record no longer
+                # exists) tombstones the cached verification so a later provider
+                # failure can never resurrect "Previously verified", and is shared
+                # with every caller for the backoff window instead of refetched.
                 self._persist(normalized, None)
+                self._note_mismatch(normalized, now)
                 self._clear_failure(normalized)
                 return public_record(expected, "mismatch")
 
@@ -323,8 +373,11 @@ class KaspaIdentityVerifier:
             }
             self._persist(normalized, entry)
             self._clear_failure(normalized)
+            self._clear_mismatch(normalized)
             LOGGER.info(json.dumps({"event": "kaspa_identity.verified", "domain": normalized, "provider": PROVIDER}))
             return public_record(expected, "fresh", isoformat(now), isoformat(expires))
+        finally:
+            lock.release()
 
     def list_domains(self, *, force: bool = False) -> list[dict[str, Any]]:
         return [self.verify(domain, force=force) for domain in EXPECTED_IDENTITIES]

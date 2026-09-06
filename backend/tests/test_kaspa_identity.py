@@ -189,14 +189,90 @@ def test_concurrent_refreshes_share_one_provider_request(tmp_path):
         return httpx.Response(200, json=provider_payload())
 
     service = verifier_for(tmp_path, handler)
-    results: list[dict] = []
-    first = threading.Thread(target=lambda: results.append(service.verify("localloop.kas")))
+    results: dict[str, dict] = {}
+    first = threading.Thread(target=lambda: results.__setitem__("leader", service.verify("localloop.kas")))
     first.start()
     assert started.wait(5)
-    second = threading.Thread(target=lambda: results.append(service.verify("localloop.kas")))
+    # A second caller must NOT park behind the in-flight refresh: it gets the
+    # bounded answer immediately (cold cache → unavailable) while the leader
+    # is still blocked in the provider call.
+    second = threading.Thread(target=lambda: results.__setitem__("follower", service.verify("localloop.kas")))
     second.start()
+    second.join(2)
+    assert not second.is_alive()
+    assert results["follower"]["verificationState"] == "unavailable"
     release.set()
     first.join(5)
-    second.join(5)
     assert attempts["count"] == 1
-    assert [item["verificationState"] for item in results] == ["fresh", "fresh"]
+    assert results["leader"]["verificationState"] == "fresh"
+    # Once the leader has written the cache, callers are served fresh from it.
+    assert service.verify("localloop.kas")["verificationState"] == "fresh"
+    assert attempts["count"] == 1
+
+
+def test_empty_successful_lookup_is_mismatch_and_tombstones(tmp_path):
+    good = verifier_for(tmp_path, lambda request: httpx.Response(200, json=provider_payload()))
+    assert good.verify("localloop.kas")["verificationState"] == "fresh"
+    # The provider authoritatively has NO record now: that is a mismatch, and it
+    # must not be masked by the still-valid stale window.
+    gone = verifier_for(tmp_path, lambda request: httpx.Response(200, json={"success": True, "data": {"assets": []}}),
+                        clock=lambda: NOW + timedelta(seconds=61))
+    assert gone.verify("localloop.kas")["verificationState"] == "mismatch"
+    failing = verifier_for(tmp_path, lambda request: httpx.Response(503), clock=lambda: NOW + timedelta(seconds=62))
+    assert failing.verify("localloop.kas")["verificationState"] == "unavailable"
+
+
+def test_mismatch_is_shared_across_callers_for_the_backoff_window(tmp_path):
+    attempts = {"count": 0}
+    current = {"now": NOW}
+
+    def handler(_request):
+        attempts["count"] += 1
+        return httpx.Response(200, json=provider_payload(owner="kaspa:attacker"))
+
+    service = KaspaIdentityVerifier(cache_path=tmp_path / "identity.json", transport=httpx.MockTransport(handler),
+                                    ttl_seconds=60, stale_seconds=300, failure_backoff_seconds=30,
+                                    clock=lambda: current["now"])
+    for _ in range(3):
+        assert service.verify("localloop.kas")["verificationState"] == "mismatch"
+    assert attempts["count"] == 1  # one upstream fetch serves the whole window
+    current["now"] = NOW + timedelta(seconds=31)
+    assert service.verify("localloop.kas")["verificationState"] == "mismatch"
+    assert attempts["count"] == 2
+
+
+def test_in_memory_tombstone_holds_when_the_cache_cannot_be_rewritten(tmp_path):
+    import os
+    import stat
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    responses = {"body": provider_payload()}
+    current = {"now": NOW}
+
+    def handler(_request):
+        body = responses["body"]
+        return httpx.Response(200, json=body) if body is not None else httpx.Response(503)
+
+    service = KaspaIdentityVerifier(cache_path=cache_dir / "identity.json", transport=httpx.MockTransport(handler),
+                                    ttl_seconds=60, stale_seconds=300, clock=lambda: current["now"])
+    assert service.verify("localloop.kas")["verificationState"] == "fresh"
+    os.chmod(cache_dir, stat.S_IRUSR | stat.S_IXUSR)  # readable, not writable → disk tombstone fails
+    try:
+        current["now"] = NOW + timedelta(seconds=61)
+        responses["body"] = provider_payload(owner="kaspa:attacker")
+        assert service.verify("localloop.kas")["verificationState"] == "mismatch"
+        current["now"] = NOW + timedelta(seconds=120)  # past the mismatch backoff, inside staleUntil
+        responses["body"] = None
+        assert service.verify("localloop.kas")["verificationState"] == "unavailable"
+    finally:
+        os.chmod(cache_dir, stat.S_IRWXU)
+
+
+def test_non_string_cache_timestamps_are_rejected_not_500(tmp_path):
+    cache_path = tmp_path / "identity.json"
+    cache_path.write_text('{"localloop.kas":{"verifiedAt":1725148800,"expiresAt":["x"],"staleUntil":{},"provider":"kns-mainnet-v1"}}')
+    service = KaspaIdentityVerifier(cache_path=cache_path,
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=provider_payload())),
+        ttl_seconds=60, stale_seconds=300, clock=lambda: NOW)
+    assert service.verify("localloop.kas")["verificationState"] == "fresh"

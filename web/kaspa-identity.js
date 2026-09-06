@@ -15,7 +15,7 @@
     }[state] || ['Verification unavailable', 'No current KNS verification is available'];
   }
 
-  function render(host, record, label) {
+  function render(host, record, label, domain) {
     var state = record && record.verificationState || 'unavailable';
     var copy = stateCopy(state);
     host.dataset.state = state;
@@ -32,7 +32,7 @@
     panel.className = 'kaspa-identity__panel';
     var verifiedAt = record && record.verifiedAt ? new Date(record.verifiedAt).toLocaleString() : 'Not available';
     panel.innerHTML = '<strong>' + copy[0] + '</strong><p>' + copy[1] + '</p>' +
-      '<dl><div><dt>Domain</dt><dd>' + (record && record.domain || 'localloop.kas') + '</dd></div>' +
+      '<dl><div><dt>Domain</dt><dd>' + ((record && record.domain) || domain || 'localloop.kas') + '</dd></div>' +
       '<div><dt>Owner</dt><dd>' + short(record && record.ownerAddress, 14, 8) + '</dd></div>' +
       '<div><dt>Asset</dt><dd>' + short(record && record.assetId, 12, 6) + '</dd></div>' +
       '<div><dt>Checked</dt><dd>' + verifiedAt + '</dd></div></dl>';
@@ -57,15 +57,17 @@
     options = options || {};
     var domain = options.domain || 'localloop.kas';
     var apiBase = (options.apiBase || (root.LocalLoopConfig && root.LocalLoopConfig.looperApi) || root.location.origin).replace(/\/$/, '');
-    render(host, null, options.label || ('Official · ' + domain));
+    // The requested domain is shown while loading and on failure, so a
+    // qikflo.kas badge never discloses localloop.kas during an outage.
+    render(host, null, options.label || ('Official · ' + domain), domain);
     try {
       var response = await fetch(apiBase + '/api/identity/domains/' + encodeURIComponent(domain), {
         headers: { Accept: 'application/json' }, credentials: 'omit'
       });
       if (!response.ok) throw new Error('identity unavailable');
-      render(host, await response.json(), options.label || ('Official · ' + domain));
+      render(host, await response.json(), options.label || ('Official · ' + domain), domain);
     } catch (_) {
-      render(host, null, options.label || ('Official · ' + domain));
+      render(host, null, options.label || ('Official · ' + domain), domain);
     }
   }
 
