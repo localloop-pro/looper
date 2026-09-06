@@ -295,3 +295,35 @@ def test_fractional_or_boolean_inscription_ids_never_match(tmp_path):
         assert service.verify("localloop.kas")["verificationState"] == "mismatch", bad_id
     exact_int = verifier_for(tmp_path / "int", lambda request: httpx.Response(200, json=provider_payload(id=47164)))
     assert exact_int.verify("localloop.kas")["verificationState"] == "fresh"
+
+
+def test_ambiguous_asset_set_is_a_mismatch_not_an_outage(tmp_path):
+    good = verifier_for(tmp_path, lambda request: httpx.Response(200, json=provider_payload()))
+    assert good.verify("localloop.kas")["verificationState"] == "fresh"
+    exact = provider_payload()["data"]["assets"][0]
+    reissued = dict(exact, owner="kaspa:attacker", id="99999")
+    two = {"success": True, "data": {"assets": [exact, reissued]}}
+    ambiguous = verifier_for(tmp_path, lambda request: httpx.Response(200, json=two),
+                             clock=lambda: NOW + timedelta(seconds=61))
+    # The exact record is present but not unique → identity cannot be established.
+    assert ambiguous.verify("localloop.kas")["verificationState"] == "mismatch"
+    duplicated = {"success": True, "data": {"assets": [exact, dict(exact)]}}
+    assert verifier_for(tmp_path / "dup", lambda request: httpx.Response(200, json=duplicated)
+                        ).verify("localloop.kas")["verificationState"] == "mismatch"
+    # And the tombstone holds: a later outage is unavailable, not stale.
+    failing = verifier_for(tmp_path, lambda request: httpx.Response(503), clock=lambda: NOW + timedelta(seconds=62))
+    assert failing.verify("localloop.kas")["verificationState"] == "unavailable"
+
+
+def test_stale_window_is_judged_after_provider_io_not_before(tmp_path):
+    good = verifier_for(tmp_path, lambda request: httpx.Response(200, json=provider_payload()))
+    assert good.verify("localloop.kas")["verificationState"] == "fresh"
+    current = {"now": NOW + timedelta(seconds=299)}  # refresh starts 1s before staleUntil
+
+    def slow_failure(_request):
+        current["now"] = NOW + timedelta(seconds=305)  # ...and the provider answers after it
+        return httpx.Response(503)
+
+    service = KaspaIdentityVerifier(cache_path=tmp_path / "identity.json", transport=httpx.MockTransport(slow_failure),
+                                    ttl_seconds=60, stale_seconds=300, clock=lambda: current["now"])
+    assert service.verify("localloop.kas")["verificationState"] == "unavailable"

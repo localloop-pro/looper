@@ -250,10 +250,12 @@ class KaspaIdentityVerifier:
 
     # ── provider ─────────────────────────────────────────────────────────
 
-    def _fetch(self, expected: ExpectedIdentity) -> tuple[dict[str, Any] | None, str]:
-        """Returns ``(asset, raw_hash)``; ``asset`` is None for a well-formed EMPTY
-        result (the provider authoritatively has no such record — a mismatch, not
-        an outage). Malformed shapes raise IdentityProviderError."""
+    def _fetch(self, expected: ExpectedIdentity) -> tuple[list[dict[str, Any]], str]:
+        """Returns ``(assets, raw_hash)`` for a well-formed successful envelope.
+        The caller decides what the asset SET means: exactly one record is
+        compared field by field; an empty set (record gone) or more than one
+        record (duplicate/reissued/conflicting) is an authoritative mismatch,
+        never an outage. Malformed shapes raise IdentityProviderError."""
         url = f"{self.provider_url}/api/v1/assets"
         try:
             with httpx.Client(transport=self.transport, timeout=8.0, follow_redirects=False,
@@ -273,13 +275,9 @@ class KaspaIdentityVerifier:
             raise IdentityProviderError("provider envelope not successful")
         data = payload.get("data")
         assets = data.get("assets") if isinstance(data, dict) else None
-        if not isinstance(assets, list):
+        if not isinstance(assets, list) or not all(isinstance(item, dict) for item in assets):
             raise IdentityProviderError("provider returned an unexpected asset set")
-        if len(assets) == 0:
-            return None, raw_hash
-        if len(assets) != 1 or not isinstance(assets[0], dict):
-            raise IdentityProviderError("provider returned an unexpected asset set")
-        return assets[0], raw_hash
+        return assets, raw_hash
 
     @staticmethod
     def _exact_int(value: Any) -> int | None:
@@ -360,23 +358,33 @@ class KaspaIdentityVerifier:
                 return self._degraded(expected, cached, now)
 
             try:
-                asset, raw_hash = self._fetch(expected)
+                assets, raw_hash = self._fetch(expected)
             except IdentityProviderError:
+                # Re-read the clock: the request may have taken seconds, and the
+                # bounded stale window must be judged at decision time, not at
+                # the moment the refresh started (review P2).
+                after = self.clock()
                 LOGGER.warning(json.dumps({"event": "kaspa_identity.provider_failure", "domain": normalized,
                                            "provider": PROVIDER}))
-                self._note_failure(normalized, now)
-                return self._degraded(expected, cached, now)
+                self._note_failure(normalized, after)
+                return self._degraded(expected, cached, after)
 
-            if asset is None or not self._matches(expected, asset):
+            after = self.clock()
+            if len(assets) == 1 and self._matches(expected, assets[0]):
+                asset = assets[0]
+            else:
+                # Authoritative mismatch: wrong fields, the record no longer
+                # exists, or an ambiguous set (duplicate / reissued / conflicting
+                # records) — exact identity agreement cannot be established.
+                reason = "absent" if not assets else ("ambiguous" if len(assets) > 1 else "fields")
+                observed = "" if len(assets) != 1 else str(assets[0].get("owner", ""))[:80]
                 LOGGER.error(json.dumps({"event": "kaspa_identity.mismatch", "domain": normalized,
-                                         "reason": "absent" if asset is None else "fields",
-                                         "observedOwner": "" if asset is None else str(asset.get("owner", ""))[:80]}))
-                # An authoritative mismatch (wrong fields OR the record no longer
-                # exists) tombstones the cached verification so a later provider
-                # failure can never resurrect "Previously verified", and is shared
-                # with every caller for the backoff window instead of refetched.
+                                         "reason": reason, "assetCount": len(assets), "observedOwner": observed}))
+                # Tombstone the cached verification so a later provider failure can
+                # never resurrect "Previously verified"; share the result with every
+                # caller for the backoff window instead of refetching.
                 self._persist(normalized, None)
-                self._note_mismatch(normalized, now)
+                self._note_mismatch(normalized, after)
                 self._clear_failure(normalized)
                 return public_record(expected, "mismatch")
 
