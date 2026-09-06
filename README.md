@@ -199,6 +199,65 @@ best-effort (an unwritable path logs a warning and still returns `fresh`); each
 entry is fingerprinted to the provider URL and expected identity, and a
 `mismatch` tombstones the entry so a later outage can never report `stale`.
 
+#### Run and verify (copy-paste)
+
+Local checkout — start the API the usual way, then hit the three identity routes:
+
+```bash
+cd backend && python main.py        # serves http://localhost:8000 (see "Looper backend" above)
+```
+
+```bash
+curl -s http://localhost:8000/api/identity/domains | python3 -m json.tool
+```
+
+Expected: `{"domains": [ ... ]}` with two records, `localloop.kas` and
+`qikflo.kas`, each carrying `verificationState` = `fresh` on a machine with
+internet access to `api.knsdomains.org` (`unavailable` if you are offline —
+that is the bounded fail-closed answer, not an error).
+
+```bash
+curl -s http://localhost:8000/api/identity/domains/localloop.kas | python3 -m json.tool
+```
+
+Expected: one record whose `assetId` ends in `i0`, `transactionId` equals the
+`assetId` without that suffix, `ownerAddress` starts with `kaspa:qrs4ss39…`, and
+`explorerUrl` points at `https://kas.fyi/transaction/…`. An unknown domain
+(`/api/identity/domains/attacker.kas`) returns **404**.
+
+```bash
+curl -s http://localhost:8000/api/identity/health | python3 -m json.tool
+```
+
+Expected: `{"status": "healthy", "provider": "kns-mainnet-v1", "domains":
+{"localloop.kas": "fresh", "qikflo.kas": "fresh"}}`. Any `degraded` status
+names the domain that is `stale`, `unavailable`, or `mismatch` — investigate
+`mismatch` immediately (it means the on-chain record no longer matches the
+configured identity).
+
+Docker / Coolify deployment — same checks against the deployed host:
+
+```bash
+docker compose up -d --build && sleep 5 && curl -s http://localhost:8000/api/identity/health
+```
+
+```bash
+curl -s https://api.localloop.ai/api/identity/health | python3 -m json.tool
+```
+
+Expected: identical `healthy` payload. The cache file lives at
+`/app/data/kaspa_identity_cache.json` inside the `looper-data` volume
+(`docker compose exec looper-api cat /app/data/kaspa_identity_cache.json`
+shows two fingerprinted entries after the first successful check).
+
+Offline / regression proof without network access:
+
+```bash
+cd backend && .venv/bin/python -m pytest tests/test_kaspa_identity.py -q
+```
+
+Expected: all tests pass (they use an in-process mock provider).
+
 ## Database Schema
 
 See `backend/models.py` for full schema:

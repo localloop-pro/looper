@@ -276,3 +276,22 @@ def test_non_string_cache_timestamps_are_rejected_not_500(tmp_path):
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json=provider_payload())),
         ttl_seconds=60, stale_seconds=300, clock=lambda: NOW)
     assert service.verify("localloop.kas")["verificationState"] == "fresh"
+
+
+def test_unsuccessful_envelope_is_a_provider_failure_not_a_mismatch(tmp_path):
+    good = verifier_for(tmp_path, lambda request: httpx.Response(200, json=provider_payload()))
+    assert good.verify("localloop.kas")["verificationState"] == "fresh"
+    # HTTP 200 with success:false and an empty asset set is an error payload —
+    # it must NOT tombstone the valid cache; the bounded stale answer applies.
+    error_payload = {"success": False, "error": "upstream", "data": {"assets": []}}
+    failing = verifier_for(tmp_path, lambda request: httpx.Response(200, json=error_payload),
+                           clock=lambda: NOW + timedelta(seconds=61))
+    assert failing.verify("localloop.kas")["verificationState"] == "stale"
+
+
+def test_fractional_or_boolean_inscription_ids_never_match(tmp_path):
+    for index, bad_id in enumerate((47164.5, True, "47164.0", "0x b83c", None)):
+        service = verifier_for(tmp_path / f"id-{index}", lambda request, v=bad_id: httpx.Response(200, json=provider_payload(id=v)))
+        assert service.verify("localloop.kas")["verificationState"] == "mismatch", bad_id
+    exact_int = verifier_for(tmp_path / "int", lambda request: httpx.Response(200, json=provider_payload(id=47164)))
+    assert exact_int.verify("localloop.kas")["verificationState"] == "fresh"

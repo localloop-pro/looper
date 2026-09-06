@@ -266,8 +266,12 @@ class KaspaIdentityVerifier:
             raise IdentityProviderError("provider request failed") from exc
         raw_hash = hashlib.sha256(response.content).hexdigest()
         # Every nesting level is validated: a 200 whose `data` is null/list/scalar
-        # is a provider fault (unavailable), never a 500 (review P2).
-        data = payload.get("data") if isinstance(payload, dict) else None
+        # is a provider fault (unavailable), never a 500 (review P2). The envelope
+        # must also claim success: `success: false` with an empty/stale asset set
+        # is an error payload, not an authoritative answer.
+        if not isinstance(payload, dict) or payload.get("success") is not True:
+            raise IdentityProviderError("provider envelope not successful")
+        data = payload.get("data")
         assets = data.get("assets") if isinstance(data, dict) else None
         if not isinstance(assets, list):
             raise IdentityProviderError("provider returned an unexpected asset set")
@@ -278,12 +282,24 @@ class KaspaIdentityVerifier:
         return assets[0], raw_hash
 
     @staticmethod
+    def _exact_int(value: Any) -> int | None:
+        """Only a real integer or a canonical decimal string counts; floats such
+        as 47164.5 (which int() would truncate) and booleans are rejected."""
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return None
+
+    @staticmethod
     def _matches(expected: ExpectedIdentity, asset: dict[str, Any]) -> bool:
         try:
             return (
                 str(asset["asset"]).strip().lower() == expected.domain
                 and str(asset["assetId"]) == expected.asset_id
-                and int(asset["id"]) == expected.inscription_number
+                and KaspaIdentityVerifier._exact_int(asset["id"]) == expected.inscription_number
                 and str(asset["transactionId"]) == expected.transaction_id
                 and str(asset["owner"]) == expected.owner_address
                 and str(asset["status"]).strip().lower() == expected.status
