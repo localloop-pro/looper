@@ -538,17 +538,20 @@ still paint filled stars, which the second grep catches.
 ### Step 7: close the open review door (code, owner-gated)
 
 This comes before the Facebook post on purpose: the moment the post is live,
-anyone can hit the API. Fix section 3.6 first. Smallest safe change: a router-level dependency
-(`dependencies=[Depends(require_public_writes)]`) on the routers in
-`backend/routes/reviews.py`, `backend/routes/users.py` and
-`backend/routes/map.py` that returns 403 whenever `LOOPER_PUBLIC_WRITES` is not
-`true`, covering the three public writes (`POST /api/reviews`, `POST
-/api/onboard`, `POST /api/pins`) and the two profile reads (`GET
-/api/users/{id}`, `GET /api/code/{code}`). It must be a dependency, not a check
-inside the handler: FastAPI resolves dependencies before it validates the body,
-so the guard fires even on an empty request. Also never read `verified_visit`
-from the body. Search, discover, businesses, reviews-by-business and the
-HMAC-signed bridge ingest endpoints stay open. This is an auth-adjacent change
+anyone can hit the API. Fix section 3.6 first. Smallest safe change: one dependency, `require_public_writes`, that returns
+403 whenever `LOOPER_PUBLIC_WRITES` is not `true`, attached to exactly five
+route decorators (for example
+`@router.post("/reviews", dependencies=[Depends(require_public_writes)])`):
+the three public writes (`POST /api/reviews`, `POST /api/onboard`, `POST
+/api/pins`) and the two profile reads (`GET /api/users/{id}`, `GET
+/api/code/{code}`). Attach it per route, not on the `APIRouter` objects: those
+routers also hold the intentionally public `GET /api/reviews/{business_id}`,
+`GET /api/pins` and `GET /api/tourist-info`, which must keep working. It must be
+a dependency, not a check inside the handler: FastAPI resolves dependencies
+before it validates the body, so the guard fires even on an empty request. Also
+never read `verified_visit` from the body. Search, discover, businesses,
+reviews-by-business, pins-by-area, tourist info and the HMAC-signed bridge
+ingest endpoints stay open. This is an auth-adjacent change
 to a live API, so say yes before it is built.
 
 Check after deploy with empty bodies. Because the bodies are empty, nothing can
@@ -566,7 +569,16 @@ curl -s -o /dev/null -w "code %{http_code}\n" https://api.localloop.ai/api/code/
 
 Expect `403` on all five lines. A `422` on any POST line means the guard is not
 live for that route, and a `200` or `404` on a GET line means the same. Either
-way nothing was created, so the check is safe to repeat.
+way nothing was created, so the check is safe to repeat. Then prove the public
+reads survived:
+
+```bash
+curl -s -o /dev/null -w "reviews-by-business %{http_code}\n" https://api.localloop.ai/api/reviews/3
+curl -s -o /dev/null -w "pins-by-area %{http_code}\n" "https://api.localloop.ai/api/pins?lat=-33.8908&lng=151.2748&radius=5000"
+```
+
+Expect `200` on both. A `403` here means the guard landed on the whole router
+and broke a public read.
 
 ### Step 8: two real options before any public traffic (content + one code fix)
 
@@ -603,9 +615,15 @@ the matching bug in section 3.16.
 
 ### Step 9: open the free funnel and watch ten strangers (Facebook admin, no code)
 
-1. Pin a welcome post: "Say hi to Looper. Open localloop.ai on your phone, tap the
-   face, and ask for what you need." Link to `https://localloop.ai/`. Do this
-   only after step 7's five 403 checks and step 8's two-option probe both pass.
+1. Pin a welcome post that names the one flow step 8 verified, word for word:
+   "Say hi to Looper. Open localloop.ai on your phone, tap the face, and say
+   'find me a hairdresser'." Link to `https://localloop.ai/`. Do not write "ask
+   for what you need": the brain still answers nothing for cafés and most other
+   categories (section 3.2), so an open invitation sends people straight into
+   an empty result and those visits cannot count toward the hairdresser
+   completion test. Widen the wording only when other categories also pass the
+   step 8 probe. Do this only after step 7's checks and step 8's probe both
+   pass.
 2. Leave the membership questions as they are for now. Do not ask for an email
    yet: with Layer 2 declined and no first-party join page built, an email typed
    into a membership answer vanishes at approval and nothing can deliver the card
