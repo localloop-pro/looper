@@ -236,6 +236,10 @@ pin read returned a rejected row, so treat that as open.
   (`http://looper-api.167.86.79.151.sslip.io`). Payloads are public-safe by design
   so this is low risk, but the origin is also reachable directly, bypassing
   Cloudflare.
+- The Coolify admin console is used over plain `http://` at a public IP.
+  Anyone on the network path can read the login and take over every
+  deployment. Use an SSH tunnel or an HTTPS instance domain (step 1) and
+  rotate the password afterwards.
 - Bus factor is one person, and that person is also product owner, group admin,
   tester and approver.
 
@@ -292,11 +296,26 @@ hairdresser", hear at least 2 options, tap "View card", and land on a working
 page. Count them. That number decides what gets built next. The loop needs
 businesses that have a card, because only card holders carry a "View card" link.
 Today that means the HybridCard businesses (Aesthete Hair and Qikflo), so the
-test is the hairdresser flow until more real cards exist.
+test is the hairdresser flow until more real cards exist. Production returns
+exactly one hairdresser today, and the anti-bias rule says always show multiple
+options, so a second real salon or barber with a card is a prerequisite for the
+stranger test (see step 9). Until then, steps 1 to 8 prove the mechanics only.
 
 ### Step 1: switch the brain on (5 minutes, Coolify UI)
 
-1. Log in to Coolify at `http://167.86.79.151:8000`.
+1. Open Coolify over an encrypted path, not the plain `http://` address. The
+   simplest is an SSH tunnel from your Mac, then the browser talks to your own
+   machine:
+
+```bash
+ssh -L 8000:127.0.0.1:8000 root@167.86.79.151
+```
+
+   Leave that window open and browse to `http://localhost:8000`. The longer-term
+   fix is a Coolify instance domain with HTTPS (Settings, Instance Domain, for
+   example `coolify.localloop.ai`). Because the admin login has been used over
+   plain HTTP until now, change the Coolify password once you are on the
+   encrypted path.
 2. Open the LocalLoop Explore app (id `zl9s2tebckbu9zgzkdy2en4t`).
 3. Environment Variables: add `LOOPER_API_URL` with value
    `https://api.localloop.ai`. Save.
@@ -410,29 +429,16 @@ On the HybridCard homepage fallback card, pass no `rating` and no `ratingCount`.
 The stars render hollow and the popover is not shown. Check:
 
 ```bash
-curl -s https://hybridcard.ai/ | grep -c '128 reviews'
+curl -fsS https://hybridcard.ai/ -o /tmp/hc-home.html && grep -c '128 reviews' /tmp/hc-home.html
 ```
 
-Expect `0`.
+The first command must succeed (it fails loudly on any HTTP error), and the
+count must print `0`.
 
-### Step 7: open the free funnel (Facebook admin, no code, 20 minutes)
+### Step 7: close the open review door (code, owner-gated)
 
-1. Pin a welcome post: "Say hi to Looper. Open localloop.ai on your phone, tap the
-   face, and ask for what you need." Use the link
-   `https://localloop.ai/?src=fb-bondi`.
-2. Leave the membership questions as they are for now. Do not ask for an email
-   yet: with Layer 2 declined and no first-party join page built, an email typed
-   into a membership answer vanishes at approval and nothing can deliver the card
-   it promised. Add the email ask only when `join.localloop.ai` (F7.1 to F7.3)
-   exists to capture it with consent.
-3. Record in `.SEED/decisions.md`: Layer 2 (extension capture) declined for now.
-
-After step 5 you will see `page_view` rows and can count how many came from the
-post.
-
-### Step 8: close the open review door (code, owner-gated)
-
-Before inviting anyone, fix section 3.6. Smallest safe change in
+This comes before the Facebook post on purpose: the moment the post is live,
+anyone can hit the API. Fix section 3.6 first. Smallest safe change in
 `backend/routes/reviews.py` and `backend/routes/users.py`: put both public
 write endpoints behind `LOOPER_PUBLIC_WRITES=false` (return 403 in production
 until a verified path exists), and never read `verified_visit` from the body.
@@ -447,12 +453,49 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/re
 
 Expect `403`.
 
+### Step 8: open the free funnel (Facebook admin, no code, 20 minutes)
+
+1. Pin a welcome post: "Say hi to Looper. Open localloop.ai on your phone, tap the
+   face, and ask for what you need." Link to `https://localloop.ai/`. Do this
+   only after step 7 is deployed and its 403 check passes.
+2. Leave the membership questions as they are for now. Do not ask for an email
+   yet: with Layer 2 declined and no first-party join page built, an email typed
+   into a membership answer vanishes at approval and nothing can deliver the card
+   it promised. Add the email ask only when `join.localloop.ai` (F7.1 to F7.3)
+   exists to capture it with consent.
+3. Record in `.SEED/decisions.md`: Layer 2 (extension capture) declined for now.
+
+**Measuring it.** `analytics.js` records `path` and the referrer on every
+`page_view`, but not the query string, so a `?src=` tag would be lost. Facebook
+links arrive with a referrer such as `l.facebook.com` or `lm.facebook.com`, so
+count those. In the Supabase SQL editor:
+
+```sql
+select count(*) as from_facebook
+from public.analytics_events
+where event = 'page_view' and props->>'ref' ilike '%facebook%';
+```
+
+Caveat: the Facebook in-app browser sometimes sends no referrer, so this is a
+floor, not an exact count. Recording `location.search` in `analytics.js` is a
+one-line LocalLoop change if you want exact `?src=` attribution later.
+
 ### Step 9: watch ten strangers, five at a time
 
-Ask five members to try it on their own phones while you watch. Write down every
-place they got stuck. Fix the blockers, then run a second round of five. The
-success rule needs ten completions, so do not evaluate it after the first five.
-That list of stuck points is the real backlog.
+Prerequisite: a second real hairdresser or barber with a HybridCard, so the
+answer can offer two options as the anti-bias rule requires. Onboarding one
+local salon is itself a good test of the card funnel. Verify before recruiting:
+
+```bash
+curl -s "https://api.localloop.ai/api/search?q=hair&lat=-33.8908&lng=151.2748&radius=20000" | grep -o '"total_results":[0-9]*'
+```
+
+Expect `"total_results":2` or more.
+
+Then ask five members to try it on their own phones while you watch. Write down
+every place they got stuck. Fix the blockers, then run a second round of five.
+The success rule needs ten completions, so do not evaluate it after the first
+five. That list of stuck points is the real backlog.
 
 ---
 
