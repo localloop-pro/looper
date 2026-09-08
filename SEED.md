@@ -1,6 +1,6 @@
 # SEED.md — looper Knowledge Index
 
-Last updated: 2026-07-11
+Last updated: 2026-09-08
 
 ## What this project is
 
@@ -28,6 +28,9 @@ bot + FastAPI search backend). Owner: Bill / QikFlo Pty Ltd. This repo is the
 
 ## Key documents
 
+- `plans/BLIND-SPOTS-2026-09-08.md` — **read first:** outside audit of all three
+  repos + live production probes, ranked blind spots, and the "one suburb, one
+  loop" test plan with copy-paste checks.
 - `plans/IMPLEMENTATION_PLAN.md` — the master plan: bridge looper ↔ llx11 map
   ↔ HybridCard, voice map control, TypeDB brain, multi-district onboarding
   bot, geo-locked news/podcast, Coolify deploy.
@@ -45,5 +48,8 @@ bot + FastAPI search backend). Owner: Bill / QikFlo Pty Ltd. This repo is the
 
 ## Next steps
 
-- Implement `plans/features/` in order (01-foundation → …); tick each
+- Run `plans/BLIND-SPOTS-2026-09-08.md` §5 steps 1–8 (switch the live brain on,
+  seed without fake reviews, repair localhost card links, turn on analytics).
+  Freeze new feature work until 10 strangers complete the loop (§5 success rule).
+- Then implement `plans/features/` in order (01-foundation → …); tick each
   feature's checklist box when its Acceptance passes. Split done 2026-07-11.
