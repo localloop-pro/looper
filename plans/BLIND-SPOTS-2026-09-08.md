@@ -48,7 +48,7 @@ Rerun any row with the command in the last column.
 | Businesses in the production brain | 4 (Qikflo, Aesthete Hair, Bill Minglis, Bondi Local Loop), all category `professional` | `curl -s https://api.localloop.ai/api/businesses` |
 | Community reviews in production | 0 on every business | same as above, see `review_count` |
 | Search "cafe" at Bondi | 0 results | `curl -s "https://api.localloop.ai/api/search?q=cafe&lat=-33.8908&lng=151.2748"` |
-| Search "hair" at Bondi | 1 result, `card_url: http://localhost:3000/c/aesthete-hair` | `curl -s "https://api.localloop.ai/api/search?q=hair&lat=-33.8908&lng=151.2748&radius=20000"` |
+| Search "hair" at Bondi | 1 result, `card_url: http://localhost:3000/c/aesthete-hair` | `curl -s "https://api.localloop.ai/api/search?q=hair&lat=-33.8908&lng=151.2748&radius_km=20"` |
 | Map site `LOOPER_API_URL` | **empty string** in the 2026-09-07 build | `curl -s https://localloop.ai/assets/js/env.js \| grep LOOPER_API_URL` |
 | Map site analytics config | `ANALYTICS_BEACON_URL: ""`, `ANALYTICS_USE_SUPABASE: ""` | `curl -s https://localloop.ai/assets/js/env.js \| grep ANALYTICS` |
 | Jarvis voice scripts on the live page | all 5 loaded (`assets/js/jarvis/*.js`) | `curl -s https://localloop.ai/ \| grep -o 'assets/js/jarvis/[a-z-]*.js' \| sort -u` |
@@ -99,7 +99,8 @@ pin read returned a rejected row, so treat that as open.
 
 - **Evidence:** `card_url` for Bill Minglis and Aesthete Hair is
   `http://localhost:3000/c/...`. Qikflo points at `card.localloop.ai`, the old Mac
-  tunnel. Only the `website` field for Aesthete is a real `hybridcard.ai` URL.
+  tunnel, which now answers 502 (probed 2026-09-08). Only Bondi Local Loop and
+  Aesthete's `website` field carry a real `hybridcard.ai` URL.
 - **Why:** the Card URL contract says receivers store whatever HybridCard sends,
   and HybridCard emits localhost URLs whenever it runs outside `NODE_ENV=production`.
   Dev sends reached the production receiver and stale rows stay until re-ingest.
@@ -148,16 +149,19 @@ pin read returned a rejected row, so treat that as open.
   authentication, takes `user_id` from the request body, and copies the
   caller-supplied `verified_visit` flag straight into a public review.
   `POST /api/onboard` creates a user from any syntactically valid mobile number
-  with no OTP. Both are live on `api.localloop.ai` right now.
+  with no OTP. `POST /api/pins` in `backend/routes/map.py` writes a map pin from
+  any caller with no authentication at all. All three are live on
+  `api.localloop.ai` right now.
 - **Why it matters:** review count is the first ranking input after text match.
   Two unauthenticated requests are enough to push any business up, with a
   "verified visit" badge. This contradicts section 3.5, which assumed verified
   reviews needed SMS or payments. It also means the "genuine community reviews"
   promise is falsifiable by anyone who reads the API docs at `/docs`.
-- **Fix (before any public invite):** either disable public review submission
-  behind an env flag until a verified path exists, or keep the endpoint but derive
-  `verified_visit` server-side (always `false` for direct submissions) and require
-  a signed member code. This touches auth, so it is owner-gated. See step 8.
+- **Fix (before any public invite):** put all three public writes (reviews,
+  onboard, pins) behind one env flag until a verified path exists, or keep them
+  but derive `verified_visit` server-side (always `false` for direct submissions)
+  and require a signed member code. This touches auth, so it is owner-gated. See
+  step 7.
 
 ### 3.7 Every gate leads to you, and you are the bottleneck
 
@@ -308,10 +312,12 @@ stranger test (see step 9). Until then, steps 1 to 8 prove the mechanics only.
    machine:
 
 ```bash
-ssh -L 8000:127.0.0.1:8000 root@167.86.79.151
+ssh -L 8001:127.0.0.1:8000 root@167.86.79.151
 ```
 
-   Leave that window open and browse to `http://localhost:8000`. The longer-term
+   Leave that window open and browse to `http://localhost:8001`. Local port 8001
+   is used on purpose: on your Mac, port 8000 is already taken by TypeDB
+   (`.SEED/gotchas.md`). The longer-term
    fix is a Coolify instance domain with HTTPS (Settings, Instance Domain, for
    example `coolify.localloop.ai`). Because the admin login has been used over
    plain HTTP until now, change the Coolify password once you are on the
@@ -364,23 +370,26 @@ only, which is why the success rule uses the hairdresser.
 
 ### Step 4: repair the localhost card links (HybridCard admin, 10 minutes)
 
-Two different rows are stale, and they need two different re-sends because
+Three rows are stale, and they need two different kinds of re-send because
 Looper prefers an active deal's URL over the card's URL:
 
 1. **Aesthete Hair** carries the one active deal. On hybridcard.ai open Deals,
    edit that deal and save it (or pause then publish it). That re-enqueues a
    `deal.upserted` event with the production URL.
-2. **Bill Minglis** has no deal. Open My Cards, toggle any capability off and on.
-   That re-enqueues a card upsert.
+2. **Bill Minglis** and **Qikflo** have no deal. Qikflo's link points at the old
+   Mac tunnel `card.localloop.ai`, which now answers 502. For each card open My
+   Cards, toggle any capability off and on. That re-enqueues a card upsert.
+3. **Bondi Local Loop** already carries a `hybridcard.ai` link; leave it.
 
-The drain runs every minute. Then:
+The drain runs every minute. Then fetch the full list and look at every link:
 
 ```bash
-curl -s "https://api.localloop.ai/api/discover?suburb=Bondi" | grep -c localhost
-curl -s "https://api.localloop.ai/api/search?q=hair&lat=-33.8908&lng=151.2748&radius=20000" | grep -o '"card_url":"[^"]*"'
+curl -fsS "https://api.localloop.ai/api/discover?suburb=Bondi&radius_km=20" -o /tmp/discover.json \
+  && grep -oE '"name":"[^"]*"|"card_url":(null|"[^"]*")' /tmp/discover.json | paste - -
 ```
 
-Expect `0` on the first and a `hybridcard.ai` address on the second. Do not
+The first command must succeed. Expect four lines, and every `card_url` on a
+`hybridcard.ai` host: no `localhost`, no `card.localloop.ai`, no `null`. Do not
 change the receivers to drop loopback URLs: the frozen Card URL contract requires
 them to keep allowed loopback addresses as-is for local dry runs. Close the hole
 at the sender instead, as described in section 3.3: no production receiver URLs
@@ -439,19 +448,26 @@ count must print `0`.
 
 This comes before the Facebook post on purpose: the moment the post is live,
 anyone can hit the API. Fix section 3.6 first. Smallest safe change in
-`backend/routes/reviews.py` and `backend/routes/users.py`: put both public
-write endpoints behind `LOOPER_PUBLIC_WRITES=false` (return 403 in production
-until a verified path exists), and never read `verified_visit` from the body.
-This is an auth-adjacent change to a live API, so say yes before it is built.
-Check after deploy:
+`backend/routes/reviews.py`, `backend/routes/users.py` and
+`backend/routes/map.py`: put all three public write endpoints (`POST
+/api/reviews`, `POST /api/onboard`, `POST /api/pins`) behind
+`LOOPER_PUBLIC_WRITES=false` (return 403 in production until a verified path
+exists), and never read `verified_visit` from the body. The bridge ingest
+endpoints are HMAC-signed and stay open. This is an auth-adjacent change to a
+live API, so say yes before it is built. Check after deploy, with a review body
+that passes validation (10 characters or more, otherwise you get a 422 before
+the guard runs):
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/reviews \
   -H "Content-Type: application/json" \
-  -d '{"business_id":3,"user_id":1,"rating":5,"review_text":"x","verified_visit":true}'
+  -d '{"business_id":3,"user_id":1,"rating":5,"review_text":"lockdown check review","verified_visit":true}'
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/pins \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":1,"pin_type":"offering","title":"lockdown check","lat":-33.89,"lng":151.27}'
 ```
 
-Expect `403`.
+Expect `403` twice.
 
 ### Step 8: open the free funnel (Facebook admin, no code, 20 minutes)
 
@@ -487,7 +503,7 @@ answer can offer two options as the anti-bias rule requires. Onboarding one
 local salon is itself a good test of the card funnel. Verify before recruiting:
 
 ```bash
-curl -s "https://api.localloop.ai/api/search?q=hair&lat=-33.8908&lng=151.2748&radius=20000" | grep -o '"total_results":[0-9]*'
+curl -s "https://api.localloop.ai/api/search?q=hair&lat=-33.8908&lng=151.2748&radius_km=20" | grep -o '"total_results":[0-9]*'
 ```
 
 Expect `"total_results":2` or more.
