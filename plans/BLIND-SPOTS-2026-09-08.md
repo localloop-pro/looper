@@ -184,9 +184,10 @@ pin read returned a rejected row, so treat that as open.
 - **Why it matters:** a bookings engine competes with Timely, Fresha and Square
   Appointments, which are free or near free. The Facebook groups are something
   nobody else has.
-- **Free today:** Layer 1 of F7.2 needs no code. Reword membership question 2 to
-  an opt-in email ask, and pin a welcome post that links to localloop.ai with a
-  tracking parameter. Step 7.
+- **Free today:** a pinned welcome post that links to localloop.ai needs no
+  code (step 8). Do not add an email ask to the membership questions yet: with
+  no capture page, the answer vanishes at approval. That ask waits for
+  `join.localloop.ai` (F7.1 to F7.3).
 
 ### 3.9 The Facebook capture plan bets the crown jewel
 
@@ -268,6 +269,23 @@ Every voice acceptance item reads "Bill's live-mic acceptance still owed". Web
 Speech needs Chrome or Safari over HTTPS. No stranger has tried it. Once 3.1 and
 3.2 are fixed, watch five people from the group use it on their own phones.
 
+### 3.16 The first real test already found a matching bug (2026-09-08)
+
+- **Evidence:** after step 1 went live, "Hair dresser" (two words) found
+  Aesthete Hair and "Hairdresser" (one word) found nothing, typed or spoken.
+- **Why:** `backend/routes/search.py` matches each query word as a substring of
+  the name, category, suburb or description. "hair" is inside "Aesthete Hair";
+  "hairdresser" is not. The voice router's synonym table
+  (`web/jarvis/voice-command-router.js`) knows "hair" and "barber" but not
+  "hairdresser" or "salon", and the card is filed under `professional`, so
+  category words cannot rescue it either.
+- **Fix, two halves:** (a) on hybridcard.ai set Aesthete's industry to Health &
+  Beauty, sub-type Salon, so the card re-sends with category `health`; (b) a
+  small backend change so a query word that contains a name word still matches
+  ("hairdresser" contains "hair"), plus a short everyday-synonym list
+  (hairdresser, barber, salon) and a regression test. Half (b) is owner-approved
+  code work and a Coolify redeploy of looper-api.
+
 ---
 
 ## 4. Things you have not considered yet
@@ -336,6 +354,14 @@ Expect `LOOPER_API_URL: "https://api.localloop.ai"`. Then open localloop.ai in
 Chrome on your phone, tap the Looper face, say "find me a hairdresser". You should
 hear Aesthete Hair. That is the whole voice stack working in public for the first
 time.
+
+**Executed 2026-09-08:** the variable is set, the site redeployed, and the map
+answered from production. On "always show multiple options": the brain
+currently holds one hairdresser, and the answer says so in plain words ("the
+only match"). A truthful single result is not a ranking claim, and the
+alternative (leaving the brain pointed at localhost) showed visitors an error
+instead. Voice therefore stays on, and the two-option prerequisite is enforced
+before any stranger is recruited (step 9), not before the wiring fix.
 
 ### Step 2: make the redirect for localloop.pro (5 minutes, Cloudflare)
 
@@ -427,7 +453,15 @@ select event, count(*) from public.analytics_events group by event;
 ```
 
    Expect at least one `page_view` row. Anon has no select, so run this as the
-   dashboard user, not from the browser.
+   dashboard user, not from the browser. That query is the ingestion smoke
+   check only. The number to watch weekly is visitors, not events, because one
+   person reloading counts many times:
+
+```sql
+select count(distinct session_id) as visitors_last_7_days
+from public.analytics_events
+where event = 'page_view' and created_at > now() - interval '7 days';
+```
 
 From now on you have a visitor count. Also set `COMMIT` in the build so
 `health.json` tells you what is deployed.
@@ -464,10 +498,17 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/re
   -d '{"business_id":3,"user_id":1,"rating":5,"review_text":"lockdown check review","verified_visit":true}'
 curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/pins \
   -H "Content-Type: application/json" \
-  -d '{"user_id":1,"pin_type":"offering","title":"lockdown check","lat":-33.89,"lng":151.27}'
+  -d '{"user_id":1,"pin_type":"offering","title":"lockdown check","description":null,"lat":-33.89,"lng":151.27,"category":null}'
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/onboard \
+  -H "Content-Type: application/json" \
+  -d '{"first_name":"Lockdown","mobile_number":"0400000000"}'
 ```
 
-Expect `403` twice.
+Expect `403` three times. All three bodies pass validation on purpose
+(`description` and `category` must be present on a pin, the mobile must match
+the AU pattern), so a `422` means the request never reached the guard. Run
+these only after the deploy: a `200` means the guard is not live and the request
+just created a real row (review, pin, or user) that must be deleted.
 
 ### Step 8: open the free funnel (Facebook admin, no code, 20 minutes)
 
@@ -503,10 +544,14 @@ answer can offer two options as the anti-bias rule requires. Onboarding one
 local salon is itself a good test of the card funnel. Verify before recruiting:
 
 ```bash
-curl -s "https://api.localloop.ai/api/search?q=hair&lat=-33.8908&lng=151.2748&radius_km=20" | grep -o '"total_results":[0-9]*'
+curl -s "https://api.localloop.ai/api/search?q=hairdresser&lat=-33.8908&lng=151.2748&radius_km=1.5" | grep -o '"total_results":[0-9]*'
 ```
 
-Expect `"total_results":2` or more.
+Expect `"total_results":2` or more. This probe copies what the dock really
+sends: the spoken word itself as `q`, and the dock's default 1.5 km radius
+around the visitor's position (`web/jarvis/looper-jarvis.js`). Use the
+coordinates of the spot where the testers will stand, and note that today this
+returns `0` even for Aesthete because of the matching bug in section 3.16.
 
 Then ask five members to try it on their own phones while you watch. Write down
 every place they got stuck. Fix the blockers, then run a second round of five.
