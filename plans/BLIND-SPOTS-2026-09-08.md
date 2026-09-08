@@ -150,18 +150,21 @@ pin read returned a rejected row, so treat that as open.
   caller-supplied `verified_visit` flag straight into a public review.
   `POST /api/onboard` creates a user from any syntactically valid mobile number
   with no OTP. `POST /api/pins` in `backend/routes/map.py` writes a map pin from
-  any caller with no authentication at all. All three are live on
-  `api.localloop.ai` right now.
+  any caller with no authentication at all. Two reads leak as well:
+  `GET /api/users/{id}` returns first name, interest, join code and signup time
+  for any sequential id, and `GET /api/code/{code}` lets anyone test join codes.
+  All of these are live on `api.localloop.ai` right now.
 - **Why it matters:** review count is the first ranking input after text match.
   Two unauthenticated requests are enough to push any business up, with a
   "verified visit" badge. This contradicts section 3.5, which assumed verified
   reviews needed SMS or payments. It also means the "genuine community reviews"
   promise is falsifiable by anyone who reads the API docs at `/docs`.
-- **Fix (before any public invite):** put all three public writes (reviews,
-  onboard, pins) behind one env flag until a verified path exists, or keep them
-  but derive `verified_visit` server-side (always `false` for direct submissions)
-  and require a signed member code. This touches auth, so it is owner-gated. See
-  step 7.
+- **Fix (before any public invite):** put the three public writes (reviews,
+  onboard, pins) and the two profile reads (`/api/users/{id}`, `/api/code/{code}`)
+  behind one env flag until a verified path exists, or keep them but derive
+  `verified_visit` server-side (always `false` for direct submissions), require a
+  signed member code, and strip join codes from any public response. This touches
+  auth, so it is owner-gated. See step 7.
 
 ### 3.7 Every gate leads to you, and you are the bottleneck
 
@@ -185,7 +188,7 @@ pin read returned a rejected row, so treat that as open.
   Appointments, which are free or near free. The Facebook groups are something
   nobody else has.
 - **Free today:** a pinned welcome post that links to localloop.ai needs no
-  code (step 8). Do not add an email ask to the membership questions yet: with
+  code (step 9, after the step 7 lockdown and the step 8 two-option check). Do not add an email ask to the membership questions yet: with
   no capture page, the answer vanishes at approval. That ask waits for
   `join.localloop.ai` (F7.1 to F7.3).
 
@@ -320,8 +323,8 @@ businesses that have a card, because only card holders carry a "View card" link.
 Today that means the HybridCard businesses (Aesthete Hair and Qikflo), so the
 test is the hairdresser flow until more real cards exist. Production returns
 exactly one hairdresser today, and the anti-bias rule says always show multiple
-options, so a second real salon or barber with a card is a prerequisite for the
-stranger test (see step 9). Until then, steps 1 to 8 prove the mechanics only.
+options, so a second real salon or barber with a card is a prerequisite for any
+public traffic (step 8). Until then, steps 1 to 7 prove the mechanics only.
 
 ### Step 1: switch the brain on (5 minutes, Coolify UI)
 
@@ -361,7 +364,7 @@ currently holds one hairdresser, and the answer says so in plain words ("the
 only match"). A truthful single result is not a ranking claim, and the
 alternative (leaving the brain pointed at localhost) showed visitors an error
 instead. Voice therefore stays on, and the two-option prerequisite is enforced
-before any stranger is recruited (step 9), not before the wiring fix.
+before any stranger is recruited (step 8), not before the wiring fix.
 
 ### Step 2: make the redirect for localloop.pro (5 minutes, Cloudflare)
 
@@ -463,6 +466,14 @@ from public.analytics_events
 where event = 'page_view' and created_at > now() - interval '7 days';
 ```
 
+   Treat these numbers as indicative, not proof. The insert policy accepts any
+   row from the public anon key, which is how a cookie-free, tracker-free
+   analytics module has to work, so anyone who wants to can inflate them. A
+   sudden spike with no matching Facebook post is suspect. If the numbers ever
+   start driving money decisions, move ingestion behind a rate-limited endpoint
+   (the `ANALYTICS_BEACON_URL` path through a Worker or n8n) that validates the
+   payload before it reaches the table.
+
 From now on you have a visitor count. Also set `COMMIT` in the build so
 `health.json` tells you what is deployed.
 
@@ -483,11 +494,13 @@ count must print `0`.
 This comes before the Facebook post on purpose: the moment the post is live,
 anyone can hit the API. Fix section 3.6 first. Smallest safe change in
 `backend/routes/reviews.py`, `backend/routes/users.py` and
-`backend/routes/map.py`: put all three public write endpoints (`POST
-/api/reviews`, `POST /api/onboard`, `POST /api/pins`) behind
+`backend/routes/map.py`: put the three public write endpoints (`POST
+/api/reviews`, `POST /api/onboard`, `POST /api/pins`) and the two profile reads
+(`GET /api/users/{id}`, `GET /api/code/{code}`) behind
 `LOOPER_PUBLIC_WRITES=false` (return 403 in production until a verified path
-exists), and never read `verified_visit` from the body. The bridge ingest
-endpoints are HMAC-signed and stay open. This is an auth-adjacent change to a
+exists), and never read `verified_visit` from the body. Search, discover,
+businesses, reviews-by-business and the HMAC-signed bridge ingest endpoints stay
+open. This is an auth-adjacent change to a
 live API, so say yes before it is built. Check after deploy, with a review body
 that passes validation (10 characters or more, otherwise you get a 422 before
 the guard runs):
@@ -502,19 +515,39 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/pi
 curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/onboard \
   -H "Content-Type: application/json" \
   -d '{"first_name":"Lockdown","mobile_number":"0400000000"}'
+curl -s -o /dev/null -w "%{http_code}\n" https://api.localloop.ai/api/users/1
+curl -s -o /dev/null -w "%{http_code}\n" https://api.localloop.ai/api/code/123456
 ```
 
-Expect `403` three times. All three bodies pass validation on purpose
+Expect `403` five times. All three bodies pass validation on purpose
 (`description` and `category` must be present on a pin, the mobile must match
 the AU pattern), so a `422` means the request never reached the guard. Run
 these only after the deploy: a `200` means the guard is not live and the request
 just created a real row (review, pin, or user) that must be deleted.
 
-### Step 8: open the free funnel (Facebook admin, no code, 20 minutes)
+### Step 8: two real options before any public traffic (content + one code fix)
+
+Nothing goes to the group until this passes. Two things must be true: the
+"hairdresser" matching fix from section 3.16 is deployed, and a second real
+hairdresser or barber holds a HybridCard, so the answer can offer two options as
+the anti-bias rule requires. Onboarding one
+local salon is itself a good test of the card funnel. Verify:
+
+```bash
+curl -s "https://api.localloop.ai/api/search?q=hairdresser&lat=-33.8908&lng=151.2748&radius_km=1.5" | grep -o '"total_results":[0-9]*'
+```
+
+Expect `"total_results":2` or more. This probe copies what the dock really
+sends: the spoken word itself as `q`, and the dock's default 1.5 km radius
+around the visitor's position (`web/jarvis/looper-jarvis.js`). Use the
+coordinates of the spot where the testers will stand, and note that today this
+returns `0` even for Aesthete because of the matching bug in section 3.16.
+
+### Step 9: open the free funnel and watch ten strangers (Facebook admin, no code)
 
 1. Pin a welcome post: "Say hi to Looper. Open localloop.ai on your phone, tap the
    face, and ask for what you need." Link to `https://localloop.ai/`. Do this
-   only after step 7 is deployed and its 403 check passes.
+   only after step 7's five 403 checks and step 8's two-option probe both pass.
 2. Leave the membership questions as they are for now. Do not ask for an email
    yet: with Layer 2 declined and no first-party join page built, an email typed
    into a membership answer vanishes at approval and nothing can deliver the card
@@ -537,23 +570,7 @@ Caveat: the Facebook in-app browser sometimes sends no referrer, so this is a
 floor, not an exact count. Recording `location.search` in `analytics.js` is a
 one-line LocalLoop change if you want exact `?src=` attribution later.
 
-### Step 9: watch ten strangers, five at a time
-
-Prerequisite: a second real hairdresser or barber with a HybridCard, so the
-answer can offer two options as the anti-bias rule requires. Onboarding one
-local salon is itself a good test of the card funnel. Verify before recruiting:
-
-```bash
-curl -s "https://api.localloop.ai/api/search?q=hairdresser&lat=-33.8908&lng=151.2748&radius_km=1.5" | grep -o '"total_results":[0-9]*'
-```
-
-Expect `"total_results":2` or more. This probe copies what the dock really
-sends: the spoken word itself as `q`, and the dock's default 1.5 km radius
-around the visitor's position (`web/jarvis/looper-jarvis.js`). Use the
-coordinates of the spot where the testers will stand, and note that today this
-returns `0` even for Aesthete because of the matching bug in section 3.16.
-
-Then ask five members to try it on their own phones while you watch. Write down
+**Watching them.** Ask five members to try it on their own phones while you watch. Write down
 every place they got stuck. Fix the blockers, then run a second round of five.
 The success rule needs ten completions, so do not evaluate it after the first
 five. That list of stuck points is the real backlog.
