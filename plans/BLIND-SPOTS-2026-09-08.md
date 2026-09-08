@@ -11,8 +11,9 @@ HybridCard. Every claim below is either a file in the repos or a `curl` you can 
 
 The plumbing is real and mostly working. All four services answer their health
 checks, the HybridCard bridge is live and has processed 180 signed events, the
-receivers have HMAC tests, and the anti-bias rules are enforced by tests. The blind
-spots are not in the code. They are in what a stranger experiences today:
+receivers have HMAC tests, and tests keep discounts, source and `rank_boost` out
+of the ranking (section 8 says what they do not cover). The blind spots are
+mostly not in the code. They are in what a stranger experiences today:
 
 - the live map's voice brain is pointed at `localhost`, so "Hey Looper" is offline
   for every visitor;
@@ -311,6 +312,13 @@ Speech needs Chrome or Safari over HTTPS. No stranger has tried it. Once 3.1 and
    districts. None of them change the stranger's first minute on the map.
 6. **Backups and a rollback drill.** SQLite volume, Mongo, and the Supabase plan
    tier. Your own 2026-09-08 review lists the rollback drill; it is still open.
+7. **Decide the ranking order and write it down.** Today text relevance comes
+   first, then review count, then distance. Either amend AGENTS.md rule 1 to say
+   "match quality first, then reviews, recency, proximity", or change the sort
+   to reviews first among equally matching businesses, and add a test either
+   way. With zero reviews in production the two orders give identical results,
+   so this is a decision for before the first real reviews land, not a launch
+   blocker.
 
 ---
 
@@ -341,7 +349,13 @@ ssh -L 8001:127.0.0.1:8000 root@167.86.79.151
 
    Leave that window open and browse to `http://localhost:8001`. Local port 8001
    is used on purpose: on your Mac, port 8000 is already taken by TypeDB
-   (`.SEED/gotchas.md`). The longer-term
+   (`.SEED/gotchas.md`). Without a terminal, the same tunnel is a Termius
+   Port Forwarding rule: Local, local port `8001`, bind `127.0.0.1`,
+   intermediate host `167.86.79.151`, destination `127.0.0.1` port `8000`,
+   then double-click the rule to start it. **Verified 2026-09-08:** that rule
+   connected on port 22 with the saved root credentials and served the Coolify
+   login at `localhost:8001`. The 2026-07-21 note in `plans/evidence/F9.1/`
+   saying port 22 was refused is stale. The longer-term
    fix is a Coolify instance domain with HTTPS (Settings, Instance Domain, for
    example `coolify.localloop.ai`). Because the admin login has been used over
    plain HTTP until now, change the Coolify password once you are on the
@@ -484,8 +498,26 @@ where event = 'page_view' and created_at > now() - interval '7 days';
    (the `ANALYTICS_BEACON_URL` path through a Worker or n8n) that validates the
    payload before it reaches the table.
 
-From now on you have a visitor count. Also set `COMMIT` in the build so
-`health.json` tells you what is deployed.
+From now on you have a visitor count.
+
+**Commit marker (small LocalLoop code change, not a click).** `health.json`
+shows `commit: ""` because `scripts/build-health.js` and `scripts/inject-env.js`
+only read `GIT_COMMIT` or `RAILWAY_GIT_COMMIT_SHA`, then fall back to
+`git rev-parse HEAD`, which fails inside the Coolify build. Coolify sets
+`SOURCE_COMMIT` on every build, so add it to the fallback chain in both scripts:
+
+```js
+process.env.GIT_COMMIT || process.env.SOURCE_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || ''
+```
+
+Merge, redeploy, then:
+
+```bash
+curl -s https://localloop.ai/health.json | grep commit
+```
+
+Expect a 12-character hash, not `""`. Compare it with the latest commit on
+`main` to know what is actually running.
 
 ### Step 6: remove the fake rating (code, small)
 
@@ -506,38 +538,35 @@ still paint filled stars, which the second grep catches.
 ### Step 7: close the open review door (code, owner-gated)
 
 This comes before the Facebook post on purpose: the moment the post is live,
-anyone can hit the API. Fix section 3.6 first. Smallest safe change in
+anyone can hit the API. Fix section 3.6 first. Smallest safe change: a router-level dependency
+(`dependencies=[Depends(require_public_writes)]`) on the routers in
 `backend/routes/reviews.py`, `backend/routes/users.py` and
-`backend/routes/map.py`: put the three public write endpoints (`POST
-/api/reviews`, `POST /api/onboard`, `POST /api/pins`) and the two profile reads
-(`GET /api/users/{id}`, `GET /api/code/{code}`) behind
-`LOOPER_PUBLIC_WRITES=false` (return 403 in production until a verified path
-exists), and never read `verified_visit` from the body. Search, discover,
-businesses, reviews-by-business and the HMAC-signed bridge ingest endpoints stay
-open. This is an auth-adjacent change to a
-live API, so say yes before it is built. Check after deploy, with a review body
-that passes validation (10 characters or more, otherwise you get a 422 before
-the guard runs):
+`backend/routes/map.py` that returns 403 whenever `LOOPER_PUBLIC_WRITES` is not
+`true`, covering the three public writes (`POST /api/reviews`, `POST
+/api/onboard`, `POST /api/pins`) and the two profile reads (`GET
+/api/users/{id}`, `GET /api/code/{code}`). It must be a dependency, not a check
+inside the handler: FastAPI resolves dependencies before it validates the body,
+so the guard fires even on an empty request. Also never read `verified_visit`
+from the body. Search, discover, businesses, reviews-by-business and the
+HMAC-signed bridge ingest endpoints stay open. This is an auth-adjacent change
+to a live API, so say yes before it is built.
+
+Check after deploy with empty bodies. Because the bodies are empty, nothing can
+ever be written: with the guard live you get `403`; without it you get `422`
+from validation and the database is untouched.
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/reviews \
-  -H "Content-Type: application/json" \
-  -d '{"business_id":3,"user_id":1,"rating":5,"review_text":"lockdown check review","verified_visit":true}'
-curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/pins \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":1,"pin_type":"offering","title":"lockdown check","description":null,"lat":-33.89,"lng":151.27,"category":null}'
-curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/onboard \
-  -H "Content-Type: application/json" \
-  -d '{"first_name":"Lockdown","mobile_number":"0400000000"}'
-curl -s -o /dev/null -w "%{http_code}\n" https://api.localloop.ai/api/users/1
-curl -s -o /dev/null -w "%{http_code}\n" https://api.localloop.ai/api/code/123456
+for path in reviews onboard pins; do
+  curl -s -o /dev/null -w "$path %{http_code}\n" -X POST "https://api.localloop.ai/api/$path" \
+    -H "Content-Type: application/json" -d '{}'
+done
+curl -s -o /dev/null -w "users %{http_code}\n" https://api.localloop.ai/api/users/1
+curl -s -o /dev/null -w "code %{http_code}\n" https://api.localloop.ai/api/code/123456
 ```
 
-Expect `403` five times. All three bodies pass validation on purpose
-(`description` and `category` must be present on a pin, the mobile must match
-the AU pattern), so a `422` means the request never reached the guard. Run
-these only after the deploy: a `200` means the guard is not live and the request
-just created a real row (review, pin, or user) that must be deleted.
+Expect `403` on all five lines. A `422` on any POST line means the guard is not
+live for that route, and a `200` or `404` on a GET line means the same. Either
+way nothing was created, so the check is safe to repeat.
 
 ### Step 8: two real options before any public traffic (content + one code fix)
 
@@ -635,7 +664,13 @@ Unfreeze when the section 5 success rule has a number next to it.
 ## 8. Good news, so this is fair
 
 - Four services healthy, bridge live, 180 events processed, idempotency holding.
-- HMAC receivers with test matrices on both sides. Anti-bias enforced by tests.
+- HMAC receivers with test matrices on both sides. Tests assert that discount,
+  source and `rank_boost` never enter the ordering. They do not cover the order
+  of the permitted inputs: `search.py` sorts by text relevance (category, name,
+  suburb, description match) before review count and proximity, so a business
+  that matches the category word can sit above one with more reviews. That is
+  ordinary search behaviour, not pay-to-rank, but AGENTS.md rule 1 reads as
+  reviews, recency and proximity only. Section 4, item 7.
 - HybridCard's security chokepoints (`toPublic`, 404-not-403, atomic wallet,
   BYOK vault, SSRF guard) are genuinely good.
 - Secret scanning in CI in two repos. Kill switches fail closed.
