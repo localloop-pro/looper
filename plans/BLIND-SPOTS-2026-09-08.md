@@ -20,6 +20,8 @@ spots are not in the code. They are in what a stranger experiences today:
   café" returns nothing even after the wiring is fixed;
 - two of those 4 businesses link to `http://localhost:3000` card pages;
 - analytics is switched off, so nobody knows whether anyone visits;
+- the public review endpoint lets anyone post a "verified visit" review with no
+  login, so the honest-ranking promise can be gamed today;
 - the 156K-member Facebook group has no funnel at all, while the last month of
   effort went into a bookings calendar for one salon.
 
@@ -85,10 +87,13 @@ pin read returned a rejected row, so treat that as open.
   claimed, moderated business pins in Supabase. Looper never reads it. So the voice
   brain's coverage equals the number of HybridCard customers, not the number of
   businesses on the map. Two directories, no sync.
-- **Do not** run `backend/seed.py` against production. It plants 11 fabricated
-  reviews from a "Demo" user with `verified_visit=True`, which breaks anti-bias
-  rule 4 (reviews attributed to real users). A businesses-only seed is a small code
-  change and is step 3 below.
+- **Do not** run `backend/seed.py` against production, in any form. It plants 11
+  fabricated reviews from a "Demo" user with `verified_visit=True`, which breaks
+  anti-bias rule 4 (reviews attributed to real users). Even with the reviews
+  stripped, the business list is test data: `LocalLoop Pharmacy`, `Bondi Plumbing
+  Co` and `Bondi Hair Studio` are not verified listings, and search would send
+  strangers to addresses that may not exist. Production content has to come from
+  the moderated Business Truth Layer or a verified import (section 4, item 1).
 
 ### 3.3 Localhost URLs leaked into production data
 
@@ -100,9 +105,19 @@ pin read returned a rejected row, so treat that as open.
   Dev sends reached the production receiver and stale rows stay until re-ingest.
 - **Why it matters:** every "View card" link from the voice brain is dead for the
   public.
-- **Fix:** re-send the cards from hybridcard.ai (step 4), then close the hole so
-  a production receiver never stores a localhost URL again (a one-line env-scoped
-  guard in `backend/routes/ingest.py`, plus the same in the gateway pin receiver).
+- **Detail that matters:** `resolve_card_url()` in `backend/routes/search.py`
+  prefers an active deal's `public_card_url` over the business `website`. Aesthete
+  has the one active deal, so its localhost link comes from that deal, not the
+  card. Re-sending the card alone will not fix it.
+- **Fix:** re-send the deal and the cards from hybridcard.ai (step 4). Do not
+  change the receivers: the Card URL contract in `.SEED/gotchas.md` is frozen and
+  requires them to store allowed loopback URLs as-is so local dry runs keep
+  working. Close the hole at the sender boundary instead: a dev or tunnel
+  HybridCard must never carry the production `LOOPER_INGEST_URL`,
+  `LOOPER_CARD_INGEST_URL` or `LOCALLOOP_BRIDGE_URL`, and non-production senders
+  should sign with their own key id (for example `hc-dev`) that production
+  receivers do not list in `HYBRIDCARD_KEY_IDS`. The key-id lookup is already part
+  of the contract, so this needs no contract change.
 
 ### 3.4 Nothing is measured
 
@@ -127,7 +142,24 @@ pin read returned a rejected row, so treat that as open.
   opens a review form gated by a merchant-scanned pass (already built), or a
   one-question review post in the Facebook group linked to a review URL.
 
-### 3.6 Every gate leads to you, and you are the bottleneck
+### 3.6 Anyone can plant a "verified" review today
+
+- **Evidence:** `POST /api/reviews` in `backend/routes/reviews.py` has no
+  authentication, takes `user_id` from the request body, and copies the
+  caller-supplied `verified_visit` flag straight into a public review.
+  `POST /api/onboard` creates a user from any syntactically valid mobile number
+  with no OTP. Both are live on `api.localloop.ai` right now.
+- **Why it matters:** review count is the first ranking input after text match.
+  Two unauthenticated requests are enough to push any business up, with a
+  "verified visit" badge. This contradicts section 3.5, which assumed verified
+  reviews needed SMS or payments. It also means the "genuine community reviews"
+  promise is falsifiable by anyone who reads the API docs at `/docs`.
+- **Fix (before any public invite):** either disable public review submission
+  behind an env flag until a verified path exists, or keep the endpoint but derive
+  `verified_visit` server-side (always `false` for direct submissions) and require
+  a signed member code. This touches auth, so it is owner-gated. See step 8.
+
+### 3.7 Every gate leads to you, and you are the bottleneck
 
 - **Evidence:** `plans/COMPLETION_STATUS.md` lists eight packages "waiting on Bill":
   pin approvals, TypeDB deploy, TTS cost, voice acceptance, staging proof, flag flips.
@@ -140,7 +172,7 @@ pin read returned a rejected row, so treat that as open.
   to a test number pool and payments use the Polar sandbox. Agents then prove the
   whole flow and you flip production once, with evidence.
 
-### 3.7 Distribution is the asset and it has zero build
+### 3.8 Distribution is the asset and it has zero build
 
 - **Evidence:** 156K plus 6K members. Phase 7 (loop-onboard) has not started.
   Meanwhile the last 30 days: 110 commits in HybridCard, mostly Bookings for one
@@ -152,7 +184,7 @@ pin read returned a rejected row, so treat that as open.
   an opt-in email ask, and pin a welcome post that links to localloop.ai with a
   tracking parameter. Step 7.
 
-### 3.8 The Facebook capture plan bets the crown jewel
+### 3.9 The Facebook capture plan bets the crown jewel
 
 - **Evidence:** F7.2 Layer 2 (a browser extension scraping member requests at
   approval time) is recorded as a Meta ToS breach "in principle" with the risk
@@ -162,7 +194,7 @@ pin read returned a rejected row, so treat that as open.
   Layers 1 and 3 carry the funnel with zero risk. Revisit only with measured
   conversion numbers from Layer 1.
 
-### 3.9 Fake social proof on a "genuine reviews" brand
+### 3.10 Fake social proof on a "genuine reviews" brand
 
 - **Evidence:** hybridcard.ai homepage shows a hardcoded 4.8 rating from 128
   reviews. `.seed/decisions.md` calls it "visual/copy only".
@@ -171,7 +203,7 @@ pin read returned a rejected row, so treat that as open.
 - **Fix:** show the real blend or "No ratings yet". Small change in
   `LocalLoopHybridCard.ReviewStars` and the homepage fallback props.
 
-### 3.10 Process weight is larger than the team
+### 3.11 Process weight is larger than the team
 
 - **Evidence (LocalLoop repo):** 244 markdown files versus 198 code files, 599
   unchecked boxes, 13 governance rules, plus FollowMe, HANDOFF, three continuity
@@ -179,8 +211,10 @@ pin read returned a rejected row, so treat that as open.
   active at once.
 - **Evidence (looper):** three status documents disagree. `plans/BOT_HANDOFF.md`
   says Phases 2 to 9 are not started. `plans/COMPLETION_STATUS.md` says they are
-  code complete. `plans/features/03-05` are unticked. Live probes show the F9.4
-  "flag flip" already happened (180 events) while its box is unticked.
+  code complete. `plans/features/03-05` are unticked. Live probes show the Looper leg of the
+  F9.4 "flag flip" is already live (180 events) while its box is unticked. The
+  map-pin leg was not probed here, so the box may be honest, but nothing records
+  which.
 - **Evidence (LocalLoop `CLAUDE.md`):** the file is an autoforge "spec creation
   assistant" prompt with a hardcoded Mac path. Any Claude session opened in that
   repo is told to run a project interview instead of following `AGENTS.md`.
@@ -191,7 +225,7 @@ pin read returned a rejected row, so treat that as open.
 - **Fix:** one status file per repo, updated weekly in 10 lines; archive the rest;
   point `CLAUDE.md` at `AGENTS.md`; create `SEED.md` and `.SEED/` in LocalLoop.
 
-### 3.11 Single points of failure
+### 3.12 Single points of failure
 
 - HybridCard production ran on your Mac behind a Cloudflare tunnel until this
   month (`OPS.md`). Secrets live in `secrets/*.env` on that Mac. The Coolify
@@ -205,7 +239,7 @@ pin read returned a rejected row, so treat that as open.
 - Bus factor is one person, and that person is also product owner, group admin,
   tester and approver.
 
-### 3.12 Privacy footprint growing faster than the rules
+### 3.13 Privacy footprint growing faster than the rules
 
 - Looper's `users` table stores raw mobile numbers and names, for a Telegram bot
   that never launched. The VIP Network spec (HybridCard) says "hash, never raw".
@@ -213,14 +247,14 @@ pin read returned a rejected row, so treat that as open.
 - Fix: hash or delete the looper onboarding mobile field, or remove `/api/onboard`
   if Telegram is dead.
 
-### 3.13 Dead scope still carried in the docs
+### 3.14 Dead scope still carried in the docs
 
 Telegram bot (waiting on a token since May), Hermes profile, HuggingFace
 fine-tuning, TypeDB Cloud on AWS, Kaspa KRC-20 token, device sync, wallet passes,
 Discourse SSO, Bubble. Each one costs attention in every agent session. Write a
 "not now" list and stop referencing them.
 
-### 3.14 No human other than you has used the voice
+### 3.15 No human other than you has used the voice
 
 Every voice acceptance item reads "Bill's live-mic acceptance still owed". Web
 Speech needs Chrome or Safari over HTTPS. No stranger has tried it. Once 3.1 and
@@ -237,7 +271,7 @@ Speech needs Chrome or Safari over HTTPS. No stranger has tried it. Once 3.1 and
 2. **A review path that needs no SMS and no payments.** The merchant pass scan
    already exists in HybridCard. A printed QR at one counter unlocks one real
    review at a time.
-3. **Staging with the switches on.** See 3.6. Without it the safety posture is a
+3. **Staging with the switches on.** See 3.7. Without it the safety posture is a
    delivery blocker forever.
 4. **A weekly number.** Visitors, voice queries, claims, cards. Four numbers on one
    line, every Monday, before any building decision.
@@ -254,8 +288,11 @@ Do these in order. Each step ends with a check you can paste into a terminal.
 Stop after any step whose check fails and fix that first.
 
 **Success rule for the whole plan:** 10 strangers say "Hey Looper, find me a
-hairdresser" (or café, once seeded), hear at least 2 options, tap "View card", and
-land on a working page. Count them. That number decides what gets built next.
+hairdresser", hear at least 2 options, tap "View card", and land on a working
+page. Count them. That number decides what gets built next. The loop needs
+businesses that have a card, because only card holders carry a "View card" link.
+Today that means the HybridCard businesses (Aesthete Hair and Qikflo), so the
+test is the hairdresser flow until more real cards exist.
 
 ### Step 1: switch the brain on (5 minutes, Coolify UI)
 
@@ -277,54 +314,92 @@ time.
 
 ### Step 2: make the redirect for localloop.pro (5 minutes, Cloudflare)
 
-Cloudflare dashboard, zone `localloop.pro`, Rules, Redirect Rules: all requests
-to `localloop.pro/*` and `www.localloop.pro/*` redirect 301 to
-`https://localloop.ai/$1`. Make sure the DNS records are proxied (orange cloud).
-Check:
+Cloudflare dashboard, zone `localloop.pro`, Rules, Redirect Rules, create a
+wildcard rule: source `https://localloop.pro/*` and a second one for
+`https://www.localloop.pro/*`, target `https://localloop.ai/${1}`, status 301.
+Cloudflare writes the captured wildcard as `${1}`, not `$1`. Make sure the DNS
+records are proxied (orange cloud). Check root and a non-root path:
 
 ```bash
-curl -sI https://localloop.pro/ | head -3
+curl -sI https://localloop.pro/ | grep -i -E 'HTTP|location'
+curl -sI https://localloop.pro/news.html | grep -i -E 'HTTP|location'
 ```
 
-Expect `HTTP/2 301` and a `location: https://localloop.ai/` header. The broken
-Traefik certificate stops mattering because the origin is never reached.
+Expect `301` and `location: https://localloop.ai/` on the first, and
+`location: https://localloop.ai/news.html` on the second. The broken Traefik
+certificate stops mattering because the origin is never reached.
 
-### Step 3: put real businesses in the brain without fake reviews (code, small)
+### Step 3: decide where real businesses come from (decision, no commands)
 
-Change `backend/seed.py` so `LOOPER_SEED_REVIEWS=0` skips the demo user and the
-11 sample reviews, then run it once inside the production container:
+Do not seed production. `backend/seed.py` is test data with fabricated reviews
+and unverified listings (section 3.2), and the running container has the old
+script baked into its image anyway. The only honest sources are:
 
-```bash
-# on the Coolify host, as root
-docker exec -e LOOPER_SEED_REVIEWS=0 looper-api python seed.py
-curl -s "https://api.localloop.ai/api/search?q=cafe&lat=-33.8908&lng=151.2748" | head -c 400
-```
+1. the map's moderated Business Truth Layer in Supabase (approved claim pins),
+   read nightly into Looper's `businesses` table, or
+2. a list of businesses you have personally verified, imported by a script.
 
-Expect 4 café results with `review_count: 0`. This is a demo directory. Within two
-weeks replace it with the Supabase approved-pin sync from section 4 item 1.
+Option 1 is a small build (section 4, item 1) and is the first thing to unfreeze
+after step 9. Until it lands, the loop is tested with card-holding businesses
+only, which is why the success rule uses the hairdresser.
 
 ### Step 4: repair the localhost card links (HybridCard admin, 10 minutes)
 
-For each live card on hybridcard.ai, open My Cards, toggle any capability off and
-on. Each toggle re-enqueues a card upsert and the drain resends it with the
-production URL. Then:
+Two different rows are stale, and they need two different re-sends because
+Looper prefers an active deal's URL over the card's URL:
+
+1. **Aesthete Hair** carries the one active deal. On hybridcard.ai open Deals,
+   edit that deal and save it (or pause then publish it). That re-enqueues a
+   `deal.upserted` event with the production URL.
+2. **Bill Minglis** has no deal. Open My Cards, toggle any capability off and on.
+   That re-enqueues a card upsert.
+
+The drain runs every minute. Then:
 
 ```bash
 curl -s "https://api.localloop.ai/api/discover?suburb=Bondi" | grep -c localhost
+curl -s "https://api.localloop.ai/api/search?q=hair&lat=-33.8908&lng=151.2748&radius=20000" | grep -o '"card_url":"[^"]*"'
 ```
 
-Expect `0`. Then add the receiver guard so this cannot recur: when
-`LOOPER_ENV=production`, drop `localhost`, `127.0.0.1` and `[::1]` card URLs and
-log them.
+Expect `0` on the first and a `hybridcard.ai` address on the second. Do not
+change the receivers to drop loopback URLs: the frozen Card URL contract requires
+them to keep allowed loopback addresses as-is for local dry runs. Close the hole
+at the sender instead, as described in section 3.3: no production receiver URLs
+in any dev `.env.local`, and a separate key id for non-production senders.
 
 ### Step 5: turn on measurement (Supabase + Coolify, 15 minutes)
 
-1. In the Supabase SQL editor run the `analytics_events` table and RLS from
-   `.governance/specs/SPEC-013-analytics-and-health.md`. This is a production
-   migration; read it first, it is 10 lines and only adds one table.
-2. On the LocalLoop Coolify app set `ANALYTICS_USE_SUPABASE=true`. Redeploy.
-3. Visit localloop.ai once, then in the Supabase table editor confirm one
-   `page_view` row exists.
+1. The spec lives in the LocalLoop repo (`localloop.pro-main`), file
+   `.governance/specs/SPEC-013-analytics-and-health.md`. The SQL from it is
+   pasted here so you do not need the other repo. Open the Supabase dashboard,
+   project `ggmzagbvzbwkdqdomzda` (the one in the live `env.js`), SQL editor,
+   and run:
+
+```sql
+create table if not exists public.analytics_events (
+  id bigserial primary key,
+  event text not null,
+  session_id text,
+  props jsonb,
+  created_at timestamptz default now()
+);
+-- RLS: anon may insert, no select.
+alter table public.analytics_events enable row level security;
+create policy "anon insert" on public.analytics_events for insert to anon with check (true);
+```
+
+   This is a production migration. It only adds one new table and one insert
+   policy; it changes nothing that exists.
+2. On the LocalLoop Coolify app set `ANALYTICS_USE_SUPABASE=true` (the exact
+   string `true`; `analytics.js` compares against it). Redeploy.
+3. Visit localloop.ai once, then in the SQL editor run:
+
+```sql
+select event, count(*) from public.analytics_events group by event;
+```
+
+   Expect at least one `page_view` row. Anon has no select, so run this as the
+   dashboard user, not from the browser.
 
 From now on you have a visitor count. Also set `COMMIT` in the build so
 `health.json` tells you what is deployed.
@@ -342,20 +417,42 @@ Expect `0`.
 
 ### Step 7: open the free funnel (Facebook admin, no code, 20 minutes)
 
-1. Membership question 2: "Want the free Local Loop discount card? Leave your
-   email (optional)". Keep the other questions.
-2. Pin a welcome post: "Say hi to Looper. Open localloop.ai on your phone, tap the
+1. Pin a welcome post: "Say hi to Looper. Open localloop.ai on your phone, tap the
    face, and ask for what you need." Use the link
    `https://localloop.ai/?src=fb-bondi`.
+2. Leave the membership questions as they are for now. Do not ask for an email
+   yet: with Layer 2 declined and no first-party join page built, an email typed
+   into a membership answer vanishes at approval and nothing can deliver the card
+   it promised. Add the email ask only when `join.localloop.ai` (F7.1 to F7.3)
+   exists to capture it with consent.
 3. Record in `.SEED/decisions.md`: Layer 2 (extension capture) declined for now.
 
 After step 5 you will see `page_view` rows and can count how many came from the
 post.
 
-### Step 8: watch five strangers
+### Step 8: close the open review door (code, owner-gated)
+
+Before inviting anyone, fix section 3.6. Smallest safe change in
+`backend/routes/reviews.py` and `backend/routes/users.py`: put both public
+write endpoints behind `LOOPER_PUBLIC_WRITES=false` (return 403 in production
+until a verified path exists), and never read `verified_visit` from the body.
+This is an auth-adjacent change to a live API, so say yes before it is built.
+Check after deploy:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.localloop.ai/api/reviews \
+  -H "Content-Type: application/json" \
+  -d '{"business_id":3,"user_id":1,"rating":5,"review_text":"x","verified_visit":true}'
+```
+
+Expect `403`.
+
+### Step 9: watch ten strangers, five at a time
 
 Ask five members to try it on their own phones while you watch. Write down every
-place they got stuck. That list is the real backlog.
+place they got stuck. Fix the blockers, then run a second round of five. The
+success rule needs ten completions, so do not evaluate it after the first five.
+That list of stuck points is the real backlog.
 
 ---
 
@@ -378,7 +475,10 @@ Unfreeze when the section 5 success rule has a number next to it.
 2. Retire `BOT_HANDOFF.md` and `COMPLETION_STATUS.md` into that file.
 3. Fix LocalLoop `CLAUDE.md` to be `@AGENTS.md` and add `SEED.md` plus `.SEED/`
    there, matching the other two repos.
-4. Tick F9.4 item 1 in `plans/features/10-deploy.md`, because it is already live.
+4. Record in `.SEED/decisions.md` that the Looper leg of F9.4 item 1 is live
+   (180 events as of 2026-09-08). Do not tick the box yet: it needs the map-pin
+   leg proven too (a Supabase count of `source=hybridcard` pins, which this audit
+   could not run) and the seven-day dead-letter watch from F9.4 item 2.
 
 ---
 
