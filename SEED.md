@@ -48,9 +48,11 @@ bot + FastAPI search backend). Owner: Bill / QikFlo Pty Ltd. This repo is the
 
 ## Next steps
 
-- Run `plans/BLIND-SPOTS-2026-09-08.md` §5 steps 1–9 (switch the live brain on,
-  never seed fake data, repair localhost card links, turn on analytics, close
-  the open review endpoint).
+- Step 1 of `plans/BLIND-SPOTS-2026-09-08.md` §5 is DONE (2026-09-08: the live
+  map's `LOOPER_API_URL` is set and production answers). Run §5 steps 2–9 next
+  (localloop.pro redirect, never seed fake data, repair localhost card links,
+  turn on analytics, remove the fake rating, close the open review endpoint,
+  two real options, then the Facebook post).
   Freeze new feature work until 10 strangers complete the loop (§5 success rule).
 - Then implement `plans/features/` in order (01-foundation → …); tick each
   feature's checklist box when its Acceptance passes. Split done 2026-07-11.

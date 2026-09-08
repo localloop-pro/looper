@@ -52,7 +52,7 @@ Rerun any row with the command in the last column.
 | Map site `LOOPER_API_URL` | **empty string** in the 2026-09-07 build | `curl -s https://localloop.ai/assets/js/env.js \| grep LOOPER_API_URL` |
 | Map site analytics config | `ANALYTICS_BEACON_URL: ""`, `ANALYTICS_USE_SUPABASE: ""` | `curl -s https://localloop.ai/assets/js/env.js \| grep ANALYTICS` |
 | Jarvis voice scripts on the live page | all 5 loaded (`assets/js/jarvis/*.js`) | `curl -s https://localloop.ai/ \| grep -o 'assets/js/jarvis/[a-z-]*.js' \| sort -u` |
-| HybridCard homepage rating | hardcoded "4.8, 128 reviews" demo number is live | `curl -s https://hybridcard.ai/ \| grep -o '128 reviews[^"]*'` |
+| HybridCard homepage rating | hardcoded demo rating is live (`Rated 4.4 out of 5 from 128 reviews`) | `curl -s https://hybridcard.ai/ \| grep -o '128 reviews[^"]*'` |
 | Aesthete public card | 200 (the 2026-09-08 todo item saying 404 looks stale) | `curl -sI https://hybridcard.ai/c/aesthete-hair` |
 
 Not probed here: Supabase pin counts (the session's permission gate blocked a
@@ -284,10 +284,13 @@ Speech needs Chrome or Safari over HTTPS. No stranger has tried it. Once 3.1 and
   category words cannot rescue it either.
 - **Fix, two halves:** (a) on hybridcard.ai set Aesthete's industry to Health &
   Beauty, sub-type Salon, so the card re-sends with category `health`; (b) a
-  small backend change so a query word that contains a name word still matches
-  ("hairdresser" contains "hair"), plus a short everyday-synonym list
-  (hairdresser, barber, salon) and a regression test. Half (b) is owner-approved
-  code work and a Coolify redeploy of looper-api.
+  small backend normalisation table that expands everyday compound words and
+  synonyms before matching (hairdresser and hairdressers to hair and salon,
+  barber to hair, cafe to coffee), with a regression test. Not a blanket
+  "query word contains name word" rule: that would let "carpet cleaner" match a
+  business called "Car Wash" and push real matches out of the five-result
+  limit. Half (b) is owner-approved code work and a Coolify redeploy of
+  looper-api.
 
 ---
 
@@ -442,21 +445,28 @@ create table if not exists public.analytics_events (
 );
 -- RLS: anon may insert, no select.
 alter table public.analytics_events enable row level security;
+drop policy if exists "anon insert" on public.analytics_events;
 create policy "anon insert" on public.analytics_events for insert to anon with check (true);
 ```
 
    This is a production migration. It only adds one new table and one insert
-   policy; it changes nothing that exists.
+   policy; it changes nothing that exists, and it is safe to run twice because
+   the policy is dropped and recreated rather than duplicated.
 2. On the LocalLoop Coolify app set `ANALYTICS_USE_SUPABASE=true` (the exact
    string `true`; `analytics.js` compares against it). Redeploy.
-3. Visit localloop.ai once, then in the SQL editor run:
+3. Visit localloop.ai once, then within ten minutes run this in the SQL editor:
 
 ```sql
-select event, count(*) from public.analytics_events group by event;
+select event, created_at
+from public.analytics_events
+where created_at > now() - interval '10 minutes'
+order by created_at desc limit 5;
 ```
 
-   Expect at least one `page_view` row. Anon has no select, so run this as the
-   dashboard user, not from the browser. That query is the ingestion smoke
+   Expect at least one `page_view` row stamped in the last few minutes. The
+   time window matters: an all-time count could pass on a row left by an
+   earlier test while the new deployment sends nothing. Anon has no select, so
+   run this as the dashboard user, not from the browser. That query is the ingestion smoke
    check only. The number to watch weekly is visitors, not events, because one
    person reloading counts many times:
 
@@ -483,11 +493,15 @@ On the HybridCard homepage fallback card, pass no `rating` and no `ratingCount`.
 The stars render hollow and the popover is not shown. Check:
 
 ```bash
-curl -fsS https://hybridcard.ai/ -o /tmp/hc-home.html && grep -c '128 reviews' /tmp/hc-home.html
+curl -fsS https://hybridcard.ai/ -o /tmp/hc-home.html \
+  && grep -c '128 reviews' /tmp/hc-home.html; grep -cE 'Rated [0-9.]+ out of 5' /tmp/hc-home.html
 ```
 
-The first command must succeed (it fails loudly on any HTTP error), and the
-count must print `0`.
+The first command must succeed (it fails loudly on any HTTP error), and both
+counts must print `0`: the review count and the "Rated N out of 5" star label
+(today the page carries `aria-label="Rated 4.4 out of 5 from 128 reviews"`).
+Removing only `ratingCount` and leaving `rating` would pass the first grep and
+still paint filled stars, which the second grep catches.
 
 ### Step 7: close the open review door (code, owner-gated)
 
@@ -534,14 +548,29 @@ the anti-bias rule requires. Onboarding one
 local salon is itself a good test of the card funnel. Verify:
 
 ```bash
-curl -s "https://api.localloop.ai/api/search?q=hairdresser&lat=-33.8908&lng=151.2748&radius_km=1.5" | grep -o '"total_results":[0-9]*'
+curl -fsS "https://api.localloop.ai/api/search?q=hairdresser&lat=-33.8908&lng=151.2748&radius_km=1.5" -o /tmp/hair.json \
+  && grep -oE '"name":"[^"]*"|"card_url":(null|"[^"]*")' /tmp/hair.json | paste - -
 ```
 
-Expect `"total_results":2` or more. This probe copies what the dock really
-sends: the spoken word itself as `q`, and the dock's default 1.5 km radius
-around the visitor's position (`web/jarvis/looper-jarvis.js`). Use the
-coordinates of the spot where the testers will stand, and note that today this
-returns `0` even for Aesthete because of the matching bug in section 3.16.
+Expect two or more lines, each with a `card_url` on a `hybridcard.ai` host, and
+then open every one of those links:
+
+```bash
+curl -fsSI https://aesthete-hair.hybridcard.ai | head -1
+```
+
+Expect `HTTP/2 200` for each. A count of two is not enough on its own: a
+business with no card link shows no "View card" action in the dock, so the
+loop cannot complete on it. This probe copies what the dock really sends: the
+spoken word itself as `q`, and the dock's default 1.5 km radius around the
+map's current centre, which is the viewport, not the phone's GPS
+(`runSearch()` uses `cmd.coords || mapCenter()` in
+`web/jarvis/looper-jarvis.js`). On first load that centre is the site's default
+Bondi Beach view (`DEFAULT_PLAYGROUND` in LocalLoop `assets/js/main-map.js`),
+which is what the coordinates above approximate. Testers must ask before
+panning the map, or both businesses must sit within 1.5 km of wherever they
+have panned to. Note that today this returns `0` even for Aesthete because of
+the matching bug in section 3.16.
 
 ### Step 9: open the free funnel and watch ten strangers (Facebook admin, no code)
 
