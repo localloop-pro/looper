@@ -160,12 +160,14 @@ pin read returned a rejected row, so treat that as open.
   "verified visit" badge. This contradicts section 3.5, which assumed verified
   reviews needed SMS or payments. It also means the "genuine community reviews"
   promise is falsifiable by anyone who reads the API docs at `/docs`.
-- **Fix (before any public invite):** put the three public writes (reviews,
-  onboard, pins) and the two profile reads (`/api/users/{id}`, `/api/code/{code}`)
-  behind one env flag until a verified path exists, or keep them but derive
-  `verified_visit` server-side (always `false` for direct submissions), require a
-  signed member code, and strip join codes from any public response. This touches
-  auth, so it is owner-gated. See step 7.
+- **Fix (before any public invite):** two separate locks. The three public
+  writes (reviews, onboard, pins) go behind a kill switch until a verified path
+  exists, or stay open with `verified_visit` derived server-side (always `false`
+  for direct submissions) and a signed member code required. The two profile
+  reads (`/api/users/{id}`, `/api/code/{code}`) are removed, or locked behind a
+  permanent authentication that no write flag can reopen: they serve nothing
+  today (the Telegram bot they were built for never launched) and they leak join
+  codes. This touches auth, so it is owner-gated. See step 7.
 
 ### 3.7 Every gate leads to you, and you are the bottleneck
 
@@ -538,15 +540,25 @@ still paint filled stars, which the second grep catches.
 ### Step 7: close the open review door (code, owner-gated)
 
 This comes before the Facebook post on purpose: the moment the post is live,
-anyone can hit the API. Fix section 3.6 first. Smallest safe change: one dependency, `require_public_writes`, that returns
-403 whenever `LOOPER_PUBLIC_WRITES` is not `true`, attached to exactly five
-route decorators (for example
-`@router.post("/reviews", dependencies=[Depends(require_public_writes)])`):
-the three public writes (`POST /api/reviews`, `POST /api/onboard`, `POST
-/api/pins`) and the two profile reads (`GET /api/users/{id}`, `GET
-/api/code/{code}`). Attach it per route, not on the `APIRouter` objects: those
-routers also hold the intentionally public `GET /api/reviews/{business_id}`,
-`GET /api/pins` and `GET /api/tourist-info`, which must keep working. It must be
+anyone can hit the API. Fix section 3.6 first. Smallest safe change, in two parts so a later "open the writes" decision can
+never reopen the profile leak:
+
+1. A dependency `require_public_writes` that returns 403 whenever
+   `LOOPER_PUBLIC_WRITES` is not `true`, attached to exactly three route
+   decorators (for example
+   `@router.post("/reviews", dependencies=[Depends(require_public_writes)])`):
+   `POST /api/reviews`, `POST /api/onboard`, `POST /api/pins`. This is the
+   kill switch that gets flipped on once a verified review path exists.
+2. The two profile reads, `GET /api/users/{id}` and `GET /api/code/{code}`,
+   are deleted. Nothing calls them: they were built for the Telegram bot that
+   never launched, and they hand out join codes and first names by sequential
+   id. If a future feature needs them back, they return behind their own
+   permanent guard (`require_profile_reader`, a bearer token) that the write
+   flag does not control.
+
+Attach the dependency per route, not on the `APIRouter` objects: those routers
+also hold the intentionally public `GET /api/reviews/{business_id}`, `GET
+/api/pins` and `GET /api/tourist-info`, which must keep working. It must be
 a dependency, not a check inside the handler: FastAPI resolves dependencies
 before it validates the body, so the guard fires even on an empty request. Also
 never read `verified_visit` from the body. Search, discover, businesses,
@@ -567,9 +579,11 @@ curl -s -o /dev/null -w "users %{http_code}\n" https://api.localloop.ai/api/user
 curl -s -o /dev/null -w "code %{http_code}\n" https://api.localloop.ai/api/code/123456
 ```
 
-Expect `403` on all five lines. A `422` on any POST line means the guard is not
-live for that route, and a `200` or `404` on a GET line means the same. Either
-way nothing was created, so the check is safe to repeat. Then prove the public
+Expect `403` on the three POST lines and `404` on the two GET lines (the
+routes no longer exist; `403` is also acceptable if you chose the permanent
+guard instead of deletion). A `422` on any POST line means the write guard is
+not live for that route, and a `200` on a GET line means the profile leak is
+still open. Either way nothing was created, so the check is safe to repeat. Then prove the public
 reads survived:
 
 ```bash
