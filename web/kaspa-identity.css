@@ -1,0 +1,18 @@
+.kaspa-identity { position: relative; color: #e9fbf7; font: 600 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.kaspa-identity summary { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 12px 0 7px; cursor: pointer; list-style: none; border: 1px solid rgba(73, 223, 180, .42); border-radius: 999px; background: #08251f; box-shadow: inset 0 0 0 1px rgba(255,255,255,.04); }
+.kaspa-identity summary::-webkit-details-marker { display: none; }
+.kaspa-identity summary:focus-visible { outline: 3px solid #f4c95d; outline-offset: 3px; }
+.kaspa-identity__mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: #062019; background: #49dfb4; font-weight: 900; }
+.kaspa-identity__state { color: #89a9a1; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+[data-state="stale"] .kaspa-identity summary { border-color: #f4c95d; }
+[data-state="mismatch"] .kaspa-identity summary, [data-state="unavailable"] .kaspa-identity summary { border-color: #d88080; background: #2b1718; }
+.kaspa-identity__panel { position: absolute; z-index: 30; left: 0; top: calc(100% + 9px); box-sizing: border-box; width: min(330px, calc(100vw - 24px)); max-width: calc(100vw - 24px); padding: 16px; text-align: left; border: 1px solid rgba(73,223,180,.35); border-radius: 16px; background: #071714; box-shadow: 0 24px 60px rgba(0,0,0,.3); }
+.kaspa-identity__panel p { margin: 5px 0 12px; color: #a7c1ba; }
+.kaspa-identity__panel dl { margin: 0; }
+.kaspa-identity__panel dl div { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.kaspa-identity__panel dt { color: #78958e; }
+.kaspa-identity__panel dd { margin: 0; overflow-wrap: anywhere; }
+.kaspa-identity__panel a { display: inline-block; margin-top: 12px; color: #49dfb4; }
+.kaspa-identity__panel small { display: block; margin-top: 12px; color: #78958e; }
+/* Narrow viewports: the summary can sit anywhere horizontally (host body padding etc.), so an absolutely positioned panel can overflow. Anchor it to the viewport as a bottom sheet instead. */
+@media (max-width: 480px) { .kaspa-identity__panel { position: fixed; left: 12px; right: 12px; top: auto; bottom: 12px; width: auto; max-width: none; max-height: 70vh; overflow: auto; } }

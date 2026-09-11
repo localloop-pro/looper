@@ -10,6 +10,14 @@ services:
       LOOPER_DB_URL: sqlite:////app/data/looper.db
       HYBRIDCARD_INGEST_SECRET: ${HYBRIDCARD_INGEST_SECRET:-}
       HYBRIDCARD_KEY_IDS: ${HYBRIDCARD_KEY_IDS:-hc-1}
+      # KNS organization identity verification (read-only). Forwarded from .env
+      # so the documented settings actually apply in Docker; the cache lives on
+      # the persistent volume so redeploys keep the bounded stale window.
+      KNS_API_BASE_URL: ${KNS_API_BASE_URL:-https://api.knsdomains.org/mainnet}
+      KASPA_IDENTITY_TTL_SECONDS: ${KASPA_IDENTITY_TTL_SECONDS:-3600}
+      KASPA_IDENTITY_STALE_SECONDS: ${KASPA_IDENTITY_STALE_SECONDS:-86400}
+      KASPA_IDENTITY_FAILURE_BACKOFF_SECONDS: ${KASPA_IDENTITY_FAILURE_BACKOFF_SECONDS:-30}
+      KASPA_IDENTITY_CACHE_PATH: ${KASPA_IDENTITY_CACHE_PATH:-/app/data/kaspa_identity_cache.json}
     volumes:
       - looper-data:/app/data
     restart: unless-stopped

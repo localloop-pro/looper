@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from models import init_db
-from routes import users, search, map, reviews, ingest, discover
+from routes import users, search, map, reviews, ingest, discover, identity
 
 # Initialize DB tables
 init_db()
@@ -45,6 +45,7 @@ app.include_router(map.router)
 app.include_router(reviews.router)
 app.include_router(ingest.router)
 app.include_router(discover.router)
+app.include_router(identity.router)
 
 # Serve the embeddable web layer (widget + Jarvis map demo) same-origin so
 # the demo needs zero CORS/config: http://localhost:8000/demo
@@ -64,12 +65,13 @@ def root():
         "version": "0.1.0",
         "status": "online",
         "docs": "/docs",
+        "organization_identity": "/api/identity/domains",
     }
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {"status": "healthy", "organization_identity": "/api/identity/health"}
 
 
 if __name__ == "__main__":
