@@ -15,6 +15,12 @@
 
 ---
 
+**Review checkpoint (2026-09-06):** The Kaspa organization identity branch at
+`9a89b3b` has one open P2 browser-expiry finding. Fix and retest the badge before
+accepting that branch; existing bridge phase sequencing is unchanged.
+See [review evidence](evidence/kaspa-identity-review/README.md) and
+[current tracker](COMPLETION_STATUS.md).
+
 ## 1. Executive Summary
 
 Bill owns three working systems and two large Facebook communities:
@@ -1271,4 +1277,3 @@ Safe parallel tracks once Phase 0 is done: **(A)** Phase 1 bridge,
 `05-jarvis` (F4.1–F4.3), `06-card-map-features` (F5.1–F5.4),
 `07-news-audio` (F6.1–F6.3), `08-loop-onboard` (F7.1–F7.6),
 `09-districts` (F8.1–F8.3), `10-deploy` (F9.1–F9.4).*
-

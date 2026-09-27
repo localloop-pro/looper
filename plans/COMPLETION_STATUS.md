@@ -6,6 +6,17 @@ This is the short operational tracker. The authoritative feature definitions
 and checkboxes remain in `plans/features/` and `plans/IMPLEMENTATION_PLAN.md`.
 Do not start untouched scope while an item below is waiting on its named gate.
 
+## Kaspa identity branch review — 2026-09-06
+
+- Reviewed `main...9a89b3b`; **changes requested** for one confirmed P2 issue:
+  the browser badge retains `fresh` past expiry when its refresh request stalls.
+- Backend validation: 107 passed, 1 optional TypeDB test skipped. Playwright
+  confirmed the expiry defect and checked all four badge states.
+- Next action: clear verified wording at expiry, bound refresh time, preserve
+  retries after failure, and add a browser regression before branch acceptance.
+- Evidence and limits: [Kaspa identity review](evidence/kaspa-identity-review/README.md).
+  No implementation completion or deployment acceptance is claimed.
+
 ## Verified green
 
 - Backend: `80 passed, 1 skipped` (normal suite; TypeDB real-service test is opt-in).
