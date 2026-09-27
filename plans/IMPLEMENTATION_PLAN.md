@@ -15,9 +15,11 @@
 
 ---
 
-**Review checkpoint (2026-09-06):** The Kaspa organization identity branch at
-`9a89b3b` has one open P2 browser-expiry finding. Fix and retest the badge before
-accepting that branch; existing bridge phase sequencing is unchanged.
+**Review checkpoint (2026-09-06, resolved 2026-09-27):** The Kaspa organization
+identity branch had one P2 browser-expiry finding at `9a89b3b`; it is fixed in
+`dc680f1` (PR #15) with a Node regression. Remaining gates before acceptance are
+live KNS provider verification and production deployment; existing bridge phase
+sequencing is unchanged.
 See [review evidence](evidence/kaspa-identity-review/README.md) and
 [current tracker](COMPLETION_STATUS.md).
 

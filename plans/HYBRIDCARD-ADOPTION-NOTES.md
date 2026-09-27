@@ -330,9 +330,9 @@ Effort S (M if the card fixture reveals that `capabilities` should be stored) ·
 
 **Verify:** `cd "$HC" && npx vitest run tests/integration/bridge.test.ts --config vitest.integration.config.ts` then `cd "$LP/backend" && .venv/bin/python -m pytest -q tests/test_contract_fixture.py tests/test_ingest_deal.py tests/test_ingest_card.py`.
 
-### B-4. Client timeout and local expiry for the kaspa badge (open P2 on `feat/kaspa-org-identity`)
+### B-4. Client timeout and local expiry for the kaspa badge (resolved 2026-09-27 in `dc680f1`, PR #15)
 
-This is the one open "changes requested" item on the current branch (`plans/COMPLETION_STATUS.md`, section "Kaspa identity branch review", and `plans/evidence/kaspa-identity-review/README.md:6-29`).
+This was the one "changes requested" item on the current branch; it is now fixed as described below (implemented with an expiry timer plus mount-generation invalidation rather than a render-time guard) (`plans/COMPLETION_STATUS.md`, section "Kaspa identity branch review", and `plans/evidence/kaspa-identity-review/README.md:6-29`).
 
 **Today** (`$LP/web/kaspa-identity.js`; the dossier cited `:91-96`, the exact lines are below):
 

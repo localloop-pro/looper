@@ -26,8 +26,19 @@ Browser reproduction (Playwright, intercepted fetch and controlled clock):
 Required correction: remove fresh wording at `expiresAt` independently of
 network completion, give the full refresh request a bounded timeout, and ensure
 failed or timed-out requests still schedule retries. Include a browser regression
-for a stalled refresh and recovery. Review status: **changes requested**; this
-finding is open and no fix was implemented during the review.
+for a stalled refresh and recovery. Review status at the time: **changes requested**; no fix was implemented
+during the review.
+
+## Resolution — 2026-09-27
+
+Fixed in `dc680f1` (PR #15), `web/kaspa-identity.js`: each refresh request is
+bounded by an 8 s `AbortController` timeout with the retry timer re-armed after
+every settle; an independent expiry timer downgrades a `fresh` badge to
+`stale` ("Previously verified") when `expiresAt` passes, including a record
+that arrives already expired; remounting a host clears timers, aborts the
+in-flight request and bumps a mount-generation token so a late completion
+cannot render or reschedule. Regression: `node web/tests/kaspa-identity.test.js`
+(12 checks, controllable clock, no dependencies).
 
 ## Validation
 
@@ -49,5 +60,6 @@ finding is open and no fix was implemented during the review.
 `featured_webapp_SPEC.TXT`, `Featured_todo.md` and `Featured_done.db` are absent
 from this checkout. The review is recorded in the existing Looper completion
 tracker and linked from the master plan; no replacement tracker or completion
-database was created. Next action: fix and retest badge expiry before accepting
-this branch. No production changes were made.
+database was created. The badge finding is closed
+(see Resolution). Remaining before acceptance: live KNS provider verification
+and production deployment checks. No production changes were made.
