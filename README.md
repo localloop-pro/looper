@@ -232,7 +232,6 @@ TypeDB tests and services are optional unless the active task enables that lane.
 
 ## Ecosystem links
 
-<<<<<<< HEAD
 - LocalLoop public map: `../localloop.pro/localloop.pro-main/llx11/localloop.pro-main/`
 - HybridCard product: `../hybridcard.ai/new-card/`
 - Shared HybridCard/Looper skill hub: [`../hybridcard.ai/looper/skills/SKILLS.md`](../hybridcard.ai/looper/skills/SKILLS.md)
