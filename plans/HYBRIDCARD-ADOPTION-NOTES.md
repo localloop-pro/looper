@@ -165,9 +165,15 @@ def _record_event_and_commit(db: Session, event_id: str, event_type: str, raw: b
 
 **Why it matters for the dashboard:** B29 found that the card's "Ready" chip says ready when the outbox row was sent, while the map shows nothing until LocalLoop moderation approves the pin (`$LL/workers/looper-gateway/src/bridge-pin.mjs:142` forces `pending_review`). A status that cannot say "sent, but not visible" violates the outcome-evidence rule. The `engine` idea generalises: every status the dashboard shows should carry how it was computed (`live`, `cached`, `outbox-only`, `fallback`).
 
-**Lands in HybridCard:** `$HC/src/lib/bridge/localLoopBridgeChip.ts` (`deriveLocalLoopBridgeChip`, re-exported at `localLoopBridgeStatus.ts:5-9`). Today the chip derives only from `getLatestLocalLoopPinOutbox` (`localLoopBridgeStatus.ts:15-37`), which is outbox truth, not map truth. Add a `source: 'outbox' | 'gateway'` field and, when the LocalLoop gateway read (`GET /api/bot/map/pins`, the same one Looper reads at `localloop-gateway-tools.cjs:7`) is configured, prefer it.
+**Lands in HybridCard:** `$HC/src/lib/bridge/localLoopBridgeChip.ts` (`deriveLocalLoopBridgeChip`, re-exported at `localLoopBridgeStatus.ts:5-9`). Today the chip derives only from `getLatestLocalLoopPinOutbox` (`localLoopBridgeStatus.ts:15-37`), which is outbox truth, not map truth. Add a `source: 'outbox' | 'gateway' | 'unknown'` field.
 
-**Done when:** `tests/unit/localLoopBridgeStatus.test.ts` (exists) gains a case where the outbox row is `sent` but the gateway reports `pending_review`, and the chip label is "Sent, awaiting map approval", never "Ready".
+The existing gateway read (`GET /api/bot/map/pins`, the one Looper reads at `localloop-gateway-tools.cjs:7`) hard-codes `status=pending_review`, so it can only confirm "awaiting moderation". A pin that is absent from that list may be approved, removed, never written, or on a later page; absence must never be read as "Ready". Rules:
+
+- gateway lists the pin as `pending_review` → "Sent, awaiting map approval" (`source: 'gateway'`);
+- gateway does not list it → keep the outbox-derived label with an explicit qualifier, "Sent (map status unknown)" (`source: 'unknown'`);
+- "Ready" only from a lookup that returns the pin across moderation states: a new gateway route `GET /api/bot/map/pins/:id` returning `{ status: pending_review | approved | removed | not_found }` (Looper item B-6 below). Until B-6 ships, the chip cannot say "Ready" and must not.
+
+**Done when:** `tests/unit/localLoopBridgeStatus.test.ts` (exists) gains three cases: outbox `sent` + gateway `pending_review` → "Sent, awaiting map approval"; outbox `sent` + gateway absent → "Sent (map status unknown)", never "Ready"; outbox `sent` + B-6 lookup `approved` → "Ready".
 
 ---
 
@@ -178,6 +184,7 @@ def _record_event_and_commit(db: Session, event_id: str, event_type: str, raw: b
 | B-1 | B25: CORS list hardcoded at `backend/main.py:23-39`, `allow_credentials=True` | `LOOPER_CORS_ORIGINS` env, forwarded in `docker-compose.yml` | S | Empty env in Coolify must not blank the list | `tests/test_cors.py` passes; `curl -H "Origin: https://localloop.ai"` returns the `access-control-allow-origin` header |
 | B-2 | B26: N+1 review queries and Python-side radius in `search.py:109-129`, `discover.py:294-309` | One `GROUP BY business_id` aggregate, `lat/lng BETWEEN` prefilter | M | Ranking ties must not move | `test_search_antibias.py` still green; new `test_search_query_count.py` asserts the statement count for one search does not grow with the number of matching businesses |
 | B-3 | B27: contract sample hardcoded in `tests/conftest.py:43-66`, `extra="ignore"` at `schemas.py:98,125` hides drift | Export JSON fixture from HybridCard, load it in `conftest.py`, `extra="forbid"` in tests only | S | Two repos must copy the same file | `test_contract_fixture.py::test_fixture_has_no_unknown_fields` passes in Looper; `bridge.test.ts` in HybridCard writes the same JSON |
+| B-6 | B29: the gateway pin read (`GET /api/bot/map/pins`) returns `pending_review` rows only, so HybridCard cannot tell approved from removed | New `GET /api/bot/map/pins/:id` in `$LL/workers/looper-gateway` returning `{ status: pending_review \| approved \| removed \| not_found }`, same auth as the list route | S | Read-only; must not leak pins outside the caller's cards | Gateway unit test covers all four statuses; HybridCard chip test "Ready" case (Part A) passes against it |
 | B-4 | B26b: kaspa badge `fetch` has no timeout, `fresh` never expires client-side (`web/kaspa-identity.js:91-102`) | `AbortSignal.timeout(8000)`, local expiry timer at `expiresAt` | S | Flicker if `expiresAt` is already past on arrival | Playwright stalled-refresh regression: `data-state` leaves `fresh` at `expiresAt` and the request count keeps rising |
 | B-5 | B25: `POST /api/onboard`, `/api/reviews`, `/api/pins` are unauthenticated, untested, unlimited | Tests plus a per-IP rate limit dependency | M | TestClient IP is constant; limit must be env-tunable | `tests/test_public_writes.py` passes, including one HTTP 429 case |
 | B-6 | B26: `docker-compose.yml:9-20` forwards no `TYPEDB_*`, so `/api/discover` is always `engine: fallback` in Docker | Forward `TYPEDB_ENABLED`, `TYPEDB_ADDRESS`, `TYPEDB_DB`, or document graph-off | S | Wrong address adds a failed connect to every request before fallback | `docker compose config` shows the three vars; `/api/discover?suburb=Bondi` returns `engine: graph` when enabled |
@@ -274,17 +281,24 @@ def review_stats(db, business_ids):
 
 Then in `search.py:113-151` read `stats.get(biz.id, (0, None, None))` instead of the three queries. `get_top_review` can be grouped the same way with a window function, or left as-is for only the `limit` rows that survive ranking (`:162`), which cuts it from N calls to at most 20.
 
-**Bounding-box prefilter** (before `query.all()` at `search.py:109` and `discover.py:294`):
+**Bounding-box prefilter** (before `query.all()` at `search.py:109` and `discover.py:294`). The two routes hold their coordinates differently: `search.py` filters on the raw `lat`/`lng` query parameters, but `discover()` resolves `?suburb=Bondi` into a `center` tuple while the raw `lat`/`lng` stay `None`. A prefilter keyed on the raw parameters would therefore be skipped for every normal suburb call and still load every active business. Use one helper and pass each route its own origin:
 
 ```python
-if lat is not None and lng is not None:
+def bbox_filter(query, origin_lat, origin_lng, radius_km):
+    if origin_lat is None or origin_lng is None:
+        return query
     dlat = radius_km / 111.0
-    dlng = radius_km / (111.0 * max(0.1, math.cos(math.radians(lat))))
-    query = query.filter(Business.lat.between(lat - dlat, lat + dlat),
-                         Business.lng.between(lng - dlng, lng + dlng))
+    dlng = radius_km / (111.0 * max(0.1, math.cos(math.radians(origin_lat))))
+    return query.filter(Business.lat.between(origin_lat - dlat, origin_lat + dlat),
+                        Business.lng.between(origin_lng - dlng, origin_lng + dlng))
+
+# search.py:109   — raw request coordinates
+query = bbox_filter(query, lat, lng, radius_km)
+# discover.py:294 — the resolved suburb centre, not the raw parameters
+query = bbox_filter(query, center[0] if center else lat, center[1] if center else lng, radius_km)
 ```
 
-Keep the exact haversine check after the prefilter (`search.py:125-127`). The box is a superset of the circle, so results do not change; only the rows loaded change.
+`test_search_query_count.py` must include a `/api/discover?suburb=Bondi` case that asserts the loaded row count is bounded by the box, not by the table size. Keep the exact haversine check after the prefilter (`search.py:125-127`). The box is a superset of the circle, so results do not change; only the rows loaded change.
 
 Effort M · Risk: the anti-bias ordering at `search.py:158` and `discover.py:320-324` must produce the same order for the same data; `tests/test_search_antibias.py` and `tests/test_search_voice.py` are the guards. `avg_rating` rounding (`:147`) must stay `round(x, 1)`.
 
@@ -326,62 +340,23 @@ def test_fixture_has_no_unknown_fields():
 
 When HybridCard adds a field, this test fails in Looper with the field name. That is the wanted outcome: the receiver is told to adapt. Production `schemas.py` keeps `extra="ignore"`.
 
-Effort S (M if the card fixture reveals that `capabilities` should be stored) · Risk: the two copies drift if only one repo is updated; add a one-line `contract_version` to each JSON and assert it in both suites.
+Effort S (M if the card fixture reveals that `capabilities` should be stored) · Risk: the two copies drift if only one repo is updated. Do **not** add a `contract_version` field inside the payload: `StrictDeal`/`StrictCard` use `extra="forbid"` and the frozen contract does not define it, so the test would fail immediately. Wrap each fixture instead — `{"contract_version": "BRIDGE-CONTRACT-v1", "payload": { ...frozen payload... }}` — and have both suites validate `fixture["payload"]` and assert `fixture["contract_version"]` separately.
 
 **Verify:** `cd "$HC" && npx vitest run tests/integration/bridge.test.ts --config vitest.integration.config.ts` then `cd "$LP/backend" && .venv/bin/python -m pytest -q tests/test_contract_fixture.py tests/test_ingest_deal.py tests/test_ingest_card.py`.
 
 ### B-4. Client timeout and local expiry for the kaspa badge (resolved 2026-09-27 in `dc680f1`, PR #15)
 
-This was the one "changes requested" item on the current branch; it is now fixed as described below (implemented with an expiry timer plus mount-generation invalidation rather than a render-time guard) (`plans/COMPLETION_STATUS.md`, section "Kaspa identity branch review", and `plans/evidence/kaspa-identity-review/README.md:6-29`).
+This was the one "changes requested" item on `feat/kaspa-org-identity` (`plans/COMPLETION_STATUS.md`, "Kaspa identity branch review"; `plans/evidence/kaspa-identity-review/README.md`, "Resolution"). It is implemented; nothing below is a to-do.
 
-**Today** (`$LP/web/kaspa-identity.js`; the dossier cited `:91-96`, the exact lines are below):
+**Implemented behaviour** (`$LP/web/kaspa-identity.js`):
 
-- `:91` opens `try`, `:92-94` is the bare `fetch(...)` with no `signal`, `:97` is the `catch`.
-- `:19` `render` derives `host.dataset.state` from `record.verificationState` only. Nothing on the client compares `record.expiresAt` with `Date.now()`.
-- `:100` renders, then `:102` schedules the next poll only after the fetch settles. A stalled connection means no next poll, so a `fresh` badge stays `fresh` forever.
-- `:67-74` `nextRefreshMs` already reads `expiresAt`, so the expiry time is available to the client.
-- The server can legitimately hand back a `fresh` record whose `expiresAt` is already past (`$LP/backend/services/kaspa_identity.py:433-436` comment; the server deliberately starts the window when verification completes so this is rare, not impossible), so a client guard is needed regardless.
+- Every refresh request is bounded by an 8 s `AbortController` timeout (`REQUEST_TIMEOUT_MS`), and the retry timer is re-armed after every settle (success, error or timeout), so a stalled browser-to-API connection can neither keep the previous badge on screen nor stop polling. A timed-out request renders the bounded fail-closed `unavailable` state.
+- An independent expiry timer (`armExpiry`) downgrades a `fresh` badge to `stale` ("Previously verified") when `expiresAt` passes, regardless of network completion. A record that arrives already expired is downgraded immediately (timer delay 0), which covers the server case noted in `$LP/backend/services/kaspa_identity.py:433-436`.
+- Remounting a host (`clearMountState` + mount-generation token) clears its timers, aborts its in-flight request and invalidates the previous invocation, so a late completion cannot render the old domain or arm a second polling loop.
 
-**Fix** (three small edits in `web/kaspa-identity.js`):
+**Regression** (zero dependencies, controllable clock): `node "$LP/web/tests/kaspa-identity.test.js"` — 12 checks: stalled refresh at expiry, timeout + retry, remount race. Listed in the README Verification block.
 
-```js
-// :92-94  bound the request the same way the gateway client does
-// ($LP/looper-bot/electron/localloop-gateway-tools.cjs:218)
-var response = await fetch(apiBase + '/api/identity/domains/' + encodeURIComponent(domain), {
-  headers: { Accept: 'application/json' }, credentials: 'omit', cache: 'no-store',
-  signal: AbortSignal.timeout(8000)
-});
-```
-
-```js
-// inside render(), after :19  never show fresh wording past expiresAt
-if (state === 'fresh' && record && record.expiresAt &&
-    Date.now() >= new Date(record.expiresAt).getTime()) {
-  state = 'stale';
-}
-```
-
-```js
-// inside refresh(), after :102  arm an expiry timer independent of the network
-if (host.__kaspaExpiryTimer) clearTimeout(host.__kaspaExpiryTimer);
-if (record && record.verificationState === 'fresh' && record.expiresAt) {
-  var untilExpiry = new Date(record.expiresAt).getTime() - Date.now();
-  if (untilExpiry > 0) host.__kaspaExpiryTimer = setTimeout(function () { render(host, record, label, domain); }, untilExpiry);
-}
-```
-
-Downgrading to `stale` (copy "Previously verified", `:12`) is the honest wording; `unavailable` would hide that a verification once existed. Because the timeout rejects the promise, the existing `catch` at `:97` runs and `:102` still schedules the retry, so retries after failure are preserved.
-
-Effort S · Risk: a `fresh` record arriving with a past `expiresAt` now renders `stale` immediately; that is the correct behaviour per the server comment, but it changes what one Playwright state check expects.
-
-**Verify:**
-
-```bash
-node --check "$LP/web/kaspa-identity.js"
-cd "$LP/backend" && .venv/bin/python -m pytest -q tests/test_kaspa_identity.py      # 27 tests
-```
-
-Then the Playwright steps in `plans/evidence/kaspa-identity-review/README.md:17-24` (mount fresh with 60 s expiry, leave the second fetch pending, advance the clock two minutes, then two days). Done when `data-state` is no longer `fresh` after the 60 s mark and the intercepted request count keeps rising. Add that script under `$LP/web/tests/` next to `jarvis-smoke.playwright.js`.
+**Still unverified** (deployment gates, not code): live KNS provider behaviour and the deployed health check `curl -s https://api.localloop.ai/api/identity/health` after the next Coolify deploy. The optional Playwright walk-through in the evidence README remains available for a browser-level re-check but is no longer required for acceptance.
 
 ### B-5. Tests and a rate limit for the three unauthenticated writes
 
@@ -399,16 +374,17 @@ Then the Playwright steps in `plans/evidence/kaspa-identity-review/README.md:17-
 
 1. `$LP/backend/services/rate_limit.py` (new, no new dependency): an in-process token bucket keyed by `request.client.host` plus a bucket name, exposed as a FastAPI dependency `Depends(rate_limit("onboard", per_minute=5))`. Limits read from env (`LOOPER_RATE_ONBOARD_PER_MIN`, etc.) so tests can set them low and Coolify can tune them. Return HTTP 429 with `Retry-After`.
 2. Add the dependency to the three route decorators.
-3. `map.py:11-30`: look up the `User` like `reviews.py:19-22` does and return 404 when missing, so an anonymous caller cannot attach pins to arbitrary user ids.
+3. `map.py:11-30`: bind the pin to a proven user, not merely an existing one. An existence lookup still lets an anonymous caller attribute pins to any known `user_id`. Require the caller to present the user's `join_code` alongside `user_id` (the code is issued only to that user at onboarding and is already stored on `User`), verify the pair server-side, return 404 for an unknown user and 403 for a wrong code, and never echo the code back. This is the minimum proof of possession with the current schema; a session token issued at onboard can replace it later without changing the route shape.
 4. `$LP/backend/tests/test_public_writes.py` (new) using `client` and `db` from `conftest.py`:
 
 | Test name | Asserts |
 |---|---|
 | `test_onboard_creates_user_and_join_code` | HTTP 200, `join_code` is 6 digits, one `User` row |
-| `test_onboard_same_mobile_returns_existing_code` | second call HTTP 200, same `join_code`, still one row |
+| `test_onboard_same_mobile_does_not_disclose_code` | second call for a registered mobile returns a generic `{ "status": "existing" }` with **no** `join_code` and **no** `first_name`, still one row; the code is re-delivered only through an approved channel (the existing Twilio Verify path when configured, otherwise HTTP 202 with delivery pending) — today's route returns the stored code to anyone who knows the mobile, and a per-IP limit only slows that enumeration |
 | `test_review_unknown_business_404` | HTTP 404 |
 | `test_review_duplicate_409` | HTTP 409 on second review by same user |
 | `test_pin_unknown_user_404` | HTTP 404 (new behaviour) |
+| `test_pin_wrong_join_code_403` | HTTP 403, no `MapPin` row (new behaviour) |
 | `test_pin_sets_expires_at` | HTTP 200, `MapPin.expires_at` ≈ now + 30 days |
 | `test_rate_limit_returns_429` | with limit 2, third `POST /api/onboard` in one minute is HTTP 429 |
 
