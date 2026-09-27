@@ -171,9 +171,9 @@ The existing gateway read (`GET /api/bot/map/pins`, the one Looper reads at `loc
 
 - gateway lists the pin as `pending_review` → "Sent, awaiting map approval" (`source: 'gateway'`);
 - gateway does not list it → keep the outbox-derived label with an explicit qualifier, "Sent (map status unknown)" (`source: 'unknown'`);
-- "Ready" only from a lookup that returns the pin across moderation states: a new gateway route `GET /api/bot/map/pins/:id` returning `{ status: pending_review | approved | removed | not_found }` (Looper item B-6 below). Until B-6 ships, the chip cannot say "Ready" and must not.
+- "Ready" only from a lookup that returns the pin across moderation states: a new gateway route `GET /api/bot/map/pins/:id` returning `{ status: pending_review | approved | removed | not_found }` (Looper item B-8 below). Until B-8 ships, the chip cannot say "Ready" and must not.
 
-**Done when:** `tests/unit/localLoopBridgeStatus.test.ts` (exists) gains three cases: outbox `sent` + gateway `pending_review` → "Sent, awaiting map approval"; outbox `sent` + gateway absent → "Sent (map status unknown)", never "Ready"; outbox `sent` + B-6 lookup `approved` → "Ready".
+**Done when:** `tests/unit/localLoopBridgeStatus.test.ts` (exists) gains three cases: outbox `sent` + gateway `pending_review` → "Sent, awaiting map approval"; outbox `sent` + gateway absent → "Sent (map status unknown)", never "Ready"; outbox `sent` + B-8 lookup `approved` → "Ready".
 
 ---
 
@@ -184,11 +184,11 @@ The existing gateway read (`GET /api/bot/map/pins`, the one Looper reads at `loc
 | B-1 | B25: CORS list hardcoded at `backend/main.py:23-39`, `allow_credentials=True` | `LOOPER_CORS_ORIGINS` env, forwarded in `docker-compose.yml` | S | Empty env in Coolify must not blank the list | `tests/test_cors.py` passes; `curl -H "Origin: https://localloop.ai"` returns the `access-control-allow-origin` header |
 | B-2 | B26: N+1 review queries and Python-side radius in `search.py:109-129`, `discover.py:294-309` | One `GROUP BY business_id` aggregate, `lat/lng BETWEEN` prefilter | M | Ranking ties must not move | `test_search_antibias.py` still green; new `test_search_query_count.py` asserts the statement count for one search does not grow with the number of matching businesses |
 | B-3 | B27: contract sample hardcoded in `tests/conftest.py:43-66`, `extra="ignore"` at `schemas.py:98,125` hides drift | Export JSON fixture from HybridCard, load it in `conftest.py`, `extra="forbid"` in tests only | S | Two repos must copy the same file | `test_contract_fixture.py::test_fixture_has_no_unknown_fields` passes in Looper; `bridge.test.ts` in HybridCard writes the same JSON |
-| B-6 | B29: the gateway pin read (`GET /api/bot/map/pins`) returns `pending_review` rows only, so HybridCard cannot tell approved from removed | New `GET /api/bot/map/pins/:id` in `$LL/workers/looper-gateway` returning `{ status: pending_review \| approved \| removed \| not_found }`, same auth as the list route | S | Read-only; must not leak pins outside the caller's cards | Gateway unit test covers all four statuses; HybridCard chip test "Ready" case (Part A) passes against it |
 | B-4 | B26b: kaspa badge `fetch` has no timeout, `fresh` never expires client-side (`web/kaspa-identity.js:91-102`) | `AbortSignal.timeout(8000)`, local expiry timer at `expiresAt` | S | Flicker if `expiresAt` is already past on arrival | Playwright stalled-refresh regression: `data-state` leaves `fresh` at `expiresAt` and the request count keeps rising |
 | B-5 | B25: `POST /api/onboard`, `/api/reviews`, `/api/pins` are unauthenticated, untested, unlimited | Tests plus a per-IP rate limit dependency | M | TestClient IP is constant; limit must be env-tunable | `tests/test_public_writes.py` passes, including one HTTP 429 case |
 | B-6 | B26: `docker-compose.yml:9-20` forwards no `TYPEDB_*`, so `/api/discover` is always `engine: fallback` in Docker | Forward `TYPEDB_ENABLED`, `TYPEDB_ADDRESS`, `TYPEDB_DB`, or document graph-off | S | Wrong address adds a failed connect to every request before fallback | `docker compose config` shows the three vars; `/api/discover?suburb=Bondi` returns `engine: graph` when enabled |
 | B-7 | Tool count drift: docs say 23, code has 30 specs and 31 dispatch branches | One node test that counts and cross-checks; update the four doc lines | S | None | `npm test` in `looper-bot` includes `tool-registry.test.cjs` and it passes |
+| B-8 | B29: the gateway pin read (`GET /api/bot/map/pins`) returns `pending_review` rows only, so HybridCard cannot tell approved from removed | New `GET /api/bot/map/pins/:id` in `$LL/workers/looper-gateway` returning `{ status: pending_review \| approved \| removed \| not_found }`, same auth as the list route | S | Read-only; must not leak pins outside the caller's cards | Gateway unit test covers all four statuses; HybridCard chip test "Ready" case (Part A) passes against it |
 
 Verify commands used throughout (the venv exists at `backend/.venv/bin/python`):
 
@@ -289,8 +289,12 @@ def bbox_filter(query, origin_lat, origin_lng, radius_km):
         return query
     dlat = radius_km / 111.0
     dlng = radius_km / (111.0 * max(0.1, math.cos(math.radians(origin_lat))))
-    return query.filter(Business.lat.between(origin_lat - dlat, origin_lat + dlat),
-                        Business.lng.between(origin_lng - dlng, origin_lng + dlng))
+    # Today's loops keep businesses without coordinates (the haversine check is
+    # skipped when biz.lat/lng are missing: search.py:123-127, discover.py:294-317);
+    # a bare BETWEEN would evaluate false for NULL and silently drop them.
+    return query.filter(or_(Business.lat.is_(None), Business.lng.is_(None),
+                            and_(Business.lat.between(origin_lat - dlat, origin_lat + dlat),
+                                 Business.lng.between(origin_lng - dlng, origin_lng + dlng))))
 
 # search.py:109   — raw request coordinates
 query = bbox_filter(query, lat, lng, radius_km)
@@ -298,7 +302,7 @@ query = bbox_filter(query, lat, lng, radius_km)
 query = bbox_filter(query, center[0] if center else lat, center[1] if center else lng, radius_km)
 ```
 
-`test_search_query_count.py` must include a `/api/discover?suburb=Bondi` case that asserts the loaded row count is bounded by the box, not by the table size. Keep the exact haversine check after the prefilter (`search.py:125-127`). The box is a superset of the circle, so results do not change; only the rows loaded change.
+`test_search_query_count.py` must include a `/api/discover?suburb=Bondi` case that asserts the loaded row count is bounded by the box, not by the table size, and a case with one coordinate-less matching business that asserts it is still returned (same result set as today). Keep the exact haversine check after the prefilter (`search.py:125-127`). The box is a superset of the circle, so results do not change; only the rows loaded change.
 
 Effort M · Risk: the anti-bias ordering at `search.py:158` and `discover.py:320-324` must produce the same order for the same data; `tests/test_search_antibias.py` and `tests/test_search_voice.py` are the guards. `avg_rating` rounding (`:147`) must stay `round(x, 1)`.
 
@@ -342,6 +346,12 @@ When HybridCard adds a field, this test fails in Looper with the field name. Tha
 
 Effort S (M if the card fixture reveals that `capabilities` should be stored) · Risk: the two copies drift if only one repo is updated. Do **not** add a `contract_version` field inside the payload: `StrictDeal`/`StrictCard` use `extra="forbid"` and the frozen contract does not define it, so the test would fail immediately. Wrap each fixture instead — `{"contract_version": "BRIDGE-CONTRACT-v1", "payload": { ...frozen payload... }}` — and have both suites validate `fixture["payload"]` and assert `fixture["contract_version"]` separately.
 
+A version label does not detect drift by itself: if HybridCard regenerates its fixture and Looper keeps a stale copy, both suites stay green. One artifact must be authoritative and the copy must be compared to it:
+
+- HybridCard generates the fixtures from its real builders (`buildLooperPayload`, `buildLooperCardPayload`) via a script (`npm run bridge:fixtures`) that writes `tests/fixtures/looper-contract/*.json` **and** `SHA256SUMS`; `bridge.test.ts` fails if the committed files differ from a fresh generation.
+- Looper keeps a copy under `backend/tests/fixtures/looper-contract/` plus `scripts/sync-contract-fixture.py`, which copies from the authoritative source (`LOOPER_CONTRACT_FIXTURE_SOURCE`: the sibling checkout path by default, or a pinned raw-file URL/commit).
+- `test_contract_fixture.py::test_fixture_matches_authoritative_source` reads the source and asserts byte-equality with the local copy (and that the local `SHA256SUMS` matches). It skips only when `LOOPER_CONTRACT_FIXTURE_OFFLINE=1` is set explicitly, and CI must not set it.
+
 **Verify:** `cd "$HC" && npx vitest run tests/integration/bridge.test.ts --config vitest.integration.config.ts` then `cd "$LP/backend" && .venv/bin/python -m pytest -q tests/test_contract_fixture.py tests/test_ingest_deal.py tests/test_ingest_card.py`.
 
 ### B-4. Client timeout and local expiry for the kaspa badge (resolved 2026-09-27 in `dc680f1`, PR #15)
@@ -374,17 +384,25 @@ This was the one "changes requested" item on `feat/kaspa-org-identity` (`plans/C
 
 1. `$LP/backend/services/rate_limit.py` (new, no new dependency): an in-process token bucket keyed by `request.client.host` plus a bucket name, exposed as a FastAPI dependency `Depends(rate_limit("onboard", per_minute=5))`. Limits read from env (`LOOPER_RATE_ONBOARD_PER_MIN`, etc.) so tests can set them low and Coolify can tune them. Return HTTP 429 with `Retry-After`.
 2. Add the dependency to the three route decorators.
-3. `map.py:11-30`: bind the pin to a proven user, not merely an existing one. An existence lookup still lets an anonymous caller attribute pins to any known `user_id`. Require the caller to present the user's `join_code` alongside `user_id` (the code is issued only to that user at onboarding and is already stored on `User`), verify the pair server-side, return 404 for an unknown user and 403 for a wrong code, and never echo the code back. This is the minimum proof of possession with the current schema; a session token issued at onboard can replace it later without changing the route shape.
+3. Bind **both** writes that carry a `user_id` — `map.py:11-30` (pins) and `reviews.py:19-38` (reviews, which feed ranking at `search.py:153-158`) — to a proven user, not merely an existing one. An existence lookup lets an anonymous caller attribute pins or reviews to any known id. The `join_code` cannot serve as that proof: the unauthenticated `GET /api/users/{user_id}` (`users.py:90-103`) returns it, so anyone can fetch a target's code. Therefore:
+   - `users.py:90-103`: remove `join_code` from the public profile response (it is a credential, not profile data); `join_code` remains an invite/verification code only and is never accepted as write authorisation.
+   - `onboard`: issue a random 32-byte `session_token` once, store only its SHA-256 on `User`, return it in the onboarding response only.
+   - Pins and reviews require `Authorization: Bearer <session_token>`; the server resolves the user from the token hash and ignores any `user_id` in the body (or requires it to match). Unknown token → 401; token/user mismatch → 403. No public read endpoint exposes the token.
+   - Negative end-to-end test: create two users, read user B through `GET /api/users/{id}`, attempt a pin and a review as B using only what that response exposed → 401, no rows written.
 4. `$LP/backend/tests/test_public_writes.py` (new) using `client` and `db` from `conftest.py`:
 
 | Test name | Asserts |
 |---|---|
 | `test_onboard_creates_user_and_join_code` | HTTP 200, `join_code` is 6 digits, one `User` row |
-| `test_onboard_same_mobile_does_not_disclose_code` | second call for a registered mobile returns a generic `{ "status": "existing" }` with **no** `join_code` and **no** `first_name`, still one row; the code is re-delivered only through an approved channel (the existing Twilio Verify path when configured, otherwise HTTP 202 with delivery pending) — today's route returns the stored code to anyone who knows the mobile, and a per-IP limit only slows that enumeration |
+| `test_onboard_same_mobile_does_not_disclose_code` | second call for a registered mobile returns a generic `{ "status": "existing" }` with **no** `join_code` and **no** `first_name`, still one row; recovery is a separate, explicit step — today's route returns the stored code and first name to anyone who knows the mobile, and a per-IP limit only slows that enumeration |
+| `test_onboard_recover_delivers_by_email_only` | `POST /api/onboard/recover {mobile}` always returns the same generic 202; when the user has an email on file, the join code and a fresh session token link are sent through the env-driven Resend/SMTP path that `plans/features/08-loop-onboard.md:97` already specifies (**no SMS in v1**, ACMA rule; there is no Twilio code or config in this backend); when no email is on file, nothing is sent and the user is directed to the operator-assisted reset in `tools/` — owner decision needed on whether onboarding should collect an optional email so recovery is self-service |
 | `test_review_unknown_business_404` | HTTP 404 |
 | `test_review_duplicate_409` | HTTP 409 on second review by same user |
 | `test_pin_unknown_user_404` | HTTP 404 (new behaviour) |
-| `test_pin_wrong_join_code_403` | HTTP 403, no `MapPin` row (new behaviour) |
+| `test_pin_without_token_401` / `test_pin_token_user_mismatch_403` | HTTP 401 / 403, no `MapPin` row (new behaviour) |
+| `test_review_without_token_401` / `test_review_token_user_mismatch_403` | HTTP 401 / 403, no `Review` row (new behaviour) |
+| `test_public_profile_hides_join_code` | `GET /api/users/{id}` response has no `join_code` and no token |
+| `test_attribution_from_public_profile_fails` | pin + review attempted with only public-profile data → 401, no rows |
 | `test_pin_sets_expires_at` | HTTP 200, `MapPin.expires_at` ≈ now + 30 days |
 | `test_rate_limit_returns_429` | with limit 2, third `POST /api/onboard` in one minute is HTTP 429 |
 
@@ -411,6 +429,14 @@ Empty values are safe: `discover.py:71-74` treats empty as unset (decision 2026-
 Effort S · Risk: option A with `TYPEDB_ENABLED=true` and an unreachable address adds a failed TypeDB connect to every `/api/discover` call before fallback (`discover.py:266-270`); watch latency after enabling.
 
 **Verify:** `cd "$LP" && docker compose config | grep TYPEDB_` shows three lines; `curl -s "http://localhost:8010/api/discover?suburb=Bondi" | python3 -c "import sys,json; print(json.load(sys.stdin)['engine'])"` prints `fallback` when disabled and `graph` when the service is up.
+
+### B-8. Gateway pin lookup across moderation states (unblocks the "Ready" chip in Part A5)
+
+**Today:** `$LL/workers/looper-gateway` exposes only the pending list (`GET /api/bot/map/pins`, `status=pending_review` hard-coded), so a HybridCard dashboard cannot distinguish approved from removed or never-written.
+
+**Fix:** add `GET /api/bot/map/pins/:id` (same auth and card scoping as the list route) returning `{ id, status: "pending_review" | "approved" | "removed" | "not_found", updated_at }`. Read-only; a caller may only look up pins belonging to its own cards, otherwise `not_found` (no existence oracle).
+
+**Done when:** a gateway unit test covers all four statuses and the cross-card case; the HybridCard chip test "Ready" case (A5) passes against it. Effort S.
 
 ### B-7. Reconcile the tool count
 
@@ -442,6 +468,7 @@ Effort S · Risk: none; the test is read-only over source text.
 2. B-1 (CORS) and B-7 (tool count): both S, both pure tests plus config.
 3. B-3 (fixture): S, but needs one HybridCard test edit; do it in the same sitting as any HybridCard bridge work.
 4. B-6 (TypeDB env): decide A or B with Bill; either is S.
+5. B-8 (gateway pin lookup by id): S, read-only; required before the HybridCard "Ready" chip (A5) can ever say Ready.
 5. B-2 (aggregates) and B-5 (public writes): M each; B-5 touches a hot zone, so it waits for Bill's approval.
 
 For HybridCard, A2 (registry) and A3 (allow-list) map to D4 phases P6 and P5; A5 (chip truth) is the fix for B29 and should be in P1 alongside owner notification.

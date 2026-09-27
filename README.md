@@ -198,7 +198,7 @@ Expected: all tests pass (they use an in-process mock provider).
 
 ```bash
 cd backend
-pip install -r requirements-dev.txt
+.venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q
 
 cd ../looper-bot
