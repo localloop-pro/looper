@@ -208,6 +208,7 @@ npm run build
 
 cd ../
 node web/tests/voice-command-router.test.js
+node web/tests/kaspa-identity.test.js
 ```
 
 TypeDB tests and services are optional unless the active task enables that lane. Install [`requirements-brain.txt`](requirements-brain.txt) and follow [`brain/README.md`](brain/README.md) before enabling it.
