@@ -114,6 +114,86 @@ The reusable browser modules live in `web/jarvis/`. Deep links use query paramet
 
 FastAPI's `/docs` is the current endpoint-level reference.
 
+### Kaspa organization identity operations
+
+The API verifies only the configured `localloop.kas` and `qikflo.kas` mainnet
+records. It never holds a wallet key and never grants authorization. Production
+defaults are `KNS_API_BASE_URL=https://api.knsdomains.org/mainnet`, a one-hour
+fresh TTL, and a 24-hour bounded stale window. A `mismatch` is a security event:
+the UI removes verified wording immediately. `stale` is display-only. Monitor
+`GET /api/identity/health`; investigate any `degraded` response before changing
+the configured owner or cache window. The cache defaults to
+`backend/data/kaspa_identity_cache.json` for a plain checkout; in Docker/Coolify
+`docker-compose.yml` sets `KASPA_IDENTITY_CACHE_PATH=/app/data/kaspa_identity_cache.json`
+so it lives on the `looper-data` volume and survives redeploys. Cache writes are
+best-effort (an unwritable path logs a warning and still returns `fresh`); each
+entry is fingerprinted to the provider URL and expected identity, and a
+`mismatch` tombstones the entry so a later outage can never report `stale`.
+
+#### Run and verify (copy-paste)
+
+Local checkout — start the API on **8010** (port 8000 is taken by the local
+TypeDB server on Bill's machine; see `.SEED/gotchas.md`), then hit the three
+identity routes:
+
+```bash
+cd backend && LOOPER_PORT=8010 python main.py        # serves http://localhost:8010
+```
+
+```bash
+curl -s http://localhost:8010/api/identity/domains | python3 -m json.tool
+```
+
+Expected: `{"domains": [ ... ]}` with two records, `localloop.kas` and
+`qikflo.kas`, each carrying `verificationState` = `fresh` on a machine with
+internet access to `api.knsdomains.org` (`unavailable` if you are offline —
+that is the bounded fail-closed answer, not an error).
+
+```bash
+curl -s http://localhost:8010/api/identity/domains/localloop.kas | python3 -m json.tool
+```
+
+Expected: one record whose `assetId` ends in `i0`, `transactionId` equals the
+`assetId` without that suffix, `ownerAddress` starts with `kaspa:qrs4ss39…`, and
+`explorerUrl` points at `https://kas.fyi/transaction/…`. An unknown domain
+(`/api/identity/domains/attacker.kas`) returns **404**.
+
+```bash
+curl -s http://localhost:8010/api/identity/health | python3 -m json.tool
+```
+
+Expected: `{"status": "healthy", "provider": "kns-mainnet-v1", "domains":
+{"localloop.kas": "fresh", "qikflo.kas": "fresh"}}`. Any `degraded` status
+names the domain that is `stale`, `unavailable`, or `mismatch` — investigate
+`mismatch` immediately (it means the on-chain record no longer matches the
+configured identity).
+
+Docker / Coolify deployment — same checks against the deployed host:
+
+```bash
+LOOPER_PORT=8010 docker compose up -d --build && sleep 5 && curl -s http://localhost:8010/api/identity/health
+```
+
+(`LOOPER_PORT` is the host port mapping in `docker-compose.yml`; the container
+itself always listens on 8000.)
+
+```bash
+curl -s https://api.localloop.ai/api/identity/health | python3 -m json.tool
+```
+
+Expected: identical `healthy` payload. The cache file lives at
+`/app/data/kaspa_identity_cache.json` inside the `looper-data` volume
+(`docker compose exec looper-api cat /app/data/kaspa_identity_cache.json`
+shows two fingerprinted entries after the first successful check).
+
+Offline / regression proof without network access:
+
+```bash
+cd backend && .venv/bin/python -m pytest tests/test_kaspa_identity.py -q
+```
+
+Expected: all tests pass (they use an in-process mock provider).
+
 ## Verification
 
 ```bash
@@ -142,8 +222,17 @@ TypeDB tests and services are optional unless the active task enables that lane.
 - KNS verification is read-only identity evidence, not authentication or authorization. A mismatch removes verified wording immediately.
 - Payments, auth, deployment, migration, customer-data, and real-message changes require owner approval.
 
+### Anti-bias rules
+
+1. NEVER rank by anything other than verifiable data (review count, recency)
+2. NEVER declare any business "the best"
+3. ALWAYS show multiple options
+4. ALWAYS attribute reviews to real users
+5. NEVER accept sponsorship or paid placement
+
 ## Ecosystem links
 
+<<<<<<< HEAD
 - LocalLoop public map: `../localloop.pro/localloop.pro-main/llx11/localloop.pro-main/`
 - HybridCard product: `../hybridcard.ai/new-card/`
 - Shared HybridCard/Looper skill hub: [`../hybridcard.ai/looper/skills/SKILLS.md`](../hybridcard.ai/looper/skills/SKILLS.md)
