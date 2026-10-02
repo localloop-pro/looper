@@ -89,15 +89,27 @@ test("every PinReadError code the gateway can emit maps to a known reader error"
   }
 });
 
-test("gateway live mode (looper#50) fails safe with no queue data", async () => {
+test("gateway live mode (looper#50) is named and fails safe with no queue data", async () => {
   const tools = createLocalLoopGatewayTools({
     baseUrl: BASE, readToken: TOKEN,
-    fetchImpl: async () => reply(503, { error: "migration_endpoint_pending" }),
+    fetchImpl: async () => reply(503, { error: "migration_endpoint_pending", detail: "must-not-escape" }),
   });
   const result = await tools.readPendingPins();
   assert.equal(result.ok, false);
-  assert.equal(result.error, "gateway_read_failed");
+  assert.equal(result.status, 503);
+  assert.equal(result.error, "migration_endpoint_pending");
+  assert.match(result.message, /PLATFORM_ENV=live/);
   assert.equal(result.pins, undefined);
+  assert.equal(result.artifact, undefined);
+  assert.doesNotMatch(JSON.stringify(result), /must-not-escape/);
+
+  const health = await tools.health();
+  assert.deepEqual(Object.keys(health).sort(), ["error", "message", "ok", "status"]);
+  assert.equal(health.ok, false);
+  assert.equal(health.status, 503);
+  assert.equal(health.error, "migration_endpoint_pending");
+  assert.match(health.message, /PLATFORM_ENV=live/);
+  assert.doesNotMatch(JSON.stringify(health), /must-not-escape/);
 });
 
 test("gateway /health shape is read as healthy", async () => {
