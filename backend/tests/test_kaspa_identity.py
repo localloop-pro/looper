@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -408,3 +409,76 @@ def test_follower_never_degrades_from_a_pre_mismatch_snapshot(tmp_path):
         assert service.verify("localloop.kas")["verificationState"] == "mismatch"
     finally:
         leader_lock.release()
+
+
+# ── issue #12: security logging + operator health ────────────────────────
+
+SECRET = "sk-live-DO-NOT-LOG"
+
+
+def test_provider_override_log_redacts_credentials_query_and_fragment(tmp_path, caplog):
+    caplog.set_level("INFO", logger="looper.kaspa_identity")
+    KaspaIdentityVerifier(provider_url=f"https://ops:{SECRET}@kns.example.net:8443/mainnet?api_key={SECRET}#{SECRET}",
+                          cache_path=tmp_path / "identity.json")
+    text = caplog.text
+    assert SECRET not in text and "ops:" not in text
+    assert "kaspa_identity.provider_override" in text
+    assert "https://kns.example.net:8443/mainnet" in text
+
+
+def test_provider_failure_logs_never_carry_raw_upstream_errors(tmp_path, caplog):
+    caplog.set_level("INFO", logger="looper.kaspa_identity")
+    raw = f"Traceback: connection refused token={SECRET}"
+
+    def boom(request):
+        raise httpx.ConnectError(raw, request=request)
+    assert verifier_for(tmp_path / "a", boom).verify("localloop.kas")["verificationState"] == "unavailable"
+
+    def leaky_500(request):
+        return httpx.Response(500, text=raw)
+    assert verifier_for(tmp_path / "b", leaky_500).verify("localloop.kas")["verificationState"] == "unavailable"
+
+    assert SECRET not in caplog.text and "Traceback" not in caplog.text
+    failures = [json.loads(r.getMessage()) for r in caplog.records
+                if "kaspa_identity.provider_failure" in r.getMessage()]
+    assert len(failures) == 2
+    assert all(set(f) == {"event", "domain", "provider"} for f in failures)
+
+
+def test_mismatch_log_is_structured_and_bounded(tmp_path, caplog):
+    caplog.set_level("INFO", logger="looper.kaspa_identity")
+    service = verifier_for(tmp_path, lambda r: httpx.Response(200, json=provider_payload(owner="kaspa:" + "x" * 500)))
+    assert service.verify("localloop.kas")["verificationState"] == "mismatch"
+    events = [json.loads(r.getMessage()) for r in caplog.records if "kaspa_identity.mismatch" in r.getMessage()]
+    assert len(events) == 1 and events[0]["reason"] == "fields"
+    assert len(events[0]["observedOwner"]) <= 80
+
+
+def test_health_endpoint_reports_honest_states_without_config(tmp_path, monkeypatch):
+    state = {"fail": False}
+
+    def handler(request):
+        if state["fail"] and request.url.params["asset"] == "qikflo.kas":
+            return httpx.Response(503)
+        return httpx.Response(200, json=provider_payload(request.url.params["asset"]))
+    service = KaspaIdentityVerifier(provider_url=f"https://ops:{SECRET}@kns.example.net/mainnet",
+                                    cache_path=tmp_path / "identity.json", transport=httpx.MockTransport(handler),
+                                    ttl_seconds=60, stale_seconds=300, failure_backoff_seconds=0, clock=lambda: NOW)
+    monkeypatch.setattr(identity_route, "verifier", service)
+    client = TestClient(app)
+
+    healthy = client.get("/api/identity/health")
+    assert healthy.status_code == 200
+    assert healthy.json() == {"status": "healthy", "provider": "kns-mainnet-v1",
+                              "domains": {"localloop.kas": "fresh", "qikflo.kas": "fresh"}}
+
+    # qikflo has never been verified in this cache-less verifier → unavailable.
+    state["fail"] = True
+    fresh_service = KaspaIdentityVerifier(provider_url=service.provider_url, cache_path=tmp_path / "other.json",
+                                          transport=httpx.MockTransport(handler), failure_backoff_seconds=0,
+                                          clock=lambda: NOW)
+    monkeypatch.setattr(identity_route, "verifier", fresh_service)
+    degraded = client.get("/api/identity/health")
+    assert degraded.json()["status"] == "degraded"
+    assert degraded.json()["domains"] == {"localloop.kas": "fresh", "qikflo.kas": "unavailable"}
+    assert SECRET not in degraded.text and "example.net" not in degraded.text

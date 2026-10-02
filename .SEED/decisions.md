@@ -18,6 +18,11 @@
   domain/asset/inscription/transaction/owner/status/verified-domain agreement
   is required; mismatch fails immediately, provider failure uses only a bounded
   validated cache, and every UI must scope the claim to the organization.
+  2026-10-02 (#12): identity log lines are structured JSON with fixed keys
+  (`event`, `domain`, `provider` id, mismatch `reason`/`assetCount`/bounded
+  `observedOwner`). A `KNS_API_BASE_URL` override is logged only as
+  scheme://host[:port]/path — userinfo, query and fragment are dropped because
+  they can carry provider credentials. Raw upstream errors are never logged.
 
 - 2026-07-10: `plans/IMPLEMENTATION_PLAN.md` created — this repo owns the
   cross-system bridge plan (looper ↔ llx11 map ↔ HybridCard). llx11 keeps its
