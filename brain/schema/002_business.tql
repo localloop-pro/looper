@@ -1,0 +1,58 @@
+# LOOPER — Business entity schema (migration 002)
+# Depends on 001_geo.tql.
+#
+# business_entity is ADDITIVE over SQLite/Supabase/MongoDB — it carries
+# FK references back (hybrid_card_id, source_pin_id) to the transactional
+# source of truth and adds relationship/skill knowledge TypeDB is uniquely
+# suited for.
+#
+# ANTI-BIAS INVARIANT: tier is a TTL/heartbeat signal only.  Never a
+# ranking input.  Ranking = reviews + recency + proximity ONLY.
+define
+
+  # ── New attributes ───────────────────────────────────────────────────────────
+
+  hybrid_card_id sub attribute, value string;
+  source_pin_id  sub attribute, value string;
+  archetype_id   sub attribute, value string;
+  sub_type       sub attribute, value string;
+  tier           sub attribute, value string;
+  is_active      sub attribute, value boolean;
+
+  # ── Business entity ──────────────────────────────────────────────────────────
+
+  business_entity sub entity,
+    owns hybrid_card_id,
+    owns source_pin_id,
+    owns name,
+    owns slug,
+    owns archetype_id,
+    owns sub_type,
+    owns tier,
+    owns is_active,
+    owns latitude,
+    owns longitude,
+    plays located_in:contained,
+    plays serves_area:business,
+    plays franchise_of:child,
+    plays franchise_of:parent,
+    plays subsidiary_of:child,
+    plays subsidiary_of:parent;
+
+  # Allow any geo_region to be the area a business serves.
+  geo_region plays serves_area:area;
+
+  # ── Business relations ───────────────────────────────────────────────────────
+
+  # serves_area: which geographic area(s) a business operates in.
+  serves_area sub relation,
+    relates business,
+    relates area;
+
+  franchise_of sub relation,
+    relates child,
+    relates parent;
+
+  subsidiary_of sub relation,
+    relates child,
+    relates parent;

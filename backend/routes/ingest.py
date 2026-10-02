@@ -13,7 +13,7 @@ Contract rules this file lives by:
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -22,8 +22,52 @@ from models import BridgeEvent, Business, Deal, get_db
 from schemas import HybridCardCardPayload, HybridCardDealPayload
 from services import bridge_hmac
 from services.bridge_hmac import BridgeAuthError
+from services.correlation import emit_bridge
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
+
+
+def _brain_sync(
+    hybrid_card_id: str,
+    name: str,
+    category: str,
+    lat: float | None,
+    lng: float | None,
+    is_active: bool,
+    archetype_id: str | None = None,
+    sub_type: str | None = None,
+    skip_archetype: bool = False,
+    slug: str | None = None,
+) -> None:
+    """Fire-and-forget TypeDB sync (F2.2).  Never raises.
+
+    Accepts scalar values extracted from the Business ORM object before the
+    request session closes — avoids DetachedInstanceError when FastAPI runs
+    background tasks after the response is sent.
+
+    slug: sender-supplied stable slug (card payload only; deal payloads omit it).
+    skip_archetype=True: preserve existing archetype_id/sub_type in TypeDB
+    (used by deal events which carry sub_type but not the card-level archetype).
+    """
+    try:
+        import sys
+        import os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "brain"))
+        from sync import sync_business  # type: ignore[import]
+        sync_business(
+            hybrid_card_id=hybrid_card_id,
+            name=name,
+            category=category,
+            lat=lat,
+            lng=lng,
+            is_active=is_active,
+            archetype_id=archetype_id,
+            sub_type=sub_type,
+            slug=slug,
+            skip_archetype=skip_archetype,
+        )
+    except Exception:
+        pass  # additive: TypeDB never blocks ingest
 
 # Real contract payloads are ~2 KB; cap well above that but far below
 # anything that could hurt (body is buffered pre-auth and stored in
@@ -31,23 +75,36 @@ router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 MAX_BODY_BYTES = 64 * 1024
 
 
-async def _verified_raw_body(request: Request) -> bytes:
+async def _verified_raw_body(request: Request, receiver: str) -> bytes:
     """Read the raw body (bounded) and verify the X-HC-* HMAC headers over it.
     Raises 413 on oversized bodies, 401 on any auth failure."""
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        emit_bridge(receiver=receiver, outcome="too_large")
         raise HTTPException(status_code=413, detail="payload too large")
     buf = bytearray()
     async for chunk in request.stream():
         buf.extend(chunk)
         if len(buf) > MAX_BODY_BYTES:
+            emit_bridge(receiver=receiver, outcome="too_large")
             raise HTTPException(status_code=413, detail="payload too large")
     raw = bytes(buf)
     try:
         bridge_hmac.verify(raw, request.headers)
     except BridgeAuthError:
+        emit_bridge(receiver=receiver, outcome="unauthorized")
         raise HTTPException(status_code=401, detail="invalid signature")
     return raw
+
+
+def _trace_result(receiver: str, event_type: str, event_id: str,
+                  sender_ts: datetime | None, result: dict) -> dict:
+    """Bridge trace record for a committed (or duplicate) event."""
+    outcome = ("duplicate" if result.get("duplicate")
+               else "stale_skipped" if result.get("stale") else "processed")
+    emit_bridge(receiver=receiver, outcome=outcome, event_type=event_type,
+                event_id=event_id, sender_updated_at=sender_ts)
+    return result
 
 
 def _parse_sender_ts(value: str | None) -> datetime | None:
@@ -117,20 +174,27 @@ def _upsert_business(db: Session, *, hybrid_card_id: str, name: str, category: s
 
 
 @router.post("/hybridcard-deal")
-async def ingest_hybridcard_deal(request: Request, db: Session = Depends(get_db)):
+async def ingest_hybridcard_deal(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Receiver for LooperIngestPayload (deal.upserted / deal.removed)."""
-    raw = await _verified_raw_body(request)
+    raw = await _verified_raw_body(request, "hybridcard-deal")
     try:
         payload = HybridCardDealPayload.model_validate_json(raw)
     except ValidationError:
+        emit_bridge(receiver="hybridcard-deal", outcome="invalid_payload")
         # non-2xx → sender retries then dead-letters; the designed outcome
         # for permanently malformed payloads.
         raise HTTPException(status_code=422, detail="invalid payload")
 
-    if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
-        return {"ok": True, "duplicate": True}
-
     sender_ts = _parse_sender_ts(payload.updated_at)
+    event_type = "deal.upserted" if payload.active else "deal.removed"
+    if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
+        return _trace_result("hybridcard-deal", event_type, payload.eventId, sender_ts,
+                             {"ok": True, "duplicate": True})
+
     biz, _ = _upsert_business(db, hybrid_card_id=payload.hybrid_card_id,
                               name=payload.business_name, category=payload.category,
                               lat=payload.lat, lng=payload.lng,
@@ -158,28 +222,46 @@ async def ingest_hybridcard_deal(request: Request, db: Session = Depends(get_db)
         if sender_ts:
             deal.source_updated_at = sender_ts
 
-    event_type = "deal.upserted" if payload.active else "deal.removed"
-    return _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
+    result = _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
+    if not result.get("duplicate") and not stale:
+        # Extract scalars while session is open; background task runs after session closes.
+        # skip_archetype=True: deal events carry sub_type but not the card-level archetype;
+        # preserving the archetype set by the prior card.upserted event prevents a deal
+        # update from replacing a card-supplied classifier with the category fallback.
+        background_tasks.add_task(
+            _brain_sync,
+            biz.hybrid_card_id, biz.name or "", biz.category or "other",
+            biz.lat, biz.lng, bool(biz.is_active),
+            None, payload.sub_type, True,
+        )
+    return _trace_result("hybridcard-deal", event_type, payload.eventId, sender_ts, result)
 
 
 @router.post("/hybridcard-card")
-async def ingest_hybridcard_card(request: Request, db: Session = Depends(get_db)):
+async def ingest_hybridcard_card(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Receiver for card-lifecycle events (card.upserted / card.removed).
 
     card.removed flips the business is_active flag — its deals stay
     untouched (card unpublish ≠ deal.removed) but the whole business
     disappears from /api/search via the is_active filter.
     """
-    raw = await _verified_raw_body(request)
+    raw = await _verified_raw_body(request, "hybridcard-card")
     try:
         payload = HybridCardCardPayload.model_validate_json(raw)
     except ValidationError:
+        emit_bridge(receiver="hybridcard-card", outcome="invalid_payload")
         raise HTTPException(status_code=422, detail="invalid payload")
 
-    if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
-        return {"ok": True, "duplicate": True}
-
     sender_ts = _parse_sender_ts(payload.updated_at)
+    event_type = "card.upserted" if payload.active else "card.removed"
+    if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
+        return _trace_result("hybridcard-card", event_type, payload.eventId, sender_ts,
+                             {"ok": True, "duplicate": True})
+
     biz, stale = _upsert_business(db, hybrid_card_id=payload.hybrid_card_id,
                                   name=payload.business_name, category=payload.category,
                                   lat=payload.lat, lng=payload.lng,
@@ -187,8 +269,18 @@ async def ingest_hybridcard_card(request: Request, db: Session = Depends(get_db)
     if not stale:
         biz.is_active = payload.active  # is_verified untouched
 
-    event_type = "card.upserted" if payload.active else "card.removed"
-    return _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
+    result = _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
+    if not result.get("duplicate") and not stale:
+        # Extract scalars while session is open; background task runs after session closes.
+        # Pass the sender's authoritative slug so TypeDB uses the stable card slug
+        # rather than re-deriving it from the business name.
+        background_tasks.add_task(
+            _brain_sync,
+            biz.hybrid_card_id, biz.name or "", biz.category or "other",
+            biz.lat, biz.lng, bool(biz.is_active),
+            payload.archetype, payload.sub_type, False, payload.slug,
+        )
+    return _trace_result("hybridcard-card", event_type, payload.eventId, sender_ts, result)
 
 
 @router.get("/status")

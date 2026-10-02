@@ -1,0 +1,24 @@
+{
+  "provisional": true,
+  "adr": null,
+  "note": "Provisional E6 numbers measured at the FastAPI origin. Replace with the E1 ADR thresholds (localloop.pro-main#100) once accepted. See docs/E6-RELEASE-GATE.md section 2. When you paste in the ADR numbers set provisional to false and adr to the ADR reference; slo_report.py rejects a final file without one.",
+  "min_samples_per_route": 20,
+  "availability_min": 0.995,
+  "routes": {
+    "/api/search": {"p95_ms_max": 300},
+    "/api/discover": {"p95_ms_max": 300},
+    "/api/businesses": {"p95_ms_max": 300}
+  },
+  "bridge": {
+    "delivery_age_p95_s_max": 900,
+    "duplicate_ratio_max": 0.25,
+    "unauthorized_max": 0,
+    "invalid_payload_max": 0,
+    "too_large_max": 0
+  },
+  "compare": {
+    "min_p95_improvement_pct": 10,
+    "max_p95_regression_pct": 5,
+    "max_availability_drop": 0.0
+  }
+}

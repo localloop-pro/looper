@@ -7,9 +7,15 @@ build/
 venv/
 .venv/
 
+# TypeDB migration state (per-host; runtime only)
+brain/.applied_migrations*
+
 # Database
 backend/data/looper.db
 backend/data/*.db
+# Runtime KNS identity verification cache (see README → Kaspa organization identity)
+backend/data/kaspa_identity_cache.json
+backend/data/kaspa_identity_cache.tmp
 data/exports/
 data/hf_dataset/
 *.db-journal
@@ -35,3 +41,5 @@ Thumbs.db
 # Training
 training/output/
 training/checkpoints/workers/**/.wrangler/
+
+node_modules/

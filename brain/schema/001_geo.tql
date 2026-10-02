@@ -1,0 +1,51 @@
+# LOOPER — Geo hierarchy schema (migration 001)
+# World → Country → State → City → Suburb → Locality
+#
+# Written for TypeQL 2.x (typedb-driver ≥ 2.28).  Verify exact syntax against
+# TYPEDB-GEO-HIERARCHY-SPEC.md and the installed TypeDB/TypeQL version before
+# the first migrate.py run.
+define
+
+  # ── Attributes ──────────────────────────────────────────────────────────────
+
+  name sub attribute, value string;
+  latitude sub attribute, value double;
+  longitude sub attribute, value double;
+  postcode sub attribute, value string;
+  slug sub attribute, value string;
+  country_code sub attribute, value string;
+  distance_km sub attribute, value double;
+
+  # ── Abstract geo region (the hierarchy root) ─────────────────────────────────
+
+  geo_region sub entity, abstract,
+    owns name,
+    owns latitude,
+    owns longitude,
+    owns slug,
+    plays located_in:contained,
+    plays located_in:container,
+    plays nearby:region-a,
+    plays nearby:region-b;
+
+  world   sub geo_region;
+  country sub geo_region,
+    owns country_code;
+  state    sub geo_region;
+  city     sub geo_region;
+  suburb   sub geo_region,
+    owns postcode;
+  locality sub geo_region;
+
+  # ── Relations ────────────────────────────────────────────────────────────────
+
+  located_in sub relation,
+    relates contained,
+    relates container;
+
+  # Pre-computed within-10-km pairs (seed_geo.py writes these; the graph
+  # engine uses them to answer "suburbs within Nkm of X" without PostGIS).
+  nearby sub relation,
+    relates region-a,
+    relates region-b,
+    owns distance_km;

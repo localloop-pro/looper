@@ -55,6 +55,18 @@ def test_card_upserted_creates_business(client, db):
     assert biz.is_active is True
 
 
+def test_localhost_public_card_url_stored_as_is(client, db):
+    """Local HybridCard emits http://localhost:3000/c/{slug} — ingest must not
+    rewrite to *.hybridcard.ai or strip the URL."""
+    local = "http://localhost:3000/c/bondi-cafe"
+    resp = signed_post(client, PATH, sample_card_payload(public_card_url=local))
+    assert resp.status_code == 200
+    biz = db.query(Business).filter(Business.hybrid_card_id == "card-abc123").one()
+    assert biz.website == local
+    result = client.get("/api/search", params={"q": "Bondi Cafe"}).json()["results"][0]
+    assert result["card_url"] == local
+
+
 def test_event_replay_is_idempotent(client, db):
     signed_post(client, PATH, sample_card_payload())
     resp = signed_post(client, PATH, sample_card_payload())

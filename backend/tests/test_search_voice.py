@@ -68,6 +68,38 @@ class TestHybridCardLinkExposure:
         resp = client.get("/api/search", params={"q": "cafe"})
         assert resp.json()["results"][0]["card_url"] == "https://alice.hybridcard.ai"
 
+    def test_localhost_card_url_from_active_deal(self, client, db):
+        """HybridCard local/dev emits APP_URL/c/{slug} — must pass through as-is."""
+        b = _biz(db, hybrid_card_id="hc_local_deal", name="Bondi Cafe")
+        local = "http://localhost:3000/c/bondi-cafe"
+        db.add(Deal(
+            deal_id="deal_local",
+            business_id=b.id,
+            title="demo",
+            active=True,
+            public_card_url=local,
+        ))
+        db.commit()
+        result = client.get("/api/search", params={"q": "Bondi Cafe"}).json()["results"][0]
+        assert result["card_url"] == local
+        assert "hybridcard.ai" not in result["card_url"]
+
+    def test_localhost_card_url_from_website_fallback(self, client, db):
+        local = "http://localhost:3000/c/bondi-cafe"
+        _biz(db, hybrid_card_id="hc_local_web", name="Bondi Cafe", website=local)
+        result = client.get("/api/search", params={"q": "Bondi Cafe"}).json()["results"][0]
+        assert result["card_url"] == local
+
+    def test_discover_passes_localhost_card_url(self, client, db):
+        local = "http://localhost:3000/c/bondi-cafe"
+        _biz(db, hybrid_card_id="hc_disc", name="Bondi Cafe", category="café",
+             website=local, suburb="Bondi Beach",
+             lat=-33.8908, lng=151.2743)
+        body = client.get("/api/discover",
+                          params={"suburb": "Bondi", "category": "cafe"}).json()
+        match = next(r for r in body["results"] if r["name"] == "Bondi Cafe")
+        assert match["card_url"] == local
+
     def test_no_card_no_url(self, client, db):
         _biz(db, website="https://example.com")
         result = client.get("/api/search", params={"q": "cafe"}).json()["results"][0]
@@ -87,6 +119,13 @@ class TestHybridCardLinkExposure:
         # equal relevance + equal reviews → insertion order preserved; the
         # carded business gains nothing from its card
         assert names[0] == "Plain Cafe No Card"
+
+        # localhost card URL also must not become a ranking signal
+        _biz(db, name="Local Card Cafe", category="café", hybrid_card_id="hc_y",
+             website="http://localhost:3000/c/local-card")
+        names2 = [r["name"] for r in
+                  client.get("/api/search", params={"q": "cafe"}).json()["results"]]
+        assert names2[0] == "Plain Cafe No Card"
 
 
 class TestIngestStatus:

@@ -37,9 +37,16 @@ Edit `.env.local` before starting voice features:
 ```bash
 OPENAI_API_KEY=your_openai_api_key_here
 EXA_API_KEY=your_exa_api_key_here
+# F4.3 read-only pending-pin cockpit (activate only after the gateway route is live)
+LOCALLOOP_GATEWAY_URL=https://looper.localloop.ai
+LOOPER_BOT_READ_TOKEN=<same-random-32+-byte-secret-as-the-LocalLoop-Worker>
 ```
 
 `OPENAI_API_KEY` is required. `EXA_API_KEY` is optional; web search will show a setup message when it is missing.
+`LOOPER_BOT_READ_TOKEN` is optional unless using the pending-pin cockpit. Keep
+it only in Electron's `.env.local` and the LocalLoop Worker secret store; never
+put it in browser configuration. Looper reads the moderation queue only through
+the audited Bot Gateway endpoint and never queries Supabase directly.
 
 ## macOS Permissions
 
@@ -64,6 +71,7 @@ Other useful commands:
 ```bash
 npm run typecheck
 npm run build
+npm test
 npm start
 ```
 
@@ -81,6 +89,8 @@ Do not commit:
 ## Security Notes
 
 - API keys are loaded only from local environment files.
+- The LocalLoop gateway bearer token stays in the Electron main process and is
+  never exposed through the preload bridge or renderer.
 - `.env.local` and all `.env.*` files are ignored except `.env.example`.
 - Generated images and local database files are ignored.
 - Risky computer-control actions should require explicit confirmation.
