@@ -31,7 +31,8 @@ _SUBURB_BUFFER_KM = 2.0
 
 # Seed geography: Eastern Suburbs + Byron (mirrors the voice router's
 # SUBURBS table in web/jarvis/voice-command-router.js — keep in sync until
-# the TypeDB geo hierarchy replaces both, F2.1).
+# the TypeDB geo hierarchy replaces both, F2.1). The live map carries its own
+# router copy; `node tools/jarvis-sync-check.js --map <dir>` reports drift.
 SUBURB_COORDS = {
     "bondi beach": (-33.8908, 151.2743),
     "north bondi": (-33.8850, 151.2790),

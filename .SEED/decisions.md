@@ -409,11 +409,30 @@
 - Code only. The Coolify redeploy of looper-api and the Aesthete category
   change on hybridcard.ai stay with the owner.
 
+### Jarvis router drift check; the map re-sync is the map repo's job (2026-10-02, looper#39)
+
+- The live map ships its own copies of `web/jarvis/*.js`, and they had drifted.
+  Its router lacked surry hills/redfern/alexandria and the wake mishears
+  (`loopa`, `luper`, …), and its dock hard-codes `WAKE_RE`, so it has no strict
+  barge-in. The fix belongs in localloop.pro-main (filed as
+  localloop.pro-main#334). Agents here never edit that repo.
+- Looper's side: `tools/jarvis-sync-check.js` (zero deps, read-only). It
+  checks that `SUBURBS` equals `SUBURB_COORDS` in `routes/discover.py` (keys
+  and lat/lng), that `WAKE_RE`/`WAKE_STRICT_RE` are exported, that the map
+  dock reads `Router.WAKE_*`, and that a fixed phrase list routes the same as
+  Looper. With `--map <dir>` it checks the map copy too. Pytest runs the
+  Looper-only half, so adding a suburb to one table and not the other now
+  fails the suite.
+- The check compares behaviour (route output for the probe phrases), not file
+  text. Map-only changes (card-link canonicalizer, SPEC-067 panel) are
+  allowed to differ. Which repo owns these files stays ADR
+  localloop.pro-main#100's call.
+
 ### GitHub Actions CI (2026-10-02, looper#32)
 
 - `.github/workflows/ci.yml` runs on PRs to main and pushes to main with
   `permissions: contents: read`, no repo secrets and no deploy steps. Jobs:
-  backend (Python 3.12, pytest), web (Node 20, voice router tests), worker
+  backend (Python 3.12, pytest), web (Node 20, voice router + Jarvis drift tests), worker
   (looper-api-proxy tests), looper-bot (npm ci, typecheck, build, test; no
   Electron binary download, no packaging, no keys), gitleaks, and a final `ci`
   job that needs all of them.
