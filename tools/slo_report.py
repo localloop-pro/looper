@@ -178,11 +178,14 @@ def compare(base, cand, thresholds):
 
 
 def _is_num(value):
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value))
 
 
 def threshold_problems(t):
     """Everything wrong with a thresholds file; [] means usable."""
+    if not isinstance(t, dict):
+        return ["thresholds file must be a JSON object"]
     problems = []
 
     def need(where, key, low=0, high=None, positive=False):
@@ -206,12 +209,12 @@ def threshold_problems(t):
             if not (isinstance(limits, dict) and _is_num(limits.get("p95_ms_max"))
                     and limits["p95_ms_max"] > 0):
                 problems.append(f"{route} p95_ms_max: must be a positive number")
-    bridge = t.get("bridge", {})
+    bridge = t.get("bridge") if isinstance(t.get("bridge"), dict) else {}
     need(bridge, "delivery_age_p95_s_max", positive=True)
     need(bridge, "duplicate_ratio_max", high=1)
     for key in ("unauthorized_max", "invalid_payload_max", "too_large_max"):
         need(bridge, key)
-    rules = t.get("compare", {})
+    rules = t.get("compare") if isinstance(t.get("compare"), dict) else {}
     for key in ("min_p95_improvement_pct", "max_p95_regression_pct",
                 "max_availability_drop"):
         need(rules, key)

@@ -119,6 +119,9 @@ def test_shipped_thresholds_are_valid_and_still_provisional():
     (lambda t: t.pop("availability_min"), "availability_min"),
     (lambda t: t.update(availability_min=1.5), "availability_min"),
     (lambda t: t["routes"]["/api/search"].update(p95_ms_max=-1), "/api/search"),
+    (lambda t: t["routes"]["/api/search"].update(p95_ms_max=float("inf")), "/api/search"),
+    (lambda t: t.update(availability_min=float("nan")), "availability_min"),
+    (lambda t: t.update(bridge=[]), "delivery_age_p95_s_max"),
     (lambda t: t["routes"].clear(), "routes"),
     (lambda t: t["bridge"].update(unauthorized_max="0"), "unauthorized_max"),
     (lambda t: t["compare"].pop("min_p95_improvement_pct"), "min_p95_improvement_pct"),
@@ -174,3 +177,13 @@ def test_invalid_threshold_file_exits_2(tmp_path, capsys):
     log.write_text("\n".join(_lines()))
     assert slo_report.main(["report", str(log), "--thresholds", str(tfile)]) == 2
     assert "/api/search" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("payload", ["[]", '"x"', "3"])
+def test_non_object_threshold_file_exits_2(tmp_path, capsys, payload):
+    tfile = tmp_path / "bad.json"
+    tfile.write_text(payload)
+    log = tmp_path / "trace.log"
+    log.write_text("\n".join(_lines()))
+    assert slo_report.main(["report", str(log), "--thresholds", str(tfile)]) == 2
+    assert "JSON object" in capsys.readouterr().err
