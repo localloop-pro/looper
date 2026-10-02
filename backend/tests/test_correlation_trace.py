@@ -5,8 +5,10 @@ record; every bridge receipt gets one `kind: bridge` record joined on the
 sender's eventId. Records carry an allowlist of fields only — no query
 text, raw path, IP, user agent, auth header, body or business data.
 """
+import ast
 import json
 import logging
+import pathlib
 import re
 
 import pytest
@@ -147,16 +149,32 @@ def test_trace_off_keeps_header_but_logs_nothing(client, trace, monkeypatch):
     assert trace.lines == []
 
 
-def test_uvicorn_access_log_is_off_everywhere():
+_BACKEND = pathlib.Path(__file__).resolve().parents[1]
+
+
+def test_uvicorn_access_log_off_in_main():
     """uvicorn's default access line holds the client IP and the raw query
-    string. Production (Dockerfile) and local runs (main.py) must disable it;
-    the allowlisted trace record replaces it."""
-    import pathlib
-    backend = pathlib.Path(__file__).resolve().parents[1]
-    cmd = [line for line in (backend / "Dockerfile").read_text().splitlines()
+    string. `python main.py` must run with access_log=False; the allowlisted
+    trace record replaces it."""
+    tree = ast.parse((_BACKEND / "main.py").read_text())
+    runs = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute) and n.func.attr == "run"
+            and getattr(n.func.value, "id", None) == "uvicorn"]
+    assert runs
+    for call in runs:
+        kw = {k.arg: k.value for k in call.keywords}
+        assert isinstance(kw.get("access_log"), ast.Constant)
+        assert kw["access_log"].value is False
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "Open gap (docs/E6-RELEASE-GATE.md §7): the production Dockerfile CMD "
+    "keeps uvicorn's access log on. Adding --no-access-log is a deploy change "
+    "waiting on the owner's OK on looper#9. When it lands, drop this marker."))
+def test_uvicorn_access_log_off_in_dockerfile():
+    cmd = [line for line in (_BACKEND / "Dockerfile").read_text().splitlines()
            if line.startswith("CMD [") and "uvicorn" in line]
     assert cmd and all("--no-access-log" in line for line in cmd)
-    assert "access_log=False" in (backend / "main.py").read_text()
 
 
 # ---------------------------------------------------------------- bridge

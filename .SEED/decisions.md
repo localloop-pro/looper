@@ -322,6 +322,8 @@
   owner production sign-off remain open by design.
 - uvicorn's default access log was ON in production (`Dockerfile` CMD). It
   logged the client IP and the raw query string, and voice queries can carry
-  dictated emails/mobiles. Now `--no-access-log` (Dockerfile) and
-  `access_log=False` (main.py); the trace record replaces it. A static test
-  guards both.
+  dictated emails/mobiles. `main.py` now passes `access_log=False` (local
+  runs). The Dockerfile `--no-access-log` is a deploy change, so it waits for
+  the owner's OK on looper#9; until then the release gate marks it ⚠️ and a
+  strict-xfail test tracks it. Security reviews must say what is still open,
+  never ✅ a gap outside the code they changed.

@@ -32,9 +32,16 @@ Rules, enforced in `backend/services/correlation.py`:
   method, route, status, dur_ms, cache`. `route` is the template
   (`/api/users/{user_id}`), never the raw path or the query string. Voice
   queries are free text and can contain dictated contact details.
-- **Never logged:** the client IP, `User-Agent`, cookies, the `Authorization`
-  header, `X-HC-Signature`, request or response bodies, business names, card
-  ids and card URLs.
+- **Never in a trace record:** the client IP, `User-Agent`, cookies, the
+  `Authorization` header, `X-HC-Signature`, request or response bodies,
+  business names, card ids and card URLs.
+- **Not covered: uvicorn's own access log.** That log is separate from the
+  trace records. It prints the client IP, the raw path and the full query
+  string on every request, for example
+  `INFO: 127.0.0.1:52707 - "GET /api/search?q=john%20smith%200412999888 …" 200 OK`.
+  `python main.py` now runs with `access_log=False`. **Production still has it
+  on**: the `backend/Dockerfile` `CMD` has no `--no-access-log`. That change
+  affects deploys, so it waits for the owner's OK on looper#9 (see section 7).
 - **The `bridge` record** has exactly `ts, kind, receiver, rid, event_id,
   event_type, outcome, delivery_age_s`.
   - `outcome` is one of `processed`, `duplicate`, `stale_skipped`,
@@ -73,7 +80,7 @@ measured at the FastAPI origin.
 | SLO | Threshold | Source |
 |---|---|---|
 | Availability (non-5xx share) | ≥ 99.5 % | `http` records |
-| `/api/search`, `/api/discover`, `/api/businesses` p95 | ≤ 300 ms, with ≥ 20 samples each | `http` records |
+| `/api/search`, `/api/discover`, `/api/businesses` p95 | ≤ 300 ms, with ≥ 20 samples each (host-sensitive: QA measured `discover` at 401.7 ms on a busy dev host; calibrate on the production host before treating a miss as a regression) | `http` records |
 | Bridge delivery age p95 | ≤ 900 s | `bridge` records with `processed` |
 | Bridge duplicate ratio (retries/replays) | ≤ 0.25 | `bridge` records |
 | Bridge `unauthorized` / `invalid_payload` / `too_large` | 0 | `bridge` records |
@@ -149,7 +156,7 @@ A percentage split belongs at the Worker (devops lane, other issue).
 | Change | Rollback | Data repair |
 |---|---|---|
 | Tracing (this PR) | set `LOOPER_TRACE_LOG=off` and restart, or `git revert` and redeploy | none: tracing writes no rows |
-| uvicorn access log off (this PR) | not recommended: it brings back IP + query-text logging. If needed, drop `--no-access-log` from the Dockerfile `CMD` | none |
+| uvicorn access log off in `main.py` (this PR, local runs only) | remove `access_log=False` from `uvicorn.run` (brings back IP + query-text logging) | none |
 | Read cache / rate limit (PR #16) | set the flags to `0` and restart | none: in-process only |
 | Any backend release | Coolify: redeploy the previous commit | none: bridge receipts are idempotent on `eventId`, and the sender retries every non-2xx, so events missed during a bad deploy re-arrive |
 | Bridge receiver regression | revert. Do **not** delete `bridge_events` rows; replays become `duplicate` | none |
@@ -173,7 +180,8 @@ contract checks passed.
 
 | Area | Status | Evidence / gap |
 |---|---|---|
-| Logging leakage | ✅ allowlist records, unsafe ids replaced. uvicorn's default access log (client IP + raw query text) is **off** in the Dockerfile and `main.py`; it was on in production before looper#9 | `tests/test_correlation_trace.py` (incl. `test_uvicorn_access_log_is_off_everywhere`) |
+| Logging leakage (trace records) | ✅ allowlist records, unsafe ids replaced | `tests/test_correlation_trace.py` |
+| Logging leakage (uvicorn access log) | ⚠️ **open gap in production.** The Dockerfile `CMD` runs uvicorn with its default access log, which writes the client IP, raw path and full query string (dictated phone numbers/emails) to stdout on every request. QA reproduced a planted mobile in it. Off for local runs (`access_log=False` in `main.py`). Fix waiting on owner OK (deploy change): add `"--no-access-log"` to the Dockerfile `CMD` | `test_uvicorn_access_log_off_in_main` |
 | Replay | ✅ idempotent on `eventId`; out-of-order retries skipped; ±5 min HMAC window | `test_bridge_hmac.py`, `test_ingest_*`, non-prod check |
 | Authorization (bridge) | ✅ HMAC over the raw body, constant-time compare, 401/413 | non-prod check: tampered, expired, unknown key, wrong secret, unsigned → 401 |
 | CORS | ✅ exact allowlist; a foreign origin gets no grant; preflight from a foreign origin is 400 | non-prod check + tests |
