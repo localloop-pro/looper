@@ -11,3 +11,7 @@
   The voice router must send the user's own word, not a padded list of
   synonyms: a padded bare "hair" made a spoken query looser than the same
   typed one. Test what the router sends against /api/search too.
+- looper#38: Looper sends card_url (the sender's public_card_url, any host,
+  as sent) as the only card link and never a slug. When a consumer reads a
+  field we don't send, fix the consumer (localloop.pro-main#333) instead of
+  adding a column to live data without the owner's OK.
