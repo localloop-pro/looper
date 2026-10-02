@@ -441,6 +441,28 @@
   allowed to differ. Which repo owns these files stays ADR
   localloop.pro-main#100's call.
 
+### Cross-repo contract table + pinned caller tests (2026-10-02, looper#31)
+
+- `docs/CROSS-REPO-CONTRACTS.md` lists every call between Looper, HybridCard
+  and the map with file:line at pinned commits (HC `55b7ced`, MAP `761d3a1`).
+  `backend/tests/test_cross_repo_contracts.py` has one test per inbound row. Each
+  sends the caller's real shape and asserts only the fields that caller reads.
+  Known mismatches are pinned as today's behaviour (like #23), not xfailed, so
+  the fix changes the test on purpose.
+- The backend makes no outbound calls to the other two repos (only KNS).
+  looper-bot does: it reads the LocalLoop gateway's pending-pin queue
+  (`GET /api/bot/map/pins`, Bearer `LOOPER_BOT_READ_TOKEN`), calls its `/health`,
+  and opens map deep links (`?cat=&q=&fly=`). `looper.localloop.ai` is that
+  gateway (MAP), not this API. Those shapes match today and are pinned in
+  `looper-bot/electron/tests/gateway-contract.test.cjs`. The gateway's
+  `PLATFORM_ENV=live` mode would 503 them (#50).
+- Mismatches filed: #36 (HC card URL falls back to the deal receiver), #37 (map
+  renders `message` as HTML; upstream MAP#324), #38 (Jarvis reads `slug`),
+  #39 (map Jarvis copies drifted), #40 (read limiter vs HC server-side identity
+  proxy). No Looper behaviour changed in this PR; BRIDGE-CONTRACT-v1 untouched.
+- No "hybridcard.ai search widget" exists in hybridcard-v2 at `55b7ced`. The
+  CORS entries stay (harmless).
+
 ### GitHub Actions CI (2026-10-02, looper#32)
 
 - `.github/workflows/ci.yml` runs on PRs to main and pushes to main with
@@ -470,3 +492,17 @@
   carded 90%/rank_boost deal still ranks below a reviewed business.
 - Revisit only if the owner approves the column. Then add it as nullable,
   fill it from card events going forward, and never derive `card_url` from it.
+
+### Card events at the deal receiver: named 422, never re-dispatched (2026-10-02, looper#36)
+
+- HybridCard falls back to `LOOPER_INGEST_URL` (the deal receiver) when
+  `LOOPER_CARD_INGEST_URL` is unset. The fix belongs to the sender (drop the
+  fallback, make readiness require the card URL). It is filed on hybridcard-v2.
+- Looper does NOT route `event_kind: card|partnership` from the deal receiver to
+  the card handler. That would hide a sender misconfiguration and give the deal
+  URL two contracts.
+- What Looper does instead: the deal receiver still answers 422 and writes
+  nothing (the eventId is not burned, so the same event lands once it is
+  re-sent to `/api/ingest/hybridcard-card`). The 422 detail now names the
+  cause, and the bridge trace records `outcome: "misrouted"` with the
+  `event_type` (no eventId, no payload fields).
