@@ -454,3 +454,17 @@
   because v2's Node 20 runtime is gone from hosted runners since 2026-09-16.
   The repo is owned by a personal account, so no `GITLEAKS_LICENSE` is needed.
 - Making `ci` a required status check on `main` is the owner's step.
+
+### Card events at the deal receiver: named 422, never re-dispatched (2026-10-02, looper#36)
+
+- HybridCard falls back to `LOOPER_INGEST_URL` (the deal receiver) when
+  `LOOPER_CARD_INGEST_URL` is unset. The fix belongs to the sender (drop the
+  fallback, make readiness require the card URL). It is filed on hybridcard-v2.
+- Looper does NOT route `event_kind: card|partnership` from the deal receiver to
+  the card handler. That would hide a sender misconfiguration and give the deal
+  URL two contracts.
+- What Looper does instead: the deal receiver still answers 422 and writes
+  nothing (the eventId is not burned, so the same event lands once it is
+  re-sent to `/api/ingest/hybridcard-card`). The 422 detail now names the
+  cause, and the bridge trace records `outcome: "misrouted"` with the
+  `event_type` (no eventId, no payload fields).
