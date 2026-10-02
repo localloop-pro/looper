@@ -232,5 +232,5 @@ that doesn't depend on E1.
 | `X-Request-ID` at map/gateway | localloop.pro-main#101 / #102 merged | Nothing; Looper already echoes it (section 1) |
 | Outbox drain logging | hybridcard-v2#62 merged | Nothing |
 | Worker deploy | Owner/devops change window | Nothing (agents never deploy) |
-| Staging E2E | Owner/devops names a non-prod URL on looper#20 | Run `tools/e6_nonprod_check.py https://<host> --non-prod-host <host>` and `tools/slo_report.py`, run the browser E2E, attach the output to looper#20 |
+| Staging E2E | Owner/devops names a non-prod URL on looper#20 | Run `HYBRIDCARD_INGEST_SECRET=<staging secret> python3 tools/e6_nonprod_check.py https://<host> --non-prod-host <host>` and `python3 tools/slo_report.py report <server-log> --require-final`, run the browser E2E, attach the output to looper#20 |
 | Production sign-off | Owner (Bill), after all of the above | Nothing |
