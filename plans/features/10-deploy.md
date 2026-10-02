@@ -3,7 +3,8 @@
 > Extracted verbatim from `plans/IMPLEMENTATION_PLAN.md` §5
 > (v1.0, 2026-07-10; split 2026-07-11 per Bill's go-ahead).
 > The master plan stays authoritative. Before implementing anything:
-> read `SEED.md`, `.SEED/decisions.md`, `.SEED/gotchas.md`, and the
+> read `SEED.md`, `.SEED/decisions.md` + `.SEED/decisions/`,
+> `.SEED/gotchas.md`, and the
 > master plan's Section 4 Golden Rules. Implement features in order;
 > tick a box only when that feature's Acceptance criteria all pass.
 
@@ -77,6 +78,6 @@
 2. Watch one week of `bridge_events` + dead-letter counts.
 3. Only then consider (card-repo governance, separate sign-offs):
    `LIVE_ALERT_FANOUT`, `SMS_LIVE`, `PAYMENTS_LIVE`, VAPID push.
-- **Acceptance:** each flip logged in `.SEED/decisions.md` with date +
+- **Acceptance:** each flip logged as a file in `.SEED/decisions/` with date +
   reason; dead-letter count stays 0 for 7 days before the next flip.
 - **Depends:** F9.3.

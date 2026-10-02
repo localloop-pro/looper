@@ -1,5 +1,8 @@
 # .SEED/decisions.md — looper decisions log
 
+> New entries: one file per PR in `.SEED/decisions/` (or `docs/learnings/`).
+> Read both. Name it `<issue>-<short-slug>.md`. Do not append here (looper#53).
+
 - 2026-10-02 (issue #8, E4): public read boundary ships DARK in FastAPI
   (`backend/services/edge_boundary.py`), not in a Worker. Cache for
   search/discover/businesses (`LOOPER_READ_CACHE_TTL_S`, default 0 = off) and
@@ -477,6 +480,22 @@
   The repo is owned by a personal account, so no `GITLEAKS_LICENSE` is needed.
 - Making `ci` a required status check on `main` is the owner's step.
 
+### Search card link: `card_url` only, no `slug` (2026-10-02, looper#38)
+
+- `/api/search` results carry `card_url` as the only card link. It is the
+  sender's `public_card_url`, returned as sent for any host (tunnel hosts
+  too), never rebuilt from a slug, never a ranking input.
+- No `slug` field in `SearchResult`. Adding it needs a new `businesses`
+  column filled from the card payload's `slug`. That is a schema change to
+  live data (hot zone) with no owner OK, so the consumer adapts instead:
+  the map's Jarvis dock should drop its `r.slug` read
+  (localloop-pro/localloop.pro-main#333).
+- Pinned by `backend/tests/test_search_card_link_contract.py`: no `slug`
+  even when the card event sent one, tunnel URLs returned as sent, and a
+  carded 90%/rank_boost deal still ranks below a reviewed business.
+- Revisit only if the owner approves the column. Then add it as nullable,
+  fill it from card events going forward, and never derive `card_url` from it.
+
 ### Card events at the deal receiver: named 422, never re-dispatched (2026-10-02, looper#36)
 
 - HybridCard falls back to `LOOPER_INGEST_URL` (the deal receiver) when
@@ -507,15 +526,6 @@
   needs the owner's OK on an issue first. `load_keys()`'s dict shape is the
   seam for it.
 - No history rewrite and no gitleaks allowlist for `eaa1fbd`.
-
-- 2026-10-02 (looper#55): `backend/requirements.txt` lists only what the API
-  imports. openai, aiosqlite and geopy removed (no import; engine is sync
-  `sqlite://`). facebook_pipeline's live Graph call uses `httpx` instead of the
-  unlisted `requests`. openai + supabase live in `tools/requirements.txt`; the
-  Dockerfile still installs them by default (`WITH_TOOLS=1`) because the Coolify
-  news-audio scheduled task runs from the API image — `WITH_TOOLS=0` builds an
-  API-only image. `test_runtime_requirements.py` fails if a backend import is
-  unlisted or a removed package returns.
 
 ### Gateway live-mode cutover is named, not hidden (2026-10-02, looper#50)
 

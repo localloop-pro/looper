@@ -201,7 +201,7 @@ pin read returned a rejected row, so treat that as open.
   approval time) is recorded as a Meta ToS breach "in principle" with the risk
   landing on the admin account of the 156K group. The plan says you accept or
   decline the trade-off explicitly. No decision is recorded.
-- **Recommendation:** decline Layer 2 for now, in writing, in `.SEED/decisions.md`.
+- **Recommendation:** decline Layer 2 for now, in writing, in `.SEED/decisions/`.
   Layers 1 and 3 carry the funnel with zero risk. Revisit only with measured
   conversion numbers from Layer 1.
 
@@ -643,7 +643,7 @@ the matching bug in section 3.16.
    into a membership answer vanishes at approval and nothing can deliver the card
    it promised. Add the email ask only when `join.localloop.ai` (F7.1 to F7.3)
    exists to capture it with consent.
-3. Record in `.SEED/decisions.md`: Layer 2 (extension capture) declined for now.
+3. Record in `.SEED/decisions/`: Layer 2 (extension capture) declined for now.
 
 **Measuring it.** `analytics.js` records `path` and the referrer on every
 `page_view`, but not the query string, so a `?src=` tag would be lost. Facebook
@@ -686,7 +686,7 @@ Unfreeze when the section 5 success rule has a number next to it.
 2. Retire `BOT_HANDOFF.md` and `COMPLETION_STATUS.md` into that file.
 3. Fix LocalLoop `CLAUDE.md` to be `@AGENTS.md` and add `SEED.md` plus `.SEED/`
    there, matching the other two repos.
-4. Record in `.SEED/decisions.md` that the Looper leg of F9.4 item 1 is live
+4. Record in `.SEED/decisions/` that the Looper leg of F9.4 item 1 is live
    (180 events as of 2026-09-08). Do not tick the box yet: it needs the map-pin
    leg proven too (a Supabase count of `source=hybridcard` pins, which this audit
    could not run) and the seven-day dead-letter watch from F9.4 item 2.

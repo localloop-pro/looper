@@ -1,8 +1,14 @@
 # AGENTS.md — looper repo rules
 
 > **Read @SEED.md first.** It is the knowledge index for this repo. Then read
-> `.SEED/decisions.md` (decisions already made) and `.SEED/gotchas.md`
-> (mistakes we never repeat) before changing anything.
+> `.SEED/decisions.md` plus `.SEED/decisions/` (decisions already made) and
+> `.SEED/gotchas.md` (mistakes we never repeat) before changing anything.
+>
+> **Recording a decision or lesson:** add one new file per PR, named
+> `<issue>-<short-slug>.md`, in `.SEED/decisions/` (decisions) or
+> `docs/learnings/` (lessons). Never append to `.SEED/decisions.md` or
+> `docs/LEARNINGS.md`: every merge moves their end, so parallel PRs conflict
+> (looper#53).
 
 ## What this repo is
 

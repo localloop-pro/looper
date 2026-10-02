@@ -56,7 +56,7 @@ in `index.html`, surgical additive edits only; (3) HybridCard's side is frozen
 ## 3. Read these files IN THIS ORDER before writing any code
 
 1. `SEED.md` — repo knowledge index
-2. `.SEED/decisions.md` and `.SEED/gotchas.md` — decisions + traps
+2. `.SEED/decisions.md`, `.SEED/decisions/` and `.SEED/gotchas.md` — decisions + traps
 3. `AGENTS.md` — the rules above, in full
 4. `plans/IMPLEMENTATION_PLAN.md` — **the master plan. Sections 2–4 = context,
    Section 5 = the 41 features you will build, Section 7 = env vars**
