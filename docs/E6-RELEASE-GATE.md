@@ -219,3 +219,18 @@ are open, no staging target is named):
   window (owner/devops, never agents).
 - [ ] LocalLoop and HybridCard adopt section 1 (their E2/E3/E5 issues).
 - [ ] Owner sign-off on production rollout.
+
+### How each open item gets unblocked (who does what)
+
+Re-checked 2026-10-02: localloop.pro-main#100, #101 and #102 are open;
+hybridcard-v2#62 is open, and draft hybridcard-v2#105 covers only the part
+that doesn't depend on E1.
+
+| Item | Waiting on | Then, in this repo |
+|---|---|---|
+| E1 thresholds | ADR accepted on localloop.pro-main#100 | Paste numbers into `tools/slo_thresholds.json`, set `provisional: false` and `adr`, run `slo_report.py --require-final` (one small PR) |
+| `X-Request-ID` at map/gateway | localloop.pro-main#101 / #102 merged | Nothing; Looper already echoes it (section 1) |
+| Outbox drain logging | hybridcard-v2#62 merged | Nothing |
+| Worker deploy | Owner/devops change window | Nothing (agents never deploy) |
+| Staging E2E | Owner/devops names a non-prod URL on looper#20 | Run `tools/e6_nonprod_check.py https://<host> --non-prod-host <host>` and `tools/slo_report.py`, run the browser E2E, attach the output to looper#20 |
+| Production sign-off | Owner (Bill), after all of the above | Nothing |
