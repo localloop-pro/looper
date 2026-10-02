@@ -409,6 +409,19 @@
 - Code only. The Coolify redeploy of looper-api and the Aesthete category
   change on hybridcard.ai stay with the owner.
 
+### Identity reads are outside the per-IP read limit (2026-10-02, looper#40)
+
+- `services/edge_boundary.py` `RATE_LIMIT_EXEMPT_PREFIXES = ("/api/identity/",)`.
+  HybridCard's badge proxy calls `/api/identity/domains/{domain}` server-side,
+  one IP for all hybridcard.ai visitors; a per-IP bucket would hide the badge
+  for everyone once `LOOPER_READ_RATE_LIMIT_PER_MIN` is turned on.
+- Looper adapts (receivers adapt); it does not rely on HybridCard changing
+  `cache: 'no-store'` to `revalidate: 60`, though that would still help.
+- Safe because the verifier only resolves the fixed `.kas` allowlist from its
+  own TTL cache with single-flight and failure back-off. If identity ever
+  accepts arbitrary domains, revisit: give it its own (higher) limit instead.
+- Exempt is a strict prefix with trailing slash: `/api/identityx` stays limited.
+
 ### Jarvis router drift check; the map re-sync is the map repo's job (2026-10-02, looper#39)
 
 - The live map ships its own copies of `web/jarvis/*.js`, and they had drifted.
@@ -427,6 +440,56 @@
   text. Map-only changes (card-link canonicalizer, SPEC-067 panel) are
   allowed to differ. Which repo owns these files stays ADR
   localloop.pro-main#100's call.
+
+### Cross-repo contract table + pinned caller tests (2026-10-02, looper#31)
+
+- `docs/CROSS-REPO-CONTRACTS.md` lists every call between Looper, HybridCard
+  and the map with file:line at pinned commits (HC `55b7ced`, MAP `761d3a1`).
+  `backend/tests/test_cross_repo_contracts.py` has one test per inbound row. Each
+  sends the caller's real shape and asserts only the fields that caller reads.
+  Known mismatches are pinned as today's behaviour (like #23), not xfailed, so
+  the fix changes the test on purpose.
+- The backend makes no outbound calls to the other two repos (only KNS).
+  looper-bot does: it reads the LocalLoop gateway's pending-pin queue
+  (`GET /api/bot/map/pins`, Bearer `LOOPER_BOT_READ_TOKEN`), calls its `/health`,
+  and opens map deep links (`?cat=&q=&fly=`). `looper.localloop.ai` is that
+  gateway (MAP), not this API. Those shapes match today and are pinned in
+  `looper-bot/electron/tests/gateway-contract.test.cjs`. The gateway's
+  `PLATFORM_ENV=live` mode would 503 them (#50).
+- Mismatches filed: #36 (HC card URL falls back to the deal receiver), #37 (map
+  renders `message` as HTML; upstream MAP#324), #38 (Jarvis reads `slug`),
+  #39 (map Jarvis copies drifted), #40 (read limiter vs HC server-side identity
+  proxy). No Looper behaviour changed in this PR; BRIDGE-CONTRACT-v1 untouched.
+- No "hybridcard.ai search widget" exists in hybridcard-v2 at `55b7ced`. The
+  CORS entries stay (harmless).
+
+### GitHub Actions CI (2026-10-02, looper#32)
+
+- `.github/workflows/ci.yml` runs on PRs to main and pushes to main with
+  `permissions: contents: read`, no repo secrets and no deploy steps. Jobs:
+  backend (Python 3.12, pytest), web (Node 20, voice router + Jarvis drift tests), worker
+  (looper-api-proxy tests), looper-bot (npm ci, typecheck, build, test; no
+  Electron binary download, no packaging, no keys), gitleaks, and a final `ci`
+  job that needs all of them.
+- gitleaks matches hybridcard-v2's setup (full-history checkout, auto
+  `GITHUB_TOKEN`, job-level `pull-requests: read`) but on `gitleaks-action@v3`,
+  because v2's Node 20 runtime is gone from hosted runners since 2026-09-16.
+  The repo is owned by a personal account, so no `GITLEAKS_LICENSE` is needed.
+- Making `ci` a required status check on `main` is the owner's step.
+
+### Card events at the deal receiver: named 422, never re-dispatched (2026-10-02, looper#36)
+
+- HybridCard falls back to `LOOPER_INGEST_URL` (the deal receiver) when
+  `LOOPER_CARD_INGEST_URL` is unset. The fix belongs to the sender (drop the
+  fallback, make readiness require the card URL). It is filed on hybridcard-v2.
+- Looper does NOT route `event_kind: card|partnership` from the deal receiver to
+  the card handler. That would hide a sender misconfiguration and give the deal
+  URL two contracts.
+- What Looper does instead: the deal receiver still answers 422 and writes
+  nothing (the eventId is not burned, so the same event lands once it is
+  re-sent to `/api/ingest/hybridcard-card`). The 422 detail now names the
+  cause, and the bridge trace records `outcome: "misrouted"` with the
+  `event_type` (no eventId, no payload fields).
 
 ### Gateway live-mode cutover is named, not hidden (2026-10-02, looper#50)
 

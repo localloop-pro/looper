@@ -273,39 +273,7 @@ test("gateway health is public, read-only, and allowlisted", async () => {
   assert.doesNotMatch(result.artifact.content, /must-not-escape/);
 });
 
-// #50: once the gateway runs with PLATFORM_ENV=live, platform-proxy.mjs answers
-// every unmigrated path (including /api/bot/map/pins and /health) with
-// 503 {"error":"migration_endpoint_pending"}. Name that state clearly instead of
-// a generic failure, and still show no queue data.
-test("pending-pin reader names the gateway live-mode cutover (migration_endpoint_pending)", async () => {
-  const tools = createLocalLoopGatewayTools({
-    baseUrl: BASE,
-    readToken: TOKEN,
-    fetchImpl: async () => jsonResponse(503, { error: "migration_endpoint_pending" }),
-  });
-  const result = await tools.readPendingPins();
-  assert.equal(result.ok, false);
-  assert.equal(result.status, 503);
-  assert.equal(result.error, "migration_endpoint_pending");
-  assert.match(result.message, /PLATFORM_ENV=live/);
-  assert.equal(result.pins, undefined);
-  assert.equal(result.artifact, undefined);
-});
-
-test("gateway health names the live-mode cutover instead of a generic failure", async () => {
-  const tools = createLocalLoopGatewayTools({
-    baseUrl: BASE,
-    fetchImpl: async () => jsonResponse(503, { error: "migration_endpoint_pending", detail: "must-not-escape" }),
-  });
-  const result = await tools.health();
-  assert.deepEqual(Object.keys(result).sort(), ["error", "message", "ok", "status"]);
-  assert.equal(result.ok, false);
-  assert.equal(result.status, 503);
-  assert.equal(result.error, "migration_endpoint_pending");
-  assert.match(result.message, /PLATFORM_ENV=live/);
-  assert.doesNotMatch(JSON.stringify(result), /must-not-escape/);
-});
-
+// #50: the migration_endpoint_pending case itself is pinned in gateway-contract.test.cjs.
 test("other health failures keep the generic gateway_health_failed code", async () => {
   const tools = createLocalLoopGatewayTools({
     baseUrl: BASE,
