@@ -116,6 +116,14 @@ check("navigate to hotel rooms → Accommodation (bare)", route("navigate to hot
 check("deals → offers intent", route("any deals around"), { intent: "offers", category: "Offers" });
 check("pizza deals keeps subject", route("pizza deals near me"), { intent: "offers", category: "Offers", searchTerm: "pizza deals offers", radiusM: 1000 });
 check("hairdresser discounts in coogee keeps subject + scope", route("hairdresser discounts in coogee"), { intent: "offers", suburb: "coogee", searchTerm: "hairdresser discounts deals offers" });
+// looper#29: hair words mirror backend/services/query_terms.py
+check("hairdresser reaches the brain as hair words", route("find me a hairdresser"), { intent: "search", searchTerm: "hairdresser salon hair" });
+check("bare Hairdresser is a search", route("Hairdresser"), { intent: "search", searchTerm: "hairdresser salon hair" });
+check("two-word hair dresser keeps both words", route("find a hair dresser"), { intent: "search", searchTerm: "hair dresser hairdresser salon hair" });
+check("hairdressers in bondi scopes the hair search", route("hairdressers in bondi"), { intent: "search", suburb: "bondi", searchTerm: "hairdressers hairdresser salon hair" });
+check("salon is a hair search", route("find me a salon"), { intent: "search", searchTerm: "hairdresser salon hair" });
+check("barber keeps barber", route("find a barber"), { intent: "search", searchTerm: "barber hair" });
+check("beauty stays health", route("find me a beauty spa"), { intent: "search", searchTerm: "beauty health fitness wellness" });
 check("specials → offers", route("show me today's specials"), { intent: "offers", category: "Offers" });
 check("deals in Bronte keeps suburb scope", route("any deals in bronte"), { intent: "offers", category: "Offers", suburb: "bronte" });
 check("news in Byron Bay keeps suburb scope", route("news in byron bay"), { intent: "news", category: "News", suburb: "byron bay" });

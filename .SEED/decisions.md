@@ -382,3 +382,24 @@
   `{"detail": "could not complete sign-up"}` with no id, name or join code.
   The 409 still tells a caller the number exists (enumeration); acceptable
   while writes are off, revisit with OTP before flipping the flag.
+
+### Search synonym + compound-word table (2026-10-02, looper#29)
+
+- `backend/services/query_terms.py` expands each query word before matching
+  (BLIND-SPOTS §3.16 half b, owner-approved): hairdresser/hairdressers/"hair
+  dresser" → hair, salon; salon → hair, hairdresser; barber → hair, barber;
+  cafe/café ↔ coffee; plus a few seed-category words (gp, chemist, gym,
+  sparky, dental, vets…).
+- The user's own word is always kept and still matches as a substring
+  (pre-#29 behaviour). Added alternatives must start a word, so "hair" never
+  matches "Chair Hire". No blanket "query word contains name word" rule:
+  "carpet cleaner" never matches "Car Wash".
+- Relevance scores each query word once (its best alternative), so an
+  expanded word can't outweigh an unexpanded one. Sort key unchanged:
+  relevance, review count, distance. A test ingests a 90%/rank_boost deal
+  with a card URL over the signed bridge and proves the order doesn't move.
+- `web/jarvis/voice-command-router.js` mirrors the words: barber words →
+  "barber hair", hairdresser/salon/hair words → "hairdresser salon hair"
+  (both before the health bucket). Change both files together.
+- Code only. The Coolify redeploy of looper-api and the Aesthete category
+  change on hybridcard.ai stay with the owner.
