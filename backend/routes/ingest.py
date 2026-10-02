@@ -22,6 +22,7 @@ from models import BridgeEvent, Business, Deal, get_db
 from schemas import HybridCardCardPayload, HybridCardDealPayload
 from services import bridge_hmac
 from services.bridge_hmac import BridgeAuthError
+from services.correlation import emit_bridge
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
@@ -74,23 +75,36 @@ def _brain_sync(
 MAX_BODY_BYTES = 64 * 1024
 
 
-async def _verified_raw_body(request: Request) -> bytes:
+async def _verified_raw_body(request: Request, receiver: str) -> bytes:
     """Read the raw body (bounded) and verify the X-HC-* HMAC headers over it.
     Raises 413 on oversized bodies, 401 on any auth failure."""
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        emit_bridge(receiver=receiver, outcome="too_large")
         raise HTTPException(status_code=413, detail="payload too large")
     buf = bytearray()
     async for chunk in request.stream():
         buf.extend(chunk)
         if len(buf) > MAX_BODY_BYTES:
+            emit_bridge(receiver=receiver, outcome="too_large")
             raise HTTPException(status_code=413, detail="payload too large")
     raw = bytes(buf)
     try:
         bridge_hmac.verify(raw, request.headers)
     except BridgeAuthError:
+        emit_bridge(receiver=receiver, outcome="unauthorized")
         raise HTTPException(status_code=401, detail="invalid signature")
     return raw
+
+
+def _trace_result(receiver: str, event_type: str, event_id: str,
+                  sender_ts: datetime | None, result: dict) -> dict:
+    """Bridge trace record for a committed (or duplicate) event."""
+    outcome = ("duplicate" if result.get("duplicate")
+               else "stale_skipped" if result.get("stale") else "processed")
+    emit_bridge(receiver=receiver, outcome=outcome, event_type=event_type,
+                event_id=event_id, sender_updated_at=sender_ts)
+    return result
 
 
 def _parse_sender_ts(value: str | None) -> datetime | None:
@@ -166,18 +180,21 @@ async def ingest_hybridcard_deal(
     db: Session = Depends(get_db),
 ):
     """Receiver for LooperIngestPayload (deal.upserted / deal.removed)."""
-    raw = await _verified_raw_body(request)
+    raw = await _verified_raw_body(request, "hybridcard-deal")
     try:
         payload = HybridCardDealPayload.model_validate_json(raw)
     except ValidationError:
+        emit_bridge(receiver="hybridcard-deal", outcome="invalid_payload")
         # non-2xx → sender retries then dead-letters; the designed outcome
         # for permanently malformed payloads.
         raise HTTPException(status_code=422, detail="invalid payload")
 
-    if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
-        return {"ok": True, "duplicate": True}
-
     sender_ts = _parse_sender_ts(payload.updated_at)
+    event_type = "deal.upserted" if payload.active else "deal.removed"
+    if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
+        return _trace_result("hybridcard-deal", event_type, payload.eventId, sender_ts,
+                             {"ok": True, "duplicate": True})
+
     biz, _ = _upsert_business(db, hybrid_card_id=payload.hybrid_card_id,
                               name=payload.business_name, category=payload.category,
                               lat=payload.lat, lng=payload.lng,
@@ -205,7 +222,6 @@ async def ingest_hybridcard_deal(
         if sender_ts:
             deal.source_updated_at = sender_ts
 
-    event_type = "deal.upserted" if payload.active else "deal.removed"
     result = _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
     if not result.get("duplicate") and not stale:
         # Extract scalars while session is open; background task runs after session closes.
@@ -218,7 +234,7 @@ async def ingest_hybridcard_deal(
             biz.lat, biz.lng, bool(biz.is_active),
             None, payload.sub_type, True,
         )
-    return result
+    return _trace_result("hybridcard-deal", event_type, payload.eventId, sender_ts, result)
 
 
 @router.post("/hybridcard-card")
@@ -233,16 +249,19 @@ async def ingest_hybridcard_card(
     untouched (card unpublish ≠ deal.removed) but the whole business
     disappears from /api/search via the is_active filter.
     """
-    raw = await _verified_raw_body(request)
+    raw = await _verified_raw_body(request, "hybridcard-card")
     try:
         payload = HybridCardCardPayload.model_validate_json(raw)
     except ValidationError:
+        emit_bridge(receiver="hybridcard-card", outcome="invalid_payload")
         raise HTTPException(status_code=422, detail="invalid payload")
 
-    if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
-        return {"ok": True, "duplicate": True}
-
     sender_ts = _parse_sender_ts(payload.updated_at)
+    event_type = "card.upserted" if payload.active else "card.removed"
+    if db.query(BridgeEvent).filter(BridgeEvent.event_id == payload.eventId).first():
+        return _trace_result("hybridcard-card", event_type, payload.eventId, sender_ts,
+                             {"ok": True, "duplicate": True})
+
     biz, stale = _upsert_business(db, hybrid_card_id=payload.hybrid_card_id,
                                   name=payload.business_name, category=payload.category,
                                   lat=payload.lat, lng=payload.lng,
@@ -250,7 +269,6 @@ async def ingest_hybridcard_card(
     if not stale:
         biz.is_active = payload.active  # is_verified untouched
 
-    event_type = "card.upserted" if payload.active else "card.removed"
     result = _record_event_and_commit(db, payload.eventId, event_type, raw, stale=stale)
     if not result.get("duplicate") and not stale:
         # Extract scalars while session is open; background task runs after session closes.
@@ -262,7 +280,7 @@ async def ingest_hybridcard_card(
             biz.lat, biz.lng, bool(biz.is_active),
             payload.archetype, payload.sub_type, False, payload.slug,
         )
-    return result
+    return _trace_result("hybridcard-card", event_type, payload.eventId, sender_ts, result)
 
 
 @router.get("/status")
