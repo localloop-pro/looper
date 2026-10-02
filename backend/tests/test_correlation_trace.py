@@ -120,11 +120,11 @@ def test_http_record_never_holds_query_ip_ua_or_auth(client, trace):
 
 
 def test_route_template_not_raw_path(client, trace):
-    client.get("/api/users/12345")
+    client.get("/api/reviews/12345")
     client.get("/api/does-not-exist/bill@example.com")
     client.get("/web/jarvis/does-not-exist.js")
     routes = [r["route"] for r in records(trace, "http")]
-    assert routes == ["/api/users/{user_id}", "unmatched", "/web"]
+    assert routes == ["/api/reviews/{business_id}", "unmatched", "/web"]
     assert "bill@example.com" not in "\n".join(trace.lines)
 
 

@@ -290,8 +290,7 @@ def test_preflight_untouched(client, db, cache_on, monkeypatch):
         assert resp.headers["access-control-allow-origin"] == ORIGIN
 
 
-@pytest.mark.parametrize("path", ["/api/users/1", "/api/code/ABC123", "/api/reviews/1",
-                                  "/api/ingest/status", "/health"])
+@pytest.mark.parametrize("path", ["/api/reviews/1", "/api/ingest/status", "/health"])
 def test_private_and_operational_reads_are_no_store(client, db, cache_on, path):
     first = client.get(path)
     second = client.get(path)

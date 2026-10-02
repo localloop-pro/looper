@@ -18,10 +18,9 @@ Harness: `tools/bench_read_paths.py`.
 | `GET /api/discover` | **cacheable** | anonymous, public, slowest read in E1 (p95 249 ms @10 workers) |
 | `GET /api/businesses` | **cacheable** | anonymous, public list |
 | `GET /api/reviews/{id}` | no-store | carries reviewer first names |
-| `GET /api/users/{id}`, `GET /api/code/{code}` | no-store | per-person data (BLIND-SPOTS §3.6) |
 | `GET /api/ingest/status`, `/health` | no-store | operational, must be live |
 | `GET /api/pins`, `/api/tourist-info`, `/api/identity/*` | pass-through | headers unchanged; identity already has its own bounded cache |
-| every `POST` (reviews, onboard, pins, bridge receivers) | pass-through | never cached, never rate limited, auth untouched |
+| every `POST` (reviews, onboard, pins, bridge receivers) | pass-through | never cached, never rate limited, auth untouched (reviews/onboard/pins are 403 unless `LOOPER_PUBLIC_WRITES=true`, looper#27) |
 
 The read **rate limit** covers every `GET`/`HEAD` under `/api/`. `/health`,
 `/docs`, `/web` and all writes are outside it.

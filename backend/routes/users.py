@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from models import User, get_db
 from schemas import OnboardUserRequest, OnboardUserResponse
+from services.write_guard import require_public_writes
 
 router = APIRouter(prefix="/api", tags=["users"])
 
@@ -17,18 +18,15 @@ def generate_join_code(db: Session) -> str:
     raise HTTPException(status_code=500, detail="Could not generate unique code")
 
 
-@router.post("/onboard", response_model=OnboardUserResponse)
+@router.post("/onboard", response_model=OnboardUserResponse,
+             dependencies=[Depends(require_public_writes)])
 def onboard_user(req: OnboardUserRequest, db: Session = Depends(get_db)):
     """Register a new user and generate their 6-digit join code."""
-    # Check if mobile already registered
+    # An already-registered number gets 409 with no data. Echoing the stored
+    # user_id / join code would hand them to anyone who knows the mobile.
     existing = db.query(User).filter(User.mobile_number == req.mobile_number).first()
     if existing:
-        return OnboardUserResponse(
-            user_id=existing.id,
-            first_name=existing.first_name,
-            join_code=existing.join_code,
-            message=f"Welcome back, {existing.first_name}! Your Bondi Local Loop code is still: **{existing.join_code}**"
-        )
+        raise HTTPException(status_code=409, detail="could not complete sign-up")
 
     # Create new user
     join_code = generate_join_code(db)
@@ -72,33 +70,3 @@ def onboard_user(req: OnboardUserRequest, db: Session = Depends(get_db)):
         message=message,
     )
 
-
-@router.get("/code/{code}")
-def validate_code(code: str, db: Session = Depends(get_db)):
-    """Validate a 6-digit join code."""
-    user = db.query(User).filter(User.join_code == code).first()
-    if not user:
-        return {"valid": False, "message": "Code not found. Please check and try again."}
-    return {
-        "valid": True,
-        "first_name": user.first_name,
-        "user_type": user.user_type,
-        "created_at": user.created_at.isoformat(),
-    }
-
-
-@router.get("/users/{user_id}")
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    """Get user profile."""
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {
-        "id": user.id,
-        "first_name": user.first_name,
-        "user_type": user.user_type,
-        "interest_category": user.interest_category,
-        "join_code": user.join_code,
-        "is_active": user.is_active,
-        "created_at": user.created_at.isoformat(),
-    }

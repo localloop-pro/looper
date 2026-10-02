@@ -23,7 +23,7 @@ production until the owner accepts the E1 ADR (localloop.pro-main#100):
 Policy table (docs/EDGE-READ-BOUNDARY.md explains each row):
 
   cacheable  /api/search, /api/discover, /api/businesses
-  no-store   /api/users/*, /api/code/*, /api/reviews/*, /api/ingest/*, /health
+  no-store   /api/reviews/*, /api/ingest/*, /health
   rate limit every GET/HEAD under /api/ (writes and bridge receivers untouched)
 
 Cache key = path + the route's ranking-relevant query params, in request
@@ -52,7 +52,7 @@ CACHEABLE_PARAMS: dict[str, tuple[str, ...]] = {
 }
 
 # Reads that carry per-person or operational data: never cached anywhere.
-NO_STORE_PREFIXES = ("/api/users/", "/api/code/", "/api/reviews/", "/api/ingest/", "/health")
+NO_STORE_PREFIXES = ("/api/reviews/", "/api/ingest/", "/health")
 
 SAFE_METHODS = {"GET", "HEAD"}
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
