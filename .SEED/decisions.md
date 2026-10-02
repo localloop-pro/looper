@@ -1,5 +1,8 @@
 # .SEED/decisions.md — looper decisions log
 
+> New entries: one file per PR in `.SEED/decisions/` (or `docs/learnings/`).
+> Read both. Name it `<issue>-<short-slug>.md`. Do not append here (looper#53).
+
 - 2026-10-02 (issue #8, E4): public read boundary ships DARK in FastAPI
   (`backend/services/edge_boundary.py`), not in a Worker. Cache for
   search/discover/businesses (`LOOPER_READ_CACHE_TTL_S`, default 0 = off) and
@@ -477,6 +480,22 @@
   The repo is owned by a personal account, so no `GITLEAKS_LICENSE` is needed.
 - Making `ci` a required status check on `main` is the owner's step.
 
+### Search card link: `card_url` only, no `slug` (2026-10-02, looper#38)
+
+- `/api/search` results carry `card_url` as the only card link. It is the
+  sender's `public_card_url`, returned as sent for any host (tunnel hosts
+  too), never rebuilt from a slug, never a ranking input.
+- No `slug` field in `SearchResult`. Adding it needs a new `businesses`
+  column filled from the card payload's `slug`. That is a schema change to
+  live data (hot zone) with no owner OK, so the consumer adapts instead:
+  the map's Jarvis dock should drop its `r.slug` read
+  (localloop-pro/localloop.pro-main#333).
+- Pinned by `backend/tests/test_search_card_link_contract.py`: no `slug`
+  even when the card event sent one, tunnel URLs returned as sent, and a
+  carded 90%/rank_boost deal still ranks below a reviewed business.
+- Revisit only if the owner approves the column. Then add it as nullable,
+  fill it from card events going forward, and never derive `card_url` from it.
+
 ### Card events at the deal receiver: named 422, never re-dispatched (2026-10-02, looper#36)
 
 - HybridCard falls back to `LOOPER_INGEST_URL` (the deal receiver) when
@@ -520,19 +539,3 @@
   `migration_endpoint_pending` as a known code for both the pin reader and
   health. Bill hears that the gateway changed mode instead of a generic
   "request failed". It still fails closed: no queue data, no body echoed.
-
-### SQLite backup: online backup API, owner-run, separate volume (2026-10-02, looper#56)
-
-- `backend/scripts/sqlite_backup.py` copies with `Connection.backup(pages=-1)`
-  from a `mode=ro` URI connection: one consistent snapshot under a read lock,
-  never a file copy, and the source can't be written. Copy goes to a hidden
-  `.partial` file, passes `PRAGMA integrity_check`, then gets renamed, so a
-  failed run leaves nothing that looks like a good backup.
-- Retention (`--keep`, default 14) only deletes names matching
-  `looper-YYYYMMDDTHHMMSSZ.db` in `--out-dir`. It refuses an `--out-dir` equal
-  to the live DB's folder (`/app/data` also holds the Kaspa cache).
-- The script is standalone (no `models` import), so it never binds the app's
-  engine or runs `create_all` on the source.
-- Backups contain `users` PII: `.gitignore` gains `looper-*.db` and `backups/`.
-- The owner wires the Coolify scheduled task and the second volume
-  (`docs/RUNBOOK-BACKUP-RESTORE.md`). Agents never run it against production.

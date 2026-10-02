@@ -43,6 +43,9 @@ Thumbs.db
 
 # Training
 training/output/
-training/checkpoints/workers/**/.wrangler/
+training/checkpoints/
+
+# Wrangler local cache/state (never commit; can hold account ids)
+workers/**/.wrangler/
 
 node_modules/

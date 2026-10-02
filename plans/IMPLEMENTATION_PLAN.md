@@ -1040,7 +1040,7 @@ Every TypeDB entity carries its FK back to the source system
   with a working card link; a second comment produces nothing; webhook
   outage degrades silently (welcome post still links to join page).
 - **Depends:** F7.3. If the webhook proves dead, close the feature and note
-  it in `.SEED/decisions.md` — Layers 1–3 carry the funnel.
+  it in `.SEED/decisions/` — Layers 1–3 carry the funnel.
 
 ---
 
@@ -1149,7 +1149,7 @@ Every TypeDB entity carries its FK back to the source system
 2. Watch one week of `bridge_events` + dead-letter counts.
 3. Only then consider (card-repo governance, separate sign-offs):
    `LIVE_ALERT_FANOUT`, `SMS_LIVE`, `PAYMENTS_LIVE`, VAPID push.
-- **Acceptance:** each flip logged in `.SEED/decisions.md` with date +
+- **Acceptance:** each flip logged as a file in `.SEED/decisions/` with date +
   reason; dead-letter count stays 0 for 7 days before the next flip.
 - **Depends:** F9.3.
 
@@ -1207,7 +1207,7 @@ Safe parallel tracks once Phase 0 is done: **(A)** Phase 1 bridge,
 |---|---|---|
 | 1 | **Facebook capture legality/fragility** — VERIFIED July 2026: Groups API removed April 2024 (no app reads requests/answers, Zapier/Make dropped groups); answers vanish at approval; extension capture (Group Collector/Groupboss pattern) breaches Meta ToS §3.2.3 in principle with risk landing on the admin account; no cold DMs ever. | F7.2's 3 layers: official funnel always on; extension capture human-paced on a second admin account, Bill signs off on the trade-off; CSV fallback. F7.6 Private-Reply pilot is the only compliant DM and ships with a kill switch. Never automate approvals in v1. |
 | 2 | Phase-number collision across card-repo docs (ROADMAP "Phase 20" ≠ MASTER-PLAN "Phase 20"). | This plan uses ONLY its own F-numbers; card-repo phases referenced by name + doc. |
-| 3 | TypeDB driver/package naming inconsistent across specs (`typedb-driver` vs `@typedb/driver`). | Pin exact package at F2.2 implementation time from typedb.com docs; record in `.SEED/decisions.md`. |
+| 3 | TypeDB driver/package naming inconsistent across specs (`typedb-driver` vs `@typedb/driver`). | Pin exact package at F2.2 implementation time from typedb.com docs; record as a file in `.SEED/decisions/`. |
 | 4 | llx11 `index.html` is a 15k-line monolith — voice/marker edits risk regressions. | Surgical additive files (`voice-command-router.js`, `looper-map-bus.js`, `hybridcard-markers.js`), unit tests outside the monolith, evidence screenshots per feature. |
 | 5 | Two voice code paths already drift (`main-map.js` vs dock). | F3.2 single router is the fix; delete duplicates same PR. |
 | 6 | `localloop.pro` cert broken (Traefik default cert). | F9.1; until then all links use localloop.ai. |

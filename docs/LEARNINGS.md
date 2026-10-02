@@ -1,5 +1,8 @@
 # LEARNINGS.md — one short lesson per merged PR
 
+> New entries: one file per PR in `docs/learnings/` (or `.SEED/decisions/`).
+> Read both. Name it `<issue>-<short-slug>.md`. Do not append here (looper#53).
+
 - looper#27: guard unauthenticated writes with a per-route FastAPI dependency
   (`dependencies=[Depends(...)]`) so an empty body gets 403 instead of 422, and
   delete leaky reads outright rather than putting them behind the same flag.
@@ -20,7 +23,7 @@
   required check and a skipped or cancelled job can't pass as green. Check
   action runtimes before copying a workflow: `gitleaks-action@v2` runs on
   Node 20, which GitHub removed from hosted runners on 2026-09-16, so use `@v3`.
-- looper#56: back up a live SQLite file with `Connection.backup(pages=-1)` from a
-  `file:...?mode=ro` connection, never `cp`. Write to a `.partial` name and
-  rename only after `integrity_check` passes, and let retention delete only
-  names matching the script's own pattern.
+- looper#38: Looper sends card_url (the sender's public_card_url, any host,
+  as sent) as the only card link and never a slug. When a consumer reads a
+  field we don't send, fix the consumer (localloop.pro-main#333) instead of
+  adding a column to live data without the owner's OK.
