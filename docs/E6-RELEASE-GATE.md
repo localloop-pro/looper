@@ -168,6 +168,7 @@ A percentage split belongs at the Worker (devops lane, other issue).
 | Tracing (this PR) | set `LOOPER_TRACE_LOG=off` and restart, or `git revert` and redeploy | none: tracing writes no rows |
 | uvicorn access log off in `main.py` (this PR, local runs only) | remove `access_log=False` from `uvicorn.run` (brings back IP + query-text logging) | none |
 | Read cache / rate limit (PR #16) | set the flags to `0` and restart | none: in-process only |
+| `looper-api-proxy` Worker (looper#17) | `npx wrangler rollback` (`docs/WORKER-DEPLOY-RUNBOOK.md` §4) | none: the Worker stores nothing |
 | Any backend release | Coolify: redeploy the previous commit | none: bridge receipts are idempotent on `eventId`, and the sender retries every non-2xx, so events missed during a bad deploy re-arrive |
 | Bridge receiver regression | revert. Do **not** delete `bridge_events` rows; replays become `duplicate` | none |
 
@@ -216,7 +217,7 @@ are open, no staging target is named):
 - [ ] HybridCard outbox logs `eventId`, `attempts`, `status`, `lastError` per
   drain, with no payload (hybridcard-v2#62).
 - [ ] Deploy the updated `looper-api-proxy` Worker in an approved change
-  window (owner/devops, never agents).
+  window (owner/devops, never agents). Steps: `docs/WORKER-DEPLOY-RUNBOOK.md`.
 - [ ] LocalLoop and HybridCard adopt section 1 (their E2/E3/E5 issues).
 - [ ] Owner sign-off on production rollout.
 
@@ -231,6 +232,6 @@ that doesn't depend on E1.
 | E1 thresholds | ADR accepted on localloop.pro-main#100 | Paste numbers into `tools/slo_thresholds.json`, set `provisional: false` and `adr`, run `slo_report.py --require-final` (one small PR) |
 | `X-Request-ID` at map/gateway | localloop.pro-main#101 / #102 merged | Nothing; Looper already echoes it (section 1) |
 | Outbox drain logging | hybridcard-v2#62 merged | Nothing |
-| Worker deploy | Owner/devops change window | Nothing (agents never deploy) |
+| Worker deploy | Owner/devops change window | Nothing (agents never deploy). The owner follows `docs/WORKER-DEPLOY-RUNBOOK.md`: deploy, checks, one-command rollback |
 | Staging E2E | Owner/devops names a non-prod URL on looper#20 | Run `HYBRIDCARD_INGEST_SECRET=<staging secret> python3 tools/e6_nonprod_check.py https://<host> --non-prod-host <host>` and `python3 tools/slo_report.py report <server-log> --require-final`, run the browser E2E, attach the output to looper#20 |
 | Production sign-off | Owner (Bill), after all of the above | Nothing |
