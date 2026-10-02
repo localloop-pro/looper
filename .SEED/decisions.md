@@ -383,6 +383,32 @@
   The 409 still tells a caller the number exists (enumeration); acceptable
   while writes are off, revisit with OTP before flipping the flag.
 
+### Search synonym + compound-word table (2026-10-02, looper#29)
+
+- `backend/services/query_terms.py` expands each query word before matching
+  (BLIND-SPOTS §3.16 half b, owner-approved): hairdresser/hairdressers/"hair
+  dresser" → hair, salon; salon → hair, hairdresser; barber → hair, barber;
+  cafe/café ↔ coffee; plus a few seed-category words (gp, chemist, gym,
+  sparky, dental, vets…).
+- The user's own word is always kept and still matches as a substring
+  (pre-#29 behaviour). Added alternatives must start a word, so "hair" never
+  matches "Chair Hire". No blanket "query word contains name word" rule:
+  "carpet cleaner" never matches "Car Wash".
+- Relevance scores each query word once (its best alternative), so an
+  expanded word can't outweigh an unexpanded one. Sort key unchanged:
+  relevance, review count, distance. A test ingests a 90%/rank_boost deal
+  with a card URL over the signed bridge and proves the order doesn't move.
+- `web/jarvis/voice-command-router.js` sends only the user's own hair noun
+  (barber words → "barber", hairdresser words → "hairdresser", salon words →
+  "salon", bare "hair" → "hair"), all before the health bucket, and lets the
+  backend table expand it. Padding the term with a bare "hair" made spoken
+  "hairdresser" reach "Chair Hire" (PR #34 QA round 1). Change both files together.
+- The parts of a two-word compound ("hair dresser"), and a word that another
+  word in the same query already adds ("barber hair"), match only at the start
+  of a word. Typed bare "hair" still matches as a substring, as on main.
+- Code only. The Coolify redeploy of looper-api and the Aesthete category
+  change on hybridcard.ai stay with the owner.
+
 ### Card events at the deal receiver: named 422, never re-dispatched (2026-10-02, looper#36)
 
 - HybridCard falls back to `LOOPER_INGEST_URL` (the deal receiver) when
