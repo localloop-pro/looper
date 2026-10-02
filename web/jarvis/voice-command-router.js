@@ -91,8 +91,17 @@
     { re: /\b(events?|concerts?|markets?|festivals?|exhibitions?|gigs?|what's on|whats on|entertainment|live (?:music|streams?|shows?)|shows)\b/, pin: "Events", term: "events" },
     // news
     { re: /\b(news|headlines?|happening|going on|stor(?:y|ies)|updates?|reports?|bulletins?)\b/, pin: "News", term: "news" },
+    // hair BEFORE health (looper#29): mirrors backend/services/query_terms.py
+    // so spoken and typed "hairdresser" / "hair dresser" / "salon" / "barber"
+    // reach the brain as hair words, not the generic health bucket.
+    // Send only the user's own noun: the backend table expands it, and a
+    // padded bare "hair" would reach "Chair Hire" (PR #34 QA).
+    { re: /\b(barbers?|barber ?shops?)\b/, pin: null, term: "barber" },
+    { re: /\b(hair ?dress(?:ers?|ing))\b/, pin: null, term: "hairdresser" },
+    { re: /\b(hair ?salons?|salons?)\b/, pin: null, term: "salon" },
+    { re: /\b(hair)\b/, pin: null, term: "hair" },
     // health & wellbeing (spa/relax/fitness — no fixed pin category; brain-only)
-    { re: /\b(spas?|relax|massage|fitness|gyms?|yoga|pilates|doctors?|dentists?|physio|chemist|pharmac(?:y|ies)|health|wellness|hair|barbers?|beauty)\b/, pin: null, term: "health fitness wellness" },
+    { re: /\b(spas?|relax|massage|fitness|gyms?|yoga|pilates|doctors?|dentists?|physio|chemist|pharmac(?:y|ies)|health|wellness|beauty)\b/, pin: null, term: "health fitness wellness" },
     // shopping → the Offers pin (host voice table maps shops/shopping to
     // Offers, so Jarvis and the visible map agree)
     { re: /\b(shops?|shopping|stores?|boutiques?|clothes|clothing|gifts?|surf shop|bookshop|book store)\b/, pin: "Offers", term: "shop retail" },

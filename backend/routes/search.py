@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from models import Business, Deal, Review, fold_accents, get_db
 from schemas import SearchResponse, SearchResult
-from services import telemetry
+from services import query_terms, telemetry
 
 router = APIRouter(prefix="/api", tags=["search"])
 
@@ -92,13 +92,19 @@ def search_businesses(
     if not search_tokens:
         search_tokens = tokens  # fallback if all words are stopwords
     
-    # Build OR filter: match any token against name, category, suburb,
+    # Expand each word with the explicit synonym / compound table
+    # (services/query_terms.py, looper#29): "hairdresser" also tries "hair"
+    # and "salon". Originals always stay; added words must start a word.
+    groups = query_terms.expand(search_tokens)
+
+    # Build OR filter: match any term against name, category, suburb,
     # description — both sides accent-folded via the registered SQLite
     # fold_accents() function (models.py), so "cafe" finds "café".
+    # SQL LIKE only narrows candidates; group_matches() below is the rule.
     from sqlalchemy import or_
     conditions = []
-    for token in search_tokens:
-        pattern = f"%{token}%"
+    for term in sorted({t.text for group in groups for t in group}):
+        pattern = f"%{term}%"
         conditions.append(func.fold_accents(Business.name).like(pattern))
         conditions.append(func.fold_accents(Business.category).like(pattern))
         conditions.append(func.fold_accents(Business.suburb).like(pattern))
@@ -111,6 +117,17 @@ def search_businesses(
     # Score and rank by review count + recency (verifiable data only)
     results = []
     for biz in businesses:
+        fields = {
+            "category": fold_accents(biz.category),
+            "name": fold_accents(biz.name),
+            "suburb": fold_accents(biz.suburb),
+            "description": fold_accents(biz.description),
+        }
+        # LIKE is a substring prefilter; drop rows whose only hit is an
+        # added alternative in the middle of a word ("hair" in "chair").
+        if not any(query_terms.group_matches(g, v) for g in groups for v in fields.values()):
+            continue
+
         review_count = db.query(func.count(Review.id)).filter(
             Review.business_id == biz.id, Review.is_public == True
         ).scalar()
@@ -130,15 +147,17 @@ def search_businesses(
 
         # Relevance score: boost category/name matches over generic suburb
         # matches (accent-folded on both sides, same as the SQL filter)
+        # One score per query word: an expanded word counts once, no matter
+        # how many of its alternatives hit.
         relevance = 0
-        for token in search_tokens:
-            if token in (fold_accents(biz.category) or ""):
+        for group in groups:
+            if query_terms.group_matches(group, fields["category"]):
                 relevance += 5  # category match = highest relevance
-            if token in (fold_accents(biz.name) or ""):
+            if query_terms.group_matches(group, fields["name"]):
                 relevance += 3  # name match
-            if biz.suburb and token in fold_accents(biz.suburb):
+            if query_terms.group_matches(group, fields["suburb"]):
                 relevance += 2  # suburb match
-            if biz.description and token in fold_accents(biz.description):
+            if query_terms.group_matches(group, fields["description"]):
                 relevance += 1
 
         results.append({
