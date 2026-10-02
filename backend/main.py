@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from models import init_db
+from services.correlation import CorrelationMiddleware
 from services.edge_boundary import PublicReadBoundary
 from routes import users, search, map, reviews, ingest, discover, identity
 
@@ -44,6 +45,13 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID", "X-Looper-Cache", "Retry-After"],
 )
+
+# E6 correlation (issue #9): canonical X-Request-ID + one PII-free JSON trace
+# line per request. Added LAST so it is the outermost layer and also covers
+# CORS rejections and the read boundary's HIT/STALE/429 answers. It rewrites
+# the inbound id first, so PublicReadBoundary echoes the same canonical id.
+# LOOPER_TRACE_LOG=off silences the log lines (the header echo stays).
+app.add_middleware(CorrelationMiddleware)
 
 # Register routes
 app.include_router(users.router)
@@ -84,4 +92,6 @@ def health():
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("LOOPER_PORT", "8000"))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    # access_log=False: uvicorn's access line logs client IP + raw query text;
+    # the PII-free trace record from services/correlation.py replaces it.
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True, access_log=False)

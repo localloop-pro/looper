@@ -303,3 +303,32 @@
 - F4.3 now blocks ONLY on voice acceptance (restart looper-bot first so
   Electron loads the token). TTS-cost and hot-zone flags remain untouched and
   separately gated.
+
+### E6 release gate — Looper slice: correlation, SLO report, non-prod checks (2026-10-02, looper#9)
+
+- One correlation convention: `X-Request-ID` on HTTP hops (opaque 8–128
+  `[A-Za-z0-9._:-]` with at least one letter, else replaced by uuid4 hex,
+  so a dictated phone number can never become a trace key); bridge events
+  join on the existing payload `eventId` — no header or payload change, the
+  contract stays frozen.
+- `backend/services/correlation.py` is the outermost ASGI layer. It writes
+  the canonical id back into the scope, so the merged PR #16 read boundary
+  echoes the same id. It emits allowlisted JSON lines (`kind: http` / `kind: bridge`) to
+  stderr: route template only, never query/IP/UA/auth/body/business data.
+  `LOOPER_TRACE_LOG=off` is the kill switch. It writes no rows.
+- Bridge delivery age = receive time − payload `updated_at`, because
+  `X-HC-Timestamp` is re-signed on every retry.
+- `tools/slo_report.py` (report + compare) is the release gate.
+  `tools/slo_thresholds.json` is PROVISIONAL until the E1 ADR
+  (localloop.pro-main#100). Too few samples = fail.
+- `tools/e6_nonprod_check.py` refuses localloop/hybridcard/sslip hosts and
+  any non-loopback host without `--non-prod-host`.
+- Runbook: `docs/E6-RELEASE-GATE.md`. The cross-repo staging E2E and the
+  owner production sign-off remain open by design.
+- uvicorn's default access log was ON in production (`Dockerfile` CMD). It
+  logged the client IP and the raw query string, and voice queries can carry
+  dictated emails/mobiles. `main.py` now passes `access_log=False` (local
+  runs). The Dockerfile `--no-access-log` is a deploy change, so it waits for
+  the owner's OK on looper#9; until then the release gate marks it ⚠️ and a
+  strict-xfail test tracks it. Security reviews must say what is still open,
+  never ✅ a gap outside the code they changed.
