@@ -61,3 +61,13 @@ Command: `python /app/looper/tools/news_audio_worker.py`
 - Delete `audio_error` from payload to retry a failed row.
 - Re-running always overwrites the Storage MP3 (upsert) but only updates
   `audio_url` on the first successful run (the skip check above).
+
+## `bench_read_paths.py` (issue #8)
+
+Local p50/p95 + error-rate harness for `/api/search` and `/api/discover`
+(E1 method: 20 warmup, 100 sequential, 200 at 10 workers). Stdlib only.
+Point it at a local server on a throwaway DB — never at production.
+
+```bash
+python3 tools/bench_read_paths.py http://127.0.0.1:8010
+```
