@@ -20,6 +20,9 @@ data/exports/
 data/hf_dataset/
 *.db-journal
 *.db-wal
+# SQLite backups hold raw names + mobiles (docs/RUNBOOK-BACKUP-RESTORE.md)
+looper-*.db
+backups/
 
 # Environment
 .env

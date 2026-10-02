@@ -20,3 +20,7 @@
   required check and a skipped or cancelled job can't pass as green. Check
   action runtimes before copying a workflow: `gitleaks-action@v2` runs on
   Node 20, which GitHub removed from hosted runners on 2026-09-16, so use `@v3`.
+- looper#56: back up a live SQLite file with `Connection.backup(pages=-1)` from a
+  `file:...?mode=ro` connection, never `cp`. Write to a `.partial` name and
+  rename only after `integrity_check` passes, and let retention delete only
+  names matching the script's own pattern.
