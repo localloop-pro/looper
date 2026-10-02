@@ -320,3 +320,8 @@
   any non-loopback host without `--non-prod-host`.
 - Runbook: `docs/E6-RELEASE-GATE.md`. The cross-repo staging E2E and the
   owner production sign-off remain open by design.
+- uvicorn's default access log was ON in production (`Dockerfile` CMD). It
+  logged the client IP and the raw query string, and voice queries can carry
+  dictated emails/mobiles. Now `--no-access-log` (Dockerfile) and
+  `access_log=False` (main.py); the trace record replaces it. A static test
+  guards both.

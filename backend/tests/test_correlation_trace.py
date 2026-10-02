@@ -147,6 +147,18 @@ def test_trace_off_keeps_header_but_logs_nothing(client, trace, monkeypatch):
     assert trace.lines == []
 
 
+def test_uvicorn_access_log_is_off_everywhere():
+    """uvicorn's default access line holds the client IP and the raw query
+    string. Production (Dockerfile) and local runs (main.py) must disable it;
+    the allowlisted trace record replaces it."""
+    import pathlib
+    backend = pathlib.Path(__file__).resolve().parents[1]
+    cmd = [line for line in (backend / "Dockerfile").read_text().splitlines()
+           if line.startswith("CMD [") and "uvicorn" in line]
+    assert cmd and all("--no-access-log" in line for line in cmd)
+    assert "access_log=False" in (backend / "main.py").read_text()
+
+
 # ---------------------------------------------------------------- bridge
 
 def test_bridge_processed_then_duplicate(client, trace):

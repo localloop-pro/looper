@@ -149,6 +149,7 @@ A percentage split belongs at the Worker (devops lane, other issue).
 | Change | Rollback | Data repair |
 |---|---|---|
 | Tracing (this PR) | set `LOOPER_TRACE_LOG=off` and restart, or `git revert` and redeploy | none: tracing writes no rows |
+| uvicorn access log off (this PR) | not recommended: it brings back IP + query-text logging. If needed, drop `--no-access-log` from the Dockerfile `CMD` | none |
 | Read cache / rate limit (PR #16) | set the flags to `0` and restart | none: in-process only |
 | Any backend release | Coolify: redeploy the previous commit | none: bridge receipts are idempotent on `eventId`, and the sender retries every non-2xx, so events missed during a bad deploy re-arrive |
 | Bridge receiver regression | revert. Do **not** delete `bridge_events` rows; replays become `duplicate` | none |
@@ -172,7 +173,7 @@ contract checks passed.
 
 | Area | Status | Evidence / gap |
 |---|---|---|
-| Logging leakage | ✅ allowlist records, unsafe ids replaced | `tests/test_correlation_trace.py` |
+| Logging leakage | ✅ allowlist records, unsafe ids replaced. uvicorn's default access log (client IP + raw query text) is **off** in the Dockerfile and `main.py`; it was on in production before looper#9 | `tests/test_correlation_trace.py` (incl. `test_uvicorn_access_log_is_off_everywhere`) |
 | Replay | ✅ idempotent on `eventId`; out-of-order retries skipped; ±5 min HMAC window | `test_bridge_hmac.py`, `test_ingest_*`, non-prod check |
 | Authorization (bridge) | ✅ HMAC over the raw body, constant-time compare, 401/413 | non-prod check: tampered, expired, unknown key, wrong secret, unsigned → 401 |
 | CORS | ✅ exact allowlist; a foreign origin gets no grant; preflight from a foreign origin is 400 | non-prod check + tests |

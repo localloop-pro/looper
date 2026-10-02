@@ -92,4 +92,6 @@ def health():
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("LOOPER_PORT", "8000"))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    # access_log=False: uvicorn's access line logs client IP + raw query text;
+    # the PII-free trace record from services/correlation.py replaces it.
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True, access_log=False)

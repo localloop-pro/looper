@@ -29,4 +29,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=3).status==200 else 1)"
 
 WORKDIR /app/looper/backend
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --no-access-log: uvicorn's default access line holds the client IP and the
+# raw query string (voice search text can carry dictated emails/mobiles).
+# The PII-free `kind: http` trace record (services/correlation.py) replaces it.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
