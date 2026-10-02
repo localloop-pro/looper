@@ -362,3 +362,23 @@
   one test assert, and a green run on placeholder numbers can't be
   taken as production approval.
 
+
+### Public writes behind a kill switch, profile reads deleted (2026-10-02, looper#27)
+
+- BLIND-SPOTS §3.6 / step 7. `POST /api/reviews`, `/api/onboard` and `/api/pins`
+  answer 403 `{"detail": "public writes are disabled"}` unless
+  `LOOPER_PUBLIC_WRITES` is exactly `true` (`services/write_guard.py`).
+  Attached per route decorator, never on the routers: those routers also hold
+  the public `GET /api/reviews/{id}`, `GET /api/pins`, `GET /api/tourist-info`.
+  It is a dependency so an empty body gets 403, not 422.
+- `GET /api/users/{id}` and `GET /api/code/{code}` are deleted, not flagged: no
+  caller exists (Telegram bot never launched) and the write flag must never be
+  able to reopen a join-code leak. If a feature needs them back, they return
+  behind their own bearer guard (`require_profile_reader`).
+- `verified_visit` is no longer in `SubmitReviewRequest`; the server always
+  stores `False` for a direct submission (extra body fields are ignored).
+  `seed.py` still writes `True` straight to the DB — throwaway DBs only.
+- `POST /api/onboard` with an already-registered mobile returns 409
+  `{"detail": "could not complete sign-up"}` with no id, name or join code.
+  The 409 still tells a caller the number exists (enumeration); acceptable
+  while writes are off, revisit with OTP before flipping the flag.

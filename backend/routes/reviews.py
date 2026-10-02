@@ -4,11 +4,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from models import Review, Business, User, get_db
 from schemas import SubmitReviewRequest
+from services.write_guard import require_public_writes
 
 router = APIRouter(prefix="/api", tags=["reviews"])
 
 
-@router.post("/reviews")
+@router.post("/reviews", dependencies=[Depends(require_public_writes)])
 def submit_review(req: SubmitReviewRequest, db: Session = Depends(get_db)):
     """Submit a review for a business."""
     # Verify business exists
@@ -34,7 +35,8 @@ def submit_review(req: SubmitReviewRequest, db: Session = Depends(get_db)):
         user_id=req.user_id,
         rating=req.rating,
         review_text=req.review_text,
-        verified_visit=req.verified_visit,
+        # Never trust the caller: a direct submission is not a verified visit.
+        verified_visit=False,
     )
     db.add(review)
     db.commit()

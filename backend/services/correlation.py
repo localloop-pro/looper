@@ -144,7 +144,7 @@ class CorrelationMiddleware:
         try:
             await self.app(scope, receive, send_with_id)
         finally:
-            # Route template only (/api/search, /api/users/{user_id}, or /web
+            # Route template only (/api/search, /api/reviews/{business_id}, or /web
             # for the static mount) — never the raw path or query, which can
             # carry free text.
             route = getattr(scope.get("route"), "path", None)

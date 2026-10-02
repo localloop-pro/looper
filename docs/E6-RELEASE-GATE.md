@@ -30,7 +30,7 @@ Rules, enforced in `backend/services/correlation.py`:
   the same id, and it is echoed on the response.
 - **Allowlisted fields only.** The `http` record has exactly `ts, kind, rid,
   method, route, status, dur_ms, cache`. `route` is the template
-  (`/api/users/{user_id}`), never the raw path or the query string. Voice
+  (`/api/reviews/{business_id}`), never the raw path or the query string. Voice
   queries are free text and can contain dictated contact details.
 - **Never in a trace record:** the client IP, `User-Agent`, cookies, the
   `Authorization` header, `X-HC-Signature`, request or response bodies,

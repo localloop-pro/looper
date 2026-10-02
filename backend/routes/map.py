@@ -4,11 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from models import MapPin, get_db
 from schemas import MapPinRequest, MapPinResponse
+from services.write_guard import require_public_writes
 
 router = APIRouter(prefix="/api", tags=["map"])
 
 
-@router.post("/pins", response_model=MapPinResponse)
+@router.post("/pins", response_model=MapPinResponse, dependencies=[Depends(require_public_writes)])
 def add_pin(req: MapPinRequest, db: Session = Depends(get_db)):
     """Add a pin to the community map."""
     expires_at = None

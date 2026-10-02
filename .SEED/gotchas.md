@@ -85,3 +85,7 @@
   `wrangler.toml`. Without a re-deploy, Cloudflare falls through to the raw
   DNS record (which may be an expired tunnel CNAME) instead of invoking the
   Worker — manifests as CF Error 1016 on `api.localloop.ai`.
+- zsh (macOS default) ties the lowercase `path` array to `$PATH`: a copy-paste
+  loop like `for path in reviews onboard pins; do curl ...` wipes PATH after the
+  first iteration ("command not found: curl"). Use another name (`p`) in
+  runbooks — the BLIND-SPOTS step 7 snippet has this bug.
