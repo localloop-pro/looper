@@ -490,3 +490,20 @@
   re-sent to `/api/ingest/hybridcard-card`). The 422 detail now names the
   cause, and the bridge trace records `outcome: "misrouted"` with the
   `event_type` (no eventId, no payload fields).
+
+### Leaked bridge secret: rotate in place; per-key-id secrets wait for the owner (2026-10-02, looper#48)
+
+- Rotation = swap `HYBRIDCARD_INGEST_SECRET` on looper-api and hybridcard.ai
+  and restart both. The sender's outbox retries 401s for about 30 minutes,
+  so a short mismatch window loses nothing. The owner does this
+  (`docs/SECRET-ROTATION.md`). Agents never touch Coolify or secrets.
+- The live check signs an empty `{}`. Auth runs before body validation, so
+  a matching secret gets 422 and a wrong one 401, with no write either way
+  (pinned by `test_empty_body_probe_writes_nothing`). No fake deal goes
+  into production.
+- Not done here: real per-key-id secrets (for example
+  `HYBRIDCARD_INGEST_SECRET_HC_2`) for zero-downtime overlap. That changes
+  auth code (a hot zone) and needs the sender to send a non-`hc-1` id, so it
+  needs the owner's OK on an issue first. `load_keys()`'s dict shape is the
+  seam for it.
+- No history rewrite and no gitleaks allowlist for `eaa1fbd`.
