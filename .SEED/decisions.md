@@ -427,3 +427,19 @@
   text. Map-only changes (card-link canonicalizer, SPEC-067 panel) are
   allowed to differ. Which repo owns these files stays ADR
   localloop.pro-main#100's call.
+### Cross-repo contract table + pinned caller tests (2026-10-02, looper#31)
+
+- `docs/CROSS-REPO-CONTRACTS.md` lists every call between Looper, HybridCard
+  and the map with file:line at pinned commits (HC `55b7ced`, MAP `761d3a1`).
+  `backend/tests/test_cross_repo_contracts.py` has one test per inbound row. Each
+  sends the caller's real shape and asserts only the fields that caller reads.
+  Known mismatches are pinned as today's behaviour (like #23), not xfailed, so
+  the fix changes the test on purpose.
+- Looper makes no outbound calls to the other two repos. `looper.localloop.ai`
+  is the LocalLoop gateway (MAP), not this API.
+- Mismatches filed: #36 (HC card URL falls back to the deal receiver), #37 (map
+  renders `message` as HTML; upstream MAP#324), #38 (Jarvis reads `slug`),
+  #39 (map Jarvis copies drifted), #40 (read limiter vs HC server-side identity
+  proxy). No Looper behaviour changed in this PR; BRIDGE-CONTRACT-v1 untouched.
+- No "hybridcard.ai search widget" exists in hybridcard-v2 at `55b7ced`. The
+  CORS entries stay (harmless).

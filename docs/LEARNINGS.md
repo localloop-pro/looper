@@ -11,3 +11,7 @@
   The voice router must send the user's own word, not a padded list of
   synonyms: a padded bare "hair" made a spoken query looser than the same
   typed one. Test what the router sends against /api/search too.
+- looper#31: a cross-repo contract test is only honest if it signs the bytes
+  the sender really sends. HybridCard signs `JSON.stringify` output (compact,
+  raw UTF-8, `undefined` keys dropped), not Python's `json.dumps` default.
+  Pin the caller's commit SHA in the test so a later failure points at a real diff.
