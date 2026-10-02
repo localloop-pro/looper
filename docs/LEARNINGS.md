@@ -20,3 +20,7 @@
   required check and a skipped or cancelled job can't pass as green. Check
   action runtimes before copying a workflow: `gitleaks-action@v2` runs on
   Node 20, which GitHub removed from hosted runners on 2026-09-16, so use `@v3`.
+- looper#38: Looper sends card_url (the sender's public_card_url, any host,
+  as sent) as the only card link and never a slug. When a consumer reads a
+  field we don't send, fix the consumer (localloop.pro-main#333) instead of
+  adding a column to live data without the owner's OK.
