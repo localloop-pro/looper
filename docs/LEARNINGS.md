@@ -16,3 +16,7 @@
   required check and a skipped or cancelled job can't pass as green. Check
   action runtimes before copying a workflow: `gitleaks-action@v2` runs on
   Node 20, which GitHub removed from hosted runners on 2026-09-16, so use `@v3`.
+- looper#37: the API returns user-echoed text (`message` repeats `q`) as plain
+  JSON. Escaping is the renderer's job: escaping in the API would show `&amp;`
+  in Jarvis and speak it aloud. Pin it with a test that fails on `&amp;`, and
+  when a sink lives in another repo, file an issue for every copy of it.
