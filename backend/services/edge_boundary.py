@@ -25,6 +25,7 @@ Policy table (docs/EDGE-READ-BOUNDARY.md explains each row):
   cacheable  /api/search, /api/discover, /api/businesses
   no-store   /api/reviews/*, /api/ingest/*, /health
   rate limit every GET/HEAD under /api/ (writes and bridge receivers untouched)
+             EXCEPT /api/identity/* (looper#40, see RATE_LIMIT_EXEMPT_PREFIXES)
 
 Cache key = path + the route's ranking-relevant query params, in request
 order, + the TypeDB engine switch + a write generation. `session` and
@@ -53,6 +54,14 @@ CACHEABLE_PARAMS: dict[str, tuple[str, ...]] = {
 
 # Reads that carry per-person or operational data: never cached anywhere.
 NO_STORE_PREFIXES = ("/api/reviews/", "/api/ingest/", "/health")
+
+# Reads outside the per-IP limiter (looper#40). HybridCard's identity badge
+# proxies /api/identity/domains/{domain} SERVER-SIDE, so every hybridcard.ai
+# page view arrives from one IP; a per-IP bucket would 429 the badge for all
+# visitors at once. Safe to exempt: the domain set is a fixed allowlist and the
+# verifier answers from its own TTL cache with single-flight and failure
+# back-off, so a flood never fans out to the KNS provider.
+RATE_LIMIT_EXEMPT_PREFIXES = ("/api/identity/",)
 
 SAFE_METHODS = {"GET", "HEAD"}
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
@@ -204,7 +213,7 @@ class PublicReadBoundary:
 
         # Rate limit public reads.
         limit = _env_int("LOOPER_READ_RATE_LIMIT_PER_MIN", 0)
-        if limit and path.startswith("/api/"):
+        if limit and path.startswith("/api/") and not path.startswith(RATE_LIMIT_EXEMPT_PREFIXES):
             allowed, retry_after = rate_limiter.hit(client_key(scope, headers), limit)
             if not allowed:
                 body = b'{"detail":"Too many requests. Please slow down and try again shortly."}'
