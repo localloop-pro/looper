@@ -11,6 +11,11 @@
   The voice router must send the user's own word, not a padded list of
   synonyms: a padded bare "hair" made a spoken query looser than the same
   typed one. Test what the router sends against /api/search too.
+- looper#32: CI uses one final `ci` job with `if: always()` that fails unless
+  every needed job reports `success`, so branch protection needs only one
+  required check and a skipped or cancelled job can't pass as green. Check
+  action runtimes before copying a workflow: `gitleaks-action@v2` runs on
+  Node 20, which GitHub removed from hosted runners on 2026-09-16, so use `@v3`.
 - looper#38: Looper sends card_url (the sender's public_card_url, any host,
   as sent) as the only card link and never a slug. When a consumer reads a
   field we don't send, fix the consumer (localloop.pro-main#333) instead of

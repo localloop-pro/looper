@@ -39,12 +39,24 @@ order that plan defines.
 
 ## Quality gates before any commit
 
+These are exactly the commands `.github/workflows/ci.yml` runs on every PR to
+`main` (plus a gitleaks secret scan). Run them from the repo root:
+
 ```bash
-# backend
-cd backend && python -m pytest  # once tests exist
-# looper-bot
-cd looper-bot && npm run typecheck && npm run build
+# backend (Python 3.12)
+cd backend && python3 -m venv .venv \
+  && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt \
+  && .venv/bin/python -m pytest -q && cd ..
+# web (Node 20+)
+node web/tests/voice-command-router.test.js
+node web/tests/jarvis-sync.test.js
+# worker
+node workers/looper-api-proxy/test/index.test.mjs
+# looper-bot (ELECTRON_SKIP_BINARY_DOWNLOAD=1 skips the Electron download)
+cd looper-bot && npm ci && npm run typecheck && npm run build && npm test && cd ..
 ```
+
+If CI is red, fix the code, never the workflow (see the header of `ci.yml`).
 
 ## Key cross-repo links
 
