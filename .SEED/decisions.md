@@ -421,3 +421,22 @@
   own TTL cache with single-flight and failure back-off. If identity ever
   accepts arbitrary domains, revisit: give it its own (higher) limit instead.
 - Exempt is a strict prefix with trailing slash: `/api/identityx` stays limited.
+
+### Jarvis router drift check; the map re-sync is the map repo's job (2026-10-02, looper#39)
+
+- The live map ships its own copies of `web/jarvis/*.js`, and they had drifted.
+  Its router lacked surry hills/redfern/alexandria and the wake mishears
+  (`loopa`, `luper`, …), and its dock hard-codes `WAKE_RE`, so it has no strict
+  barge-in. The fix belongs in localloop.pro-main (filed as
+  localloop.pro-main#334). Agents here never edit that repo.
+- Looper's side: `tools/jarvis-sync-check.js` (zero deps, read-only). It
+  checks that `SUBURBS` equals `SUBURB_COORDS` in `routes/discover.py` (keys
+  and lat/lng), that `WAKE_RE`/`WAKE_STRICT_RE` are exported, that the map
+  dock reads `Router.WAKE_*`, and that a fixed phrase list routes the same as
+  Looper. With `--map <dir>` it checks the map copy too. Pytest runs the
+  Looper-only half, so adding a suburb to one table and not the other now
+  fails the suite.
+- The check compares behaviour (route output for the probe phrases), not file
+  text. Map-only changes (card-link canonicalizer, SPEC-067 panel) are
+  allowed to differ. Which repo owns these files stays ADR
+  localloop.pro-main#100's call.
