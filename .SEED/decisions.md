@@ -435,8 +435,13 @@
   sends the caller's real shape and asserts only the fields that caller reads.
   Known mismatches are pinned as today's behaviour (like #23), not xfailed, so
   the fix changes the test on purpose.
-- Looper makes no outbound calls to the other two repos. `looper.localloop.ai`
-  is the LocalLoop gateway (MAP), not this API.
+- The backend makes no outbound calls to the other two repos (only KNS).
+  looper-bot does: it reads the LocalLoop gateway's pending-pin queue
+  (`GET /api/bot/map/pins`, Bearer `LOOPER_BOT_READ_TOKEN`), calls its `/health`,
+  and opens map deep links (`?cat=&q=&fly=`). `looper.localloop.ai` is that
+  gateway (MAP), not this API. Those shapes match today and are pinned in
+  `looper-bot/electron/tests/gateway-contract.test.cjs`. The gateway's
+  `PLATFORM_ENV=live` mode would 503 them (#50).
 - Mismatches filed: #36 (HC card URL falls back to the deal receiver), #37 (map
   renders `message` as HTML; upstream MAP#324), #38 (Jarvis reads `slug`),
   #39 (map Jarvis copies drifted), #40 (read limiter vs HC server-side identity

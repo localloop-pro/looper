@@ -19,7 +19,7 @@ If one fails, a live caller breaks.
 
 How this list was built: grep in all three repos for `api.localloop.ai`,
 `looperApi`, `LOOPER_*`, `/api/search|discover|businesses|identity|ingest`,
-`looper.localloop.ai`, `/api/flags` and `/api/bridge`. Then I read every hit that
+`looper.localloop.ai`, `/api/flags`, `/api/bridge`, `/api/bot`, `LOCALLOOP_GATEWAY_URL` and `LOCALLOOP_MAP_URL`. Then I read every hit that
 is live code. Archived pages (`index2.html`, `index001.html`, `index-OG.html`,
 `dox/…`, `plans/…`) were excluded because they have the same block as
 `index.html` and are not served as the map.
@@ -51,9 +51,32 @@ is live code. Archived pages (`index2.html`, `index001.html`, `index-OG.html`,
 
 ## 2. Calls OUT of Looper
 
-None. Looper's backend never calls HybridCard or the map. Its only outbound
-HTTP call is to the KNS provider (`KNS_API_BASE_URL`, `services/kaspa_identity.py`),
-which is a third party. The optional TypeDB brain is local.
+**Backend (`backend/`): none.** It never calls HybridCard or the map. Its only
+outbound HTTP call is to the KNS provider (`KNS_API_BASE_URL`,
+`services/kaspa_identity.py`), which is a third party. The optional TypeDB brain is local.
+
+**looper-bot (Electron desktop app, this repo) calls the LocalLoop gateway
+Worker in localloop.pro-main.** The client is
+`looper-bot/electron/localloop-gateway-tools.cjs`, created in
+`looper-bot/electron/main.cjs:31-35` (`LOCALLOOP_GATEWAY_URL`, default
+`https://looper.localloop.ai`; the base URL must be an HTTPS origin with no
+path or credentials, `localloop-gateway-tools.cjs:47-59`). Voice tools call it at
+`main.cjs:846` and `:850`.
+
+| # | Caller (file:line) | Method · URL | Auth | Request shape | Response fields the caller reads | Receiver (MAP) | Test |
+|---|---|---|---|---|---|---|---|
+| O1 | `localloop-gateway-tools.cjs:189-265` `readPendingPins`; URL built at `:70-80` (`PENDING_PINS_PATH` `:7`) | `GET ${LOCALLOOP_GATEWAY_URL}/api/bot/map/pins` | `Authorization: Bearer ${LOOPER_BOT_READ_TOKEN}` (≥32 bytes, `:198`; same secret as the Worker's, compared as SHA-256 digests) | query `source=hybridcard&status=pending_review&page&limit` (page 1–10000, limit 1–50); `redirect: 'error'`, 10 s timeout | validated at `:149-162`: `ok===true`, `filters.source/status`, `pagination{page,limit,returned,total,total_pages,has_next}` (integers, `total_pages = ceil(total/limit)`, page/limit echo the request), `pins[]` with `id` (non-empty string), `source`, `moderation_status`; then each pin is allowlisted to `PIN_FIELDS` (`:11-33`, 21 fields) and `claim_url` is host-checked (`:89-101`). On error it reads `error` ∈ `KNOWN_GATEWAY_ERRORS` (`:34-41`) | `workers/looper-gateway/src/index.mjs:307` → `pin-read.mjs:284-313` `handlePendingPinRead`, pins from `toPublicPin` `:221-248`, errors from `index.mjs:1188-1238` | `looper-bot/electron/tests/localloop-gateway-tools.test.cjs` (reader behaviour) + `looper-bot/electron/tests/gateway-contract.test.cjs` (the gateway's real shapes, pinned to MAP `761d3a1`) |
+| O2 | `localloop-gateway-tools.cjs:267-307` `health` | `GET ${LOCALLOOP_GATEWAY_URL}/health` | none | — | `ok, service, version, mode` | `index.mjs:198-207` | `gateway-contract.test.cjs`, `localloop-gateway-tools.test.cjs` |
+| O3 | `looper-bot/electron/main.cjs:1155-1171` `localloopOpenMap` | opens `${LOCALLOOP_MAP_URL \|\| https://localloop.ai}/?cat=&q=&fly=lng,lat[,zoom]` in the browser (`shell.openExternal`, not a fetch) | none | `cat`, `q`, `fly` | — (the map parses it) | MAP `assets/js/jarvis/looper-jarvis.js:1223-1262` `applyDeepLinks` (accepts `cat` or `category`, `q`, `fly`) | none (browser navigation) |
+
+Comparison: the response matches the reader's expectations. `toPublicPin` emits exactly the
+21 `PIN_FIELDS` in the same order. `id` is the DB uuid. `source`/`moderation_status` are
+the fixed values. `total_pages` is `0` when empty and `ceil(total/limit)` otherwise. Every
+`PinReadError` code is in the reader's known set, and `errorResponse` keeps
+`error: code` even when it collapses a 5xx message. **Latent break:** with
+`PLATFORM_ENV=live` the gateway sends every route except auth/admin/owner/member/zones/claims
+to `proxyPlatform`, which answers 503 `migration_endpoint_pending` for O1, O2 (and X1, X2).
+Filed as **#50** (localloop.pro-main must change before the cutover).
 
 ## 3. Calls between HybridCard and the map (no Looper involvement, listed for completeness)
 
@@ -79,6 +102,7 @@ reached through `workers/looper-api-proxy` (it forwards every path).
 | [#38](https://github.com/localloop-pro/looper/issues/38) | C3 | localloop.pro-main | Jarvis reads `results[].slug`, which Looper never sends |
 | [#39](https://github.com/localloop-pro/looper/issues/39) | C3 | localloop.pro-main | map's Jarvis copies drifted (suburbs surry hills/redfern/alexandria, wake words) |
 | [#40](https://github.com/localloop-pro/looper/issues/40) | C6 | looper | once on, the per-IP read limit throttles HC's server-side identity proxy for every visitor |
+| [#50](https://github.com/localloop-pro/looper/issues/50) | O1, O2 | localloop.pro-main | gateway `PLATFORM_ENV=live` answers 503 for `/api/bot/map/pins` and `/health` (latent; not set today) |
 
 Checked and matching, so no issue: the C1 deal payload versus `HybridCardDealPayload`
 (field for field), C2's additive `capabilities` (ignored by `extra="ignore"`),
