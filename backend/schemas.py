@@ -55,7 +55,7 @@ class SubmitReviewRequest(BaseModel):
     user_id: int
     rating: int = Field(..., ge=1, le=5)
     review_text: str = Field(..., min_length=10, max_length=2000)
-    verified_visit: bool = False
+    # No verified_visit: it is set server-side (always False for direct posts).
 
 
 class MapPinRequest(BaseModel):

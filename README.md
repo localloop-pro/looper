@@ -112,7 +112,56 @@ The reusable browser modules live in `web/jarvis/`. Deep links use query paramet
 | `GET` | `/api/identity/health` | KNS freshness/mismatch health |
 | `GET` | `/demo` | Jarvis voice-map demo |
 
-FastAPI's `/docs` is the current endpoint-level reference.
+```bash
+node web/tests/voice-command-router.test.js      # 46 grammar unit tests
+# full headless flow (needs playwright):
+cd web && python3 -m http.server 8088 &
+node tests/jarvis-smoke.playwright.js
+```
+
+### Embedding on the live map (llx11) — one script block
+
+`index.html` is sacred (surgical edits only), so integration is four script
+tags + one init call, e.g. right before `</body>`:
+
+```html
+<script src="https://api.localloop.ai/web/jarvis/voice-command-router.js"></script>
+<script src="https://api.localloop.ai/web/jarvis/looper-map-bus.js"></script>
+<script src="https://api.localloop.ai/web/jarvis/looper-face.js"></script>
+<script src="https://api.localloop.ai/web/jarvis/looper-jarvis.js"></script>
+<script>
+  LooperJarvis.init({
+    map: window.localloopMap,            // the existing Mapbox map
+    markerLib: window.mapboxgl,
+    apiBase: window.LocalLoopConfig.looperApi,
+    district: "Bondi",
+    onCategory: (cat) => { /* sync the site's category filter here */ },
+  });
+</script>
+```
+
+Deep links work out of the box: `/?cat=Food&q=coffee&fly=151.2743,-33.8908,16`.
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/onboard` | User onboarding (name + mobile + interest). 403 unless `LOOPER_PUBLIC_WRITES=true` |
+| GET  | `/api/search?q=&lat=&lng=&radius=` | Search businesses by query |
+| GET  | `/api/discover?suburb=&category=&radius_km=` | Suburb discovery (graph-ready, `engine: fallback` today) |
+| GET  | `/api/businesses?category=&lat=&lng=` | List businesses by category |
+| POST | `/api/reviews` | Submit a review (`verified_visit` always false). 403 unless `LOOPER_PUBLIC_WRITES=true` |
+| GET  | `/api/reviews/{business_id}` | Get reviews for a business |
+| POST | `/api/pins` | Add a map pin. 403 unless `LOOPER_PUBLIC_WRITES=true` |
+| GET  | `/api/pins?lat=&lng=&radius=` | Get pins in area |
+| GET  | `/api/tourist-info` | Tourist-specific info |
+| POST | `/api/ingest/hybridcard-deal` | BRIDGE-CONTRACT-v1 deal receiver (HMAC) |
+| POST | `/api/ingest/hybridcard-card` | BRIDGE-CONTRACT-v1 card receiver (HMAC) |
+| GET  | `/api/ingest/status` | Read-only bridge cockpit (counts + recent events) |
+| GET  | `/api/identity/domains` | Read-only verified organization KNS identities |
+| GET  | `/api/identity/domains/{domain}` | One allowlisted organization KNS identity |
+| GET  | `/api/identity/health` | Operator freshness/mismatch health summary |
+| GET  | `/demo` | Jarvis voice-map demo (serves `web/jarvis/`) |
 
 ### Kaspa organization identity operations
 

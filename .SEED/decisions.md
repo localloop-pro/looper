@@ -1,11 +1,28 @@
 # .SEED/decisions.md — looper decisions log
 
+- 2026-10-02 (issue #8, E4): public read boundary ships DARK in FastAPI
+  (`backend/services/edge_boundary.py`), not in a Worker. Cache for
+  search/discover/businesses (`LOOPER_READ_CACHE_TTL_S`, default 0 = off) and
+  per-client read rate limit (`LOOPER_READ_RATE_LIMIT_PER_MIN`, default 0 =
+  off) stay off until the owner accepts the E1 ADR (localloop.pro-main#100).
+  Cache key = ranking params + TYPEDB_ENABLED + write generation; `session`/
+  `intent` excluded, so cache HITs write no training_log row. Any successful
+  `/api/` write clears the cache. `LOOPER_CLIENT_IP_HEADER` must stay unset
+  while the sslip.io origin is directly reachable (spoofable). Any future
+  edge cache must key on `Origin` too (CF ignores `Vary: Origin`). Full rules:
+  `docs/EDGE-READ-BOUNDARY.md`.
+
 - 2026-09-01: Kaspa integration v1 is a read-only organization identity
   boundary in Looper, not a wallet or authorization system. Only the configured
   ASCII `localloop.kas` and `qikflo.kas` mainnet records may resolve. Exact
   domain/asset/inscription/transaction/owner/status/verified-domain agreement
   is required; mismatch fails immediately, provider failure uses only a bounded
   validated cache, and every UI must scope the claim to the organization.
+  2026-10-02 (#12): identity log lines are structured JSON with fixed keys
+  (`event`, `domain`, `provider` id, mismatch `reason`/`assetCount`/bounded
+  `observedOwner`). A `KNS_API_BASE_URL` override is logged only as
+  scheme://host[:port]/path — userinfo, query and fragment are dropped because
+  they can carry provider credentials. Raw upstream errors are never logged.
 
 - 2026-07-10: `plans/IMPLEMENTATION_PLAN.md` created — this repo owns the
   cross-system bridge plan (looper ↔ llx11 map ↔ HybridCard). llx11 keeps its
@@ -286,3 +303,108 @@
 - F4.3 now blocks ONLY on voice acceptance (restart looper-bot first so
   Electron loads the token). TTS-cost and hot-zone flags remain untouched and
   separately gated.
+
+### Worker sets X-Request-ID from cf-ray (looper#17, 2026-10-02)
+
+- `workers/looper-api-proxy` now keeps a safe inbound `X-Request-ID`
+  (8–128 chars of `[A-Za-z0-9._:-]`, at least one letter — the E6 rule) and
+  otherwise sets it from the opaque `cf-ray`, falling back to
+  `crypto.randomUUID()` when there is no ray (local `wrangler dev`). Unsafe ids
+  (phone-shaped digits, emails, `Bearer …`) are replaced, never forwarded, so
+  Cloudflare logs and Looper trace records share one PII-free key. The
+  Worker's own 500/502 replies echo the id.
+- Code only. It is NOT deployed: deploying the Worker is an owner/devops step
+  in an approved change window (`api.localloop.ai` route). Tests:
+  `node workers/looper-api-proxy/test/index.test.mjs`.
+- The other #17 items stay open and blocked outside this repo: E1 thresholds
+  (localloop.pro-main#100), map/gateway ids (#101/#102), HybridCard outbox
+  logs (hybridcard-v2#62), a named non-prod staging target for the cross-repo
+  browser E2E, and the owner's production sign-off.
+
+### E6 release gate — Looper slice: correlation, SLO report, non-prod checks (2026-10-02, looper#9)
+
+- One correlation convention: `X-Request-ID` on HTTP hops (opaque 8–128
+  `[A-Za-z0-9._:-]` with at least one letter, else replaced by uuid4 hex,
+  so a dictated phone number can never become a trace key); bridge events
+  join on the existing payload `eventId` — no header or payload change, the
+  contract stays frozen.
+- `backend/services/correlation.py` is the outermost ASGI layer. It writes
+  the canonical id back into the scope, so the merged PR #16 read boundary
+  echoes the same id. It emits allowlisted JSON lines (`kind: http` / `kind: bridge`) to
+  stderr: route template only, never query/IP/UA/auth/body/business data.
+  `LOOPER_TRACE_LOG=off` is the kill switch. It writes no rows.
+- Bridge delivery age = receive time − payload `updated_at`, because
+  `X-HC-Timestamp` is re-signed on every retry.
+- `tools/slo_report.py` (report + compare) is the release gate.
+  `tools/slo_thresholds.json` is PROVISIONAL until the E1 ADR
+  (localloop.pro-main#100). Too few samples = fail.
+- `tools/e6_nonprod_check.py` refuses localloop/hybridcard/sslip hosts and
+  any non-loopback host without `--non-prod-host`.
+- Runbook: `docs/E6-RELEASE-GATE.md`. The cross-repo staging E2E and the
+  owner production sign-off remain open by design.
+- uvicorn's default access log was ON in production (`Dockerfile` CMD). It
+  logged the client IP and the raw query string, and voice queries can carry
+  dictated emails/mobiles. `main.py` now passes `access_log=False` (local
+  runs). The Dockerfile `--no-access-log` is a deploy change, so it waits for
+  the owner's OK on looper#9; until then the release gate marks it ⚠️ and a
+  strict-xfail test tracks it. Security reviews must say what is still open,
+  never ✅ a gap outside the code they changed.
+
+### Provisional SLO thresholds can't sign off production (2026-10-02, looper#20)
+
+- Every item in looper#20 is blocked outside this repo or needs the owner
+  (ADR localloop.pro-main#100 still Proposed; #101/#102 and hybridcard-v2#62
+  open; no staging target named; deploy and sign-off are owner-only). Agents
+  don't invent threshold numbers or a staging host.
+- What could be done in this repo: `slo_report.py` validates the thresholds file
+  (exit 2 when invalid) and `--require-final` fails while `provisional` is true. A
+  final file must name its `adr`. The ADR swap is now a one-file edit plus
+  one test assert, and a green run on placeholder numbers can't be
+  taken as production approval.
+
+
+### Public writes behind a kill switch, profile reads deleted (2026-10-02, looper#27)
+
+- BLIND-SPOTS §3.6 / step 7. `POST /api/reviews`, `/api/onboard` and `/api/pins`
+  answer 403 `{"detail": "public writes are disabled"}` unless
+  `LOOPER_PUBLIC_WRITES` is exactly `true` (`services/write_guard.py`).
+  Attached per route decorator, never on the routers: those routers also hold
+  the public `GET /api/reviews/{id}`, `GET /api/pins`, `GET /api/tourist-info`.
+  It is a dependency so an empty body gets 403, not 422.
+- `GET /api/users/{id}` and `GET /api/code/{code}` are deleted, not flagged: no
+  caller exists (Telegram bot never launched) and the write flag must never be
+  able to reopen a join-code leak. If a feature needs them back, they return
+  behind their own bearer guard (`require_profile_reader`).
+- `verified_visit` is no longer in `SubmitReviewRequest`; the server always
+  stores `False` for a direct submission (extra body fields are ignored).
+  `seed.py` still writes `True` straight to the DB — throwaway DBs only.
+- `POST /api/onboard` with an already-registered mobile returns 409
+  `{"detail": "could not complete sign-up"}` with no id, name or join code.
+  The 409 still tells a caller the number exists (enumeration); acceptable
+  while writes are off, revisit with OTP before flipping the flag.
+
+### Search synonym + compound-word table (2026-10-02, looper#29)
+
+- `backend/services/query_terms.py` expands each query word before matching
+  (BLIND-SPOTS §3.16 half b, owner-approved): hairdresser/hairdressers/"hair
+  dresser" → hair, salon; salon → hair, hairdresser; barber → hair, barber;
+  cafe/café ↔ coffee; plus a few seed-category words (gp, chemist, gym,
+  sparky, dental, vets…).
+- The user's own word is always kept and still matches as a substring
+  (pre-#29 behaviour). Added alternatives must start a word, so "hair" never
+  matches "Chair Hire". No blanket "query word contains name word" rule:
+  "carpet cleaner" never matches "Car Wash".
+- Relevance scores each query word once (its best alternative), so an
+  expanded word can't outweigh an unexpanded one. Sort key unchanged:
+  relevance, review count, distance. A test ingests a 90%/rank_boost deal
+  with a card URL over the signed bridge and proves the order doesn't move.
+- `web/jarvis/voice-command-router.js` sends only the user's own hair noun
+  (barber words → "barber", hairdresser words → "hairdresser", salon words →
+  "salon", bare "hair" → "hair"), all before the health bucket, and lets the
+  backend table expand it. Padding the term with a bare "hair" made spoken
+  "hairdresser" reach "Chair Hire" (PR #34 QA round 1). Change both files together.
+- The parts of a two-word compound ("hair dresser"), and a word that another
+  word in the same query already adds ("barber hair"), match only at the start
+  of a word. Typed bare "hair" still matches as a substring, as on main.
+- Code only. The Coolify redeploy of looper-api and the Aesthete category
+  change on hybridcard.ai stay with the owner.
