@@ -12,9 +12,12 @@ Re-record ONLY for an intentional behaviour change:
 import json
 import os
 import pathlib
+import sys
 
 from models import Deal
-from tools.bench_search import ENDPOINTS, build_dataset
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "tools"))
+from bench_search import ENDPOINTS, build_dataset  # noqa: E402
 
 SNAPSHOT = pathlib.Path(__file__).parent / "fixtures" / "read_path_snapshot.json"
 
@@ -63,3 +66,21 @@ def test_discount_and_card_never_change_order(client, db, monkeypatch):
         ids_b = [r.get("business_id", r.get("id")) for r in before[key]["results"]]
         ids_a = [r.get("business_id", r.get("id")) for r in after[key]["results"]]
         assert ids_a == ids_b, f"discount/card changed order for {key}"
+
+
+def test_fold_accents_ascii_fast_path_is_equivalent():
+    """The ASCII shortcut must give exactly what the NFD walk gives."""
+    import string
+    import unicodedata
+
+    from models import fold_accents
+
+    def slow(value):
+        return "".join(c for c in unicodedata.normalize("NFD", value)
+                       if not unicodedata.combining(c)).lower()
+
+    samples = [string.printable, "Bondi Beach", "SURRY HILLS", "", "Café", "CAFÉ crème",
+               "Ñandú", "naïve", "Øresund", "ﬁg tree", "İstanbul", "ß"]
+    for s in samples:
+        assert fold_accents(s) == slow(s), s
+    assert fold_accents(None) is None

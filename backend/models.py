@@ -16,6 +16,11 @@ def fold_accents(value: str | None) -> str | None:
     transcripts and widget users type ASCII; the seed data is accented)."""
     if value is None:
         return None
+    if value.isascii():
+        # NFD leaves ASCII untouched, so this is the same answer without the
+        # per-character walk. SQLite calls this per row x column on every
+        # search (issue #30: it was ~70% of /api/search time).
+        return value.lower()
     return "".join(
         c for c in unicodedata.normalize("NFD", value) if not unicodedata.combining(c)
     ).lower()

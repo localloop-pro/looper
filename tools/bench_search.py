@@ -7,11 +7,11 @@ FastAPI's TestClient with the read cache off and on. It also splits each
 request into DB time (SQL statements) and Python time, and can print a
 cProfile of one request per endpoint.
 
-    cd backend
-    .venv/bin/python tools/bench_search.py                 # table
-    .venv/bin/python tools/bench_search.py --json          # machine-readable
-    .venv/bin/python tools/bench_search.py --profile       # + cProfile top 12
-    .venv/bin/python tools/bench_search.py --dump-ids ids.json   # ordered ids per query
+    # from the repo root, with the backend venv (see backend/requirements.txt)
+    backend/.venv/bin/python tools/bench_search.py               # table
+    backend/.venv/bin/python tools/bench_search.py --json        # machine-readable
+    backend/.venv/bin/python tools/bench_search.py --profile     # + cProfile top 12
+    backend/.venv/bin/python tools/bench_search.py --dump-ids /tmp/ids.json  # ordered ids
 
 All data is fake (generated names, no real people). Nothing leaves the
 process. Never point this at a real database.
@@ -29,7 +29,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-BACKEND = Path(__file__).resolve().parents[1]
+BACKEND = Path(__file__).resolve().parents[1] / "backend"
 
 # Seed geography (subset of routes/discover.py SUBURB_COORDS, Sydney only).
 SUBURBS = {
