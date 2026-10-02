@@ -71,7 +71,7 @@ try {
   check("500 ORIGIN unset echoes X-Request-ID", res.status === 500 && res.headers.get("x-request-id") === RAY);
 
   // 8. Origin key (looper#28)
-  const KEYED = { ...ENV, ORIGIN_KEY: "k3y-from-wrangler-secret" };
+  const KEYED = { ...ENV, ORIGIN_KEY: "test-origin-key" };
   s = await forwarded({ "cf-ray": RAY }, "GET", KEYED);
   check("ORIGIN_KEY set: key is added", s.headers.get(ORIGIN_KEY_HEADER) === KEYED.ORIGIN_KEY);
 
@@ -103,7 +103,7 @@ try {
   check("502 body is exactly {ok:false,error:origin_unreachable}",
     res.status === 502 && body === JSON.stringify({ ok: false, error: "origin_unreachable" }), body);
   check("502 body leaks no origin, key or error text",
-    !/secret-origin|origin\.invalid|ECONNREFUSED|k3y|detail/.test(body), body);
+    !/secret-origin|origin\.invalid|ECONNREFUSED|test-origin-key|detail/.test(body), body);
   check("502 error is logged with the request id",
     logged.some((l) => l.includes(RAY) && l.includes("ECONNREFUSED")), logged.join("|"));
 
