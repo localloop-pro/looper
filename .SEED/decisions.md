@@ -304,6 +304,23 @@
   Electron loads the token). TTS-cost and hot-zone flags remain untouched and
   separately gated.
 
+### Worker sets X-Request-ID from cf-ray (looper#17, 2026-10-02)
+
+- `workers/looper-api-proxy` now keeps a safe inbound `X-Request-ID`
+  (8–128 chars of `[A-Za-z0-9._:-]`, at least one letter — the E6 rule) and
+  otherwise sets it from the opaque `cf-ray`, falling back to
+  `crypto.randomUUID()` when there is no ray (local `wrangler dev`). Unsafe ids
+  (phone-shaped digits, emails, `Bearer …`) are replaced, never forwarded, so
+  Cloudflare logs and Looper trace records share one PII-free key. The
+  Worker's own 500/502 replies echo the id.
+- Code only. It is NOT deployed: deploying the Worker is an owner/devops step
+  in an approved change window (`api.localloop.ai` route). Tests:
+  `node workers/looper-api-proxy/test/index.test.mjs`.
+- The other #17 items stay open and blocked outside this repo: E1 thresholds
+  (localloop.pro-main#100), map/gateway ids (#101/#102), HybridCard outbox
+  logs (hybridcard-v2#62), a named non-prod staging target for the cross-repo
+  browser E2E, and the owner's production sign-off.
+
 ### E6 release gate — Looper slice: correlation, SLO report, non-prod checks (2026-10-02, looper#9)
 
 - One correlation convention: `X-Request-ID` on HTTP hops (opaque 8–128
