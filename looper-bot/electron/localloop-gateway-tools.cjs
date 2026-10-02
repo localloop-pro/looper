@@ -44,7 +44,7 @@ const KNOWN_GATEWAY_ERRORS = new Set([
 // has not migrated with 503 {"error":"migration_endpoint_pending"} once
 // PLATFORM_ENV=live is set. That includes /api/bot/map/pins and /health today.
 const MIGRATION_PENDING_MESSAGE = "The LocalLoop gateway is in PLATFORM_ENV=live mode and no longer serves this route. "
-  + "Ask the LocalLoop team to keep it in live mode or publish the successor endpoint, then update LOCALLOOP_GATEWAY_URL.";
+  + "Ask the LocalLoop team to keep this route working in live mode (localloop.pro-main#335) or publish the successor endpoint, then update LOCALLOOP_GATEWAY_URL.";
 
 function normalizeBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
