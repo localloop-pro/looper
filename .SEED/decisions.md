@@ -409,6 +409,19 @@
 - Code only. The Coolify redeploy of looper-api and the Aesthete category
   change on hybridcard.ai stay with the owner.
 
+### Identity reads are outside the per-IP read limit (2026-10-02, looper#40)
+
+- `services/edge_boundary.py` `RATE_LIMIT_EXEMPT_PREFIXES = ("/api/identity/",)`.
+  HybridCard's badge proxy calls `/api/identity/domains/{domain}` server-side,
+  one IP for all hybridcard.ai visitors; a per-IP bucket would hide the badge
+  for everyone once `LOOPER_READ_RATE_LIMIT_PER_MIN` is turned on.
+- Looper adapts (receivers adapt); it does not rely on HybridCard changing
+  `cache: 'no-store'` to `revalidate: 60`, though that would still help.
+- Safe because the verifier only resolves the fixed `.kas` allowlist from its
+  own TTL cache with single-flight and failure back-off. If identity ever
+  accepts arbitrary domains, revisit: give it its own (higher) limit instead.
+- Exempt is a strict prefix with trailing slash: `/api/identityx` stays limited.
+
 ### Jarvis router drift check; the map re-sync is the map repo's job (2026-10-02, looper#39)
 
 - The live map ships its own copies of `web/jarvis/*.js`, and they had drifted.
