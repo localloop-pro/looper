@@ -6,6 +6,8 @@ workers_dev = false
 [vars]
 # Coolify Traefik origin (HTTP sslip). DNS for api.localloop.ai stays on this Worker until CF A→167.86.79.151.
 ORIGIN = "http://looper-api.167.86.79.151.sslip.io"
+# ORIGIN_KEY is a SECRET (looper#28), never a var here:
+#   npx wrangler secret put ORIGIN_KEY   (owner only; see docs/EDGE-READ-BOUNDARY.md §8)
 
 [[routes]]
 pattern = "api.localloop.ai/*"

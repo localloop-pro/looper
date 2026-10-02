@@ -55,12 +55,12 @@ equals the uncached one, that reviews still outrank a 90 % discount with
 - Over the limit: `429`, JSON `detail`, `Retry-After` seconds, `Cache-Control: no-store`,
   CORS headers kept so the browser widget can show "slow down".
 - Client = the socket peer address. Set `LOOPER_CLIENT_IP_HEADER=cf-connecting-ip`
-  **only** when the origin is reachable solely through Cloudflare. Today the
-  origin (`looper-api.167.86.79.151.sslip.io`) is directly reachable, so trusting
-  that header would let anyone pick their own bucket. Without the header, every
-  request through the Worker shares one bucket — so do not turn the limit on
-  behind the Worker until the origin is locked to Cloudflare (or set a high
-  limit as a global brake).
+  **only** when the origin is reachable solely through Cloudflare. The origin
+  (`looper-api.167.86.79.151.sslip.io`) is directly reachable until the owner
+  turns on the origin key (§8), and until then trusting that header would let
+  anyone pick their own bucket. Without the header, every request through the
+  Worker shares one bucket — so do not turn the limit on behind the Worker
+  until §8 is done (or set a high limit as a global brake).
 - In-process memory, max 10 000 clients, per uvicorn worker.
 - `/api/identity/*` is exempt (looper#40). HybridCard's `KaspaIdentityBadge`
   sits in its root layout and fetches `/api/identity/domains/{domain}` from
@@ -119,3 +119,61 @@ LOOPER_READ_RATE_LIMIT_PER_MIN=120     # only after the origin is locked to Clou
 # off = remove the vars (or set them to 0) and restart. No data is written,
 # so there is nothing to clean up. Full revert: git revert the PR.
 ```
+
+## 8. Lock the origin to the Worker, then turn on the per-IP limit (looper#28)
+
+**Status:** code merged dark. Nothing changes until the owner sets both secrets.
+Agents never deploy, never set these values and never touch Coolify.
+
+How it works: the Worker (`workers/looper-api-proxy`) drops any
+`x-looper-origin-key` a caller sent and sets its own from the `ORIGIN_KEY`
+secret. The API (`backend/services/origin_guard.py`) answers
+`403 {"detail":"forbidden"}` to any request without the same value once
+`LOOPER_ORIGIN_KEY` is set. `GET /health` stays open for health checks. The
+guard sits outside the read boundary, so a rejected call never uses a
+rate-limit bucket or a cached answer, and inside CORS + correlation, so the 403
+still has CORS headers and an `X-Request-ID`. Only after this is the
+`cf-connecting-ip` header safe to trust.
+
+CORS (`backend/services/cors_policy.py`) now lists only the https production
+hosts, with `allow_credentials=False` (no caller sends cookies). Local dev
+pages need `LOOPER_DEV_ORIGINS=http://localhost:3000,http://localhost:5173`.
+
+### Owner rollout (in this order)
+
+0. **Check every server-side caller uses `https://api.localloop.ai`, not the
+   sslip origin.** Anything that calls the origin directly gets 403 after step 2:
+   HybridCard's `LOOPER_INGEST_URL`, `LOOPER_CARD_INGEST_URL` and
+   `LOOPER_API_URL`, the map's `LOOPER_API_URL`, and looper-bot's
+   `LOOPER_API_BASE`. (Bridge events that get 403 are retried by the sender, so
+   a miss here delays deals; it does not lose them.)
+1. Make one random value and set it as the Worker secret (the Worker sends the
+   key from now on; the API still ignores it, so this step alone changes nothing):
+   ```bash
+   openssl rand -hex 32          # copy the output; do not paste it anywhere public
+   cd workers/looper-api-proxy
+   npx wrangler secret put ORIGIN_KEY     # paste the value when asked
+   ```
+2. Set the **same** value as `LOOPER_ORIGIN_KEY` in the looper-api Coolify env,
+   and restart the app.
+3. Check:
+   ```bash
+   curl -s -o /dev/null -w "%{http_code}\n" "https://api.localloop.ai/api/search?q=cafe"                       # 200
+   curl -s -o /dev/null -w "%{http_code}\n" "http://looper-api.167.86.79.151.sslip.io/api/search?q=cafe"     # 403
+   curl -s -o /dev/null -w "%{http_code}\n" "http://looper-api.167.86.79.151.sslip.io/health"                 # 200
+   ```
+4. Now set `LOOPER_CLIENT_IP_HEADER=cf-connecting-ip` and
+   `LOOPER_READ_RATE_LIMIT_PER_MIN=120` in the same Coolify env and restart.
+   Check: 121 quick reads from one machine → the last ones get `429` with
+   `Retry-After`.
+
+### Roll back
+
+- Remove `LOOPER_ORIGIN_KEY` from the Coolify env and restart: the origin is
+  open again exactly as before. Remove `LOOPER_CLIENT_IP_HEADER` too (or set
+  `LOOPER_READ_RATE_LIMIT_PER_MIN=0`), because the header is spoofable again.
+- The Worker secret is harmless on its own; leave it, or
+  `npx wrangler secret delete ORIGIN_KEY`.
+- Rotate: set the new value on the Worker and in Coolify one right after the
+  other. Requests in the gap get 403 (bridge events are retried).
+- Full revert: `git revert` the PR. No data is written.
