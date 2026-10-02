@@ -13,6 +13,12 @@ const {
   confirmationEnabled,
   needsConfirmation,
 } = require("./tool-policy.cjs");
+const {
+  createAppTarget,
+  decideWindowOpen,
+  isTrustedIpcSender,
+  shouldBlockNavigation,
+} = require("./window-security.cjs");
 
 dotenv.config({ path: path.join(process.cwd(), ".env.local") });
 
@@ -31,6 +37,11 @@ let currentMode = "display";
 let mainWindow = null;
 let normalWindowBounds = null;
 let dbWriteQueue = Promise.resolve();
+// The only page the window may show: the Vite dev server or the built dist.
+const appTarget = createAppTarget({
+  devUrl: process.env.VITE_DEV_SERVER_URL,
+  distIndexPath: path.join(process.cwd(), "dist", "index.html"),
+});
 
 // LocalLoop ecosystem endpoints (F4.1/F4.2)
 const LOOPER_API_BASE = (process.env.LOOPER_API_BASE || "http://localhost:8000").replace(/\/$/, "");
@@ -655,9 +666,26 @@ async function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
     },
   });
   mainWindow = win;
+
+  // No new windows. Allowlisted https links go to the system browser.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    const decision = decideWindowOpen(url);
+    if (decision.openExternal) {
+      shell.openExternal(decision.openExternal).catch(() => {});
+    }
+    return { action: decision.action };
+  });
+  // The window that holds the preload bridge never leaves the app.
+  const blockForeignNavigation = (event, url) => {
+    if (shouldBlockNavigation(url, appTarget)) event.preventDefault();
+  };
+  win.webContents.on("will-navigate", blockForeignNavigation);
+  win.webContents.on("will-redirect", blockForeignNavigation);
 
   win.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "media");
@@ -709,9 +737,22 @@ function setWindowMode(mode) {
   }
 }
 
-ipcMain.handle("tools:list", () => toolSpecs);
+// Called first by every ipcMain.handle: only the main window's top frame,
+// showing the app itself, may reach the tools and the OpenAI key.
+function assertTrustedSender(event) {
+  const mainFrame = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.mainFrame : null;
+  if (!isTrustedIpcSender(event?.senderFrame, mainFrame, appTarget)) {
+    throw new Error("Rejected IPC from an untrusted frame.");
+  }
+}
 
-ipcMain.handle("realtime:create-token", async () => {
+ipcMain.handle("tools:list", (event) => {
+  assertTrustedSender(event);
+  return toolSpecs;
+});
+
+ipcMain.handle("realtime:create-token", async (event) => {
+  assertTrustedSender(event);
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is missing in .env.local");
@@ -807,7 +848,8 @@ ipcMain.handle("realtime:create-token", async () => {
   return { value, expiresAt: data.expires_at || data.client_secret?.expires_at || null };
 });
 
-ipcMain.handle("tools:execute", async (_event, toolCall) => {
+ipcMain.handle("tools:execute", async (event, toolCall) => {
+  assertTrustedSender(event);
   const name = String(toolCall?.name || "");
   const args = asObject(toolCall?.arguments);
 
