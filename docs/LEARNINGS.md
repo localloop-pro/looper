@@ -20,3 +20,7 @@
   required check and a skipped or cancelled job can't pass as green. Check
   action runtimes before copying a workflow: `gitleaks-action@v2` runs on
   Node 20, which GitHub removed from hosted runners on 2026-09-16, so use `@v3`.
+- looper#55: check what an extra pulls in before dropping a "unused" package —
+  `uvicorn[standard]` needs python-dotenv — and check what else runs from the
+  same image: the news worker is a scheduled task inside the API container, so
+  its deps moved to `tools/requirements.txt` behind a build arg, not deleted.

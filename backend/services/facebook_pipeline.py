@@ -191,7 +191,7 @@ def run_pipeline(graph_api_token: str = "", group_id: str = "", limit: int = 50)
         group_id: Facebook group ID (Bondi Local Loop)
         limit: Max posts to process per run
     """
-    import requests
+    import httpx
     from models import SessionLocal, init_db
 
     init_db()
@@ -245,7 +245,7 @@ def run_pipeline(graph_api_token: str = "", group_id: str = "", limit: int = 50)
             "limit": limit,
             "fields": "id,message,from,created_time",
         }
-        resp = requests.get(url, params=params, timeout=30)
+        resp = httpx.get(url, params=params, timeout=30)
         if resp.status_code != 200:
             logger.error(f"FB API error: {resp.status_code} {resp.text[:200]}")
             db.close()
