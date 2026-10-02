@@ -441,6 +441,28 @@
   allowed to differ. Which repo owns these files stays ADR
   localloop.pro-main#100's call.
 
+### Cross-repo contract table + pinned caller tests (2026-10-02, looper#31)
+
+- `docs/CROSS-REPO-CONTRACTS.md` lists every call between Looper, HybridCard
+  and the map with file:line at pinned commits (HC `55b7ced`, MAP `761d3a1`).
+  `backend/tests/test_cross_repo_contracts.py` has one test per inbound row. Each
+  sends the caller's real shape and asserts only the fields that caller reads.
+  Known mismatches are pinned as today's behaviour (like #23), not xfailed, so
+  the fix changes the test on purpose.
+- The backend makes no outbound calls to the other two repos (only KNS).
+  looper-bot does: it reads the LocalLoop gateway's pending-pin queue
+  (`GET /api/bot/map/pins`, Bearer `LOOPER_BOT_READ_TOKEN`), calls its `/health`,
+  and opens map deep links (`?cat=&q=&fly=`). `looper.localloop.ai` is that
+  gateway (MAP), not this API. Those shapes match today and are pinned in
+  `looper-bot/electron/tests/gateway-contract.test.cjs`. The gateway's
+  `PLATFORM_ENV=live` mode would 503 them (#50).
+- Mismatches filed: #36 (HC card URL falls back to the deal receiver), #37 (map
+  renders `message` as HTML; upstream MAP#324), #38 (Jarvis reads `slug`),
+  #39 (map Jarvis copies drifted), #40 (read limiter vs HC server-side identity
+  proxy). No Looper behaviour changed in this PR; BRIDGE-CONTRACT-v1 untouched.
+- No "hybridcard.ai search widget" exists in hybridcard-v2 at `55b7ced`. The
+  CORS entries stay (harmless).
+
 ### GitHub Actions CI (2026-10-02, looper#32)
 
 - `.github/workflows/ci.yml` runs on PRs to main and pushes to main with
@@ -454,6 +476,37 @@
   because v2's Node 20 runtime is gone from hosted runners since 2026-09-16.
   The repo is owned by a personal account, so no `GITLEAKS_LICENSE` is needed.
 - Making `ci` a required status check on `main` is the owner's step.
+
+### Card events at the deal receiver: named 422, never re-dispatched (2026-10-02, looper#36)
+
+- HybridCard falls back to `LOOPER_INGEST_URL` (the deal receiver) when
+  `LOOPER_CARD_INGEST_URL` is unset. The fix belongs to the sender (drop the
+  fallback, make readiness require the card URL). It is filed on hybridcard-v2.
+- Looper does NOT route `event_kind: card|partnership` from the deal receiver to
+  the card handler. That would hide a sender misconfiguration and give the deal
+  URL two contracts.
+- What Looper does instead: the deal receiver still answers 422 and writes
+  nothing (the eventId is not burned, so the same event lands once it is
+  re-sent to `/api/ingest/hybridcard-card`). The 422 detail now names the
+  cause, and the bridge trace records `outcome: "misrouted"` with the
+  `event_type` (no eventId, no payload fields).
+
+### Leaked bridge secret: rotate in place; per-key-id secrets wait for the owner (2026-10-02, looper#48)
+
+- Rotation = swap `HYBRIDCARD_INGEST_SECRET` on looper-api and hybridcard.ai
+  and restart both. The sender's outbox retries 401s for about 30 minutes,
+  so a short mismatch window loses nothing. The owner does this
+  (`docs/SECRET-ROTATION.md`). Agents never touch Coolify or secrets.
+- The live check signs an empty `{}`. Auth runs before body validation, so
+  a matching secret gets 422 and a wrong one 401, with no write either way
+  (pinned by `test_empty_body_probe_writes_nothing`). No fake deal goes
+  into production.
+- Not done here: real per-key-id secrets (for example
+  `HYBRIDCARD_INGEST_SECRET_HC_2`) for zero-downtime overlap. That changes
+  auth code (a hot zone) and needs the sender to send a non-`hc-1` id, so it
+  needs the owner's OK on an issue first. `load_keys()`'s dict shape is the
+  seam for it.
+- No history rewrite and no gitleaks allowlist for `eaa1fbd`.
 
 ### Origin locked to the Worker; no localhost CORS in production (2026-10-02, looper#28)
 
