@@ -1,5 +1,8 @@
 # LEARNINGS.md — one short lesson per merged PR
 
+> New entries: one file per PR in `docs/learnings/` (or `.SEED/decisions/`).
+> Read both. Name it `<issue>-<short-slug>.md`. Do not append here (looper#53).
+
 - looper#27: guard unauthenticated writes with a per-route FastAPI dependency
   (`dependencies=[Depends(...)]`) so an empty body gets 403 instead of 422, and
   delete leaky reads outright rather than putting them behind the same flag.

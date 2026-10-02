@@ -1,5 +1,8 @@
 # .SEED/decisions.md — looper decisions log
 
+> New entries: one file per PR in `.SEED/decisions/` (or `docs/learnings/`).
+> Read both. Name it `<issue>-<short-slug>.md`. Do not append here (looper#53).
+
 - 2026-10-02 (issue #8, E4): public read boundary ships DARK in FastAPI
   (`backend/services/edge_boundary.py`), not in a Worker. Cache for
   search/discover/businesses (`LOOPER_READ_CACHE_TTL_S`, default 0 = off) and

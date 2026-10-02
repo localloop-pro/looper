@@ -117,7 +117,7 @@ python backend/tests/send_signed_event.py
 Schemas are written in TypeQL 2.x compatible syntax (used with `typedb-driver`).
 Verify the exact syntax against the installed TypeDB version and
 TYPEDB-GEO-HIERARCHY-SPEC.md (in `new-card/planning/`) before first use.
-Record the pinned package version in `.SEED/decisions.md`.
+Record the pinned package version as a file in `.SEED/decisions/`.
 
 ## TypeDB is NOT exposed to the internet
 
