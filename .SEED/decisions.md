@@ -1,5 +1,17 @@
 # .SEED/decisions.md — looper decisions log
 
+- 2026-10-02 (issue #8, E4): public read boundary ships DARK in FastAPI
+  (`backend/services/edge_boundary.py`), not in a Worker. Cache for
+  search/discover/businesses (`LOOPER_READ_CACHE_TTL_S`, default 0 = off) and
+  per-client read rate limit (`LOOPER_READ_RATE_LIMIT_PER_MIN`, default 0 =
+  off) stay off until the owner accepts the E1 ADR (localloop.pro-main#100).
+  Cache key = ranking params + TYPEDB_ENABLED + write generation; `session`/
+  `intent` excluded, so cache HITs write no training_log row. Any successful
+  `/api/` write clears the cache. `LOOPER_CLIENT_IP_HEADER` must stay unset
+  while the sslip.io origin is directly reachable (spoofable). Any future
+  edge cache must key on `Origin` too (CF ignores `Vary: Origin`). Full rules:
+  `docs/EDGE-READ-BOUNDARY.md`.
+
 - 2026-09-01: Kaspa integration v1 is a read-only organization identity
   boundary in Looper, not a wallet or authorization system. Only the configured
   ASCII `localloop.kas` and `qikflo.kas` mainnet records may resolve. Exact

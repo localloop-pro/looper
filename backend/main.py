@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from models import init_db
+from services.edge_boundary import PublicReadBoundary
 from routes import users, search, map, reviews, ingest, discover, identity
 
 # Initialize DB tables
@@ -16,6 +17,11 @@ app = FastAPI(
     description="LocalLoop community connection agent. Connects people with businesses and services.",
     version="0.1.0",
 )
+
+# Public read boundary (issue #8): request id, opt-in per-IP read rate limit
+# and opt-in short-TTL cache for search/discover/businesses. Registered BEFORE
+# CORS so CORS stays outermost and HIT/429/STALE answers keep CORS headers.
+app.add_middleware(PublicReadBoundary)
 
 # CORS — every live host that embeds the Jarvis dock or Looper widget.
 # localloop.ai serves the map (Jarvis dock calls api.localloop.ai from the
@@ -36,6 +42,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-Looper-Cache", "Retry-After"],
 )
 
 # Register routes
