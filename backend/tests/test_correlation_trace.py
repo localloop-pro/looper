@@ -167,14 +167,34 @@ def test_uvicorn_access_log_off_in_main():
         assert kw["access_log"].value is False
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Open gap (docs/E6-RELEASE-GATE.md §7): the production Dockerfile CMD "
-    "keeps uvicorn's access log on. Adding --no-access-log is a deploy change "
-    "waiting on the owner's OK on looper#9. When it lands, drop this marker."))
+def final_cmd(dockerfile: str) -> list[str]:
+    """The exec-form argv of the last CMD instruction (the one Docker runs),
+    with backslash line continuations joined."""
+    joined = re.sub(r"\\\n", " ", dockerfile)
+    cmds = [line.strip()[3:].strip() for line in joined.splitlines()
+            if line.strip().upper().startswith("CMD ")]
+    assert cmds, "Dockerfile has no CMD"
+    argv = json.loads(cmds[-1])  # shell form would not parse: keep exec form
+    assert isinstance(argv, list) and all(isinstance(a, str) for a in argv)
+    return argv
+
+
 def test_uvicorn_access_log_off_in_dockerfile():
-    cmd = [line for line in (_BACKEND / "Dockerfile").read_text().splitlines()
-           if line.startswith("CMD [") and "uvicorn" in line]
-    assert cmd and all("--no-access-log" in line for line in cmd)
+    """looper#62: the production image's CMD must run uvicorn with
+    --no-access-log, or every request writes the client IP and the raw query
+    string (dictated phone numbers/emails) to the Coolify logs."""
+    argv = final_cmd((_BACKEND / "Dockerfile").read_text())
+    assert argv[0] == "uvicorn"
+    assert "--no-access-log" in argv
+    assert "--access-log" not in argv
+
+
+def test_final_cmd_check_catches_old_cmd():
+    old = 'FROM x\nCMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]\n'
+    assert "--no-access-log" not in final_cmd(old)
+    # Only the last CMD counts; an earlier compliant one does not hide it.
+    two = 'CMD ["uvicorn", "main:app", "--no-access-log"]\n' + old
+    assert "--no-access-log" not in final_cmd(two)
 
 
 # ---------------------------------------------------------------- bridge

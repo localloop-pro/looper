@@ -39,9 +39,11 @@ Rules, enforced in `backend/services/correlation.py`:
   trace records. It prints the client IP, the raw path and the full query
   string on every request, for example
   `INFO: 127.0.0.1:52707 - "GET /api/search?q=john%20smith%200412999888 …" 200 OK`.
-  `python main.py` now runs with `access_log=False`. **Production still has it
-  on**: the `backend/Dockerfile` `CMD` has no `--no-access-log`. That change
-  affects deploys, so it waits for the owner's OK on looper#9 (see section 7).
+  `python main.py` runs with `access_log=False`, and since looper#62 the
+  `backend/Dockerfile` `CMD` passes `--no-access-log`, so the image no longer
+  writes that line. **Gap closed in code; production redeploy pending**: the
+  running looper-api container keeps logging until the owner redeploys it in
+  Coolify (see section 7).
 - **The `bridge` record** has exactly `ts, kind, receiver, rid, event_id,
   event_type, outcome, delivery_age_s`.
   - `outcome` is one of `processed`, `duplicate`, `stale_skipped`,
@@ -167,6 +169,7 @@ A percentage split belongs at the Worker (devops lane, other issue).
 |---|---|---|
 | Tracing (this PR) | set `LOOPER_TRACE_LOG=off` and restart, or `git revert` and redeploy | none: tracing writes no rows |
 | uvicorn access log off in `main.py` (this PR, local runs only) | remove `access_log=False` from `uvicorn.run` (brings back IP + query-text logging) | none |
+| uvicorn access log off in the Docker image (looper#62) | remove `"--no-access-log"` from the `backend/Dockerfile` `CMD` (or `git revert` the PR) and redeploy looper-api in Coolify. Brings back IP + query-text logging | none: the flag only changes stdout |
 | Read cache / rate limit (PR #16) | set the flags to `0` and restart | none: in-process only |
 | `looper-api-proxy` Worker (looper#17) | `npx wrangler rollback` (`docs/WORKER-DEPLOY-RUNBOOK.md` §4) | none: the Worker stores nothing |
 | Any backend release | Coolify: redeploy the previous commit | none: bridge receipts are idempotent on `eventId`, and the sender retries every non-2xx, so events missed during a bad deploy re-arrive |
@@ -192,7 +195,7 @@ contract checks passed.
 | Area | Status | Evidence / gap |
 |---|---|---|
 | Logging leakage (trace records) | ✅ allowlist records, unsafe ids replaced | `tests/test_correlation_trace.py` |
-| Logging leakage (uvicorn access log) | ⚠️ **open gap in production.** The Dockerfile `CMD` runs uvicorn with its default access log, which writes the client IP, raw path and full query string (dictated phone numbers/emails) to stdout on every request. QA reproduced a planted mobile in it. Off for local runs (`access_log=False` in `main.py`). Fix waiting on owner OK (deploy change): add `"--no-access-log"` to the Dockerfile `CMD` | `test_uvicorn_access_log_off_in_main` |
+| Logging leakage (uvicorn access log) | ✅ **closed in code (looper#62); production redeploy pending.** The Dockerfile `CMD` runs uvicorn with `--no-access-log`, so the image no longer writes the client IP, raw path or query string (dictated phone numbers/emails) to stdout. Local runs: `access_log=False` in `main.py`. The running Coolify container keeps the old behaviour until the owner redeploys looper-api | `test_uvicorn_access_log_off_in_main`, `test_uvicorn_access_log_off_in_dockerfile` |
 | Replay | ✅ idempotent on `eventId`; out-of-order retries skipped; ±5 min HMAC window | `test_bridge_hmac.py`, `test_ingest_*`, non-prod check |
 | Authorization (bridge) | ✅ HMAC over the raw body, constant-time compare, 401/413 | non-prod check: tampered, expired, unknown key, wrong secret, unsigned → 401 |
 | CORS | ✅ exact allowlist; a foreign origin gets no grant; preflight from a foreign origin is 400 | non-prod check + tests |
