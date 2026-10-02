@@ -408,3 +408,19 @@
   of a word. Typed bare "hair" still matches as a substring, as on main.
 - Code only. The Coolify redeploy of looper-api and the Aesthete category
   change on hybridcard.ai stay with the owner.
+
+### Search card link: `card_url` only, no `slug` (2026-10-02, looper#38)
+
+- `/api/search` results carry `card_url` as the only card link. It is the
+  sender's `public_card_url`, returned as sent for any host (tunnel hosts
+  too), never rebuilt from a slug, never a ranking input.
+- No `slug` field in `SearchResult`. Adding it needs a new `businesses`
+  column filled from the card payload's `slug`. That is a schema change to
+  live data (hot zone) with no owner OK, so the consumer adapts instead:
+  the map's Jarvis dock should drop its `r.slug` read
+  (localloop-pro/localloop.pro-main#333).
+- Pinned by `backend/tests/test_search_card_link_contract.py`: no `slug`
+  even when the card event sent one, tunnel URLs returned as sent, and a
+  carded 90%/rank_boost deal still ranks below a reviewed business.
+- Revisit only if the owner approves the column. Then add it as nullable,
+  fill it from card events going forward, and never derive `card_url` from it.
