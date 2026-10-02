@@ -8,3 +8,6 @@
   inside "Aesthete Hair"). Fix it with a small explicit synonym table that only
   adds word-start alternatives and scores each query word once, never with a
   blanket "contains" rule (that lets "carpet cleaner" hit "Car Wash").
+  The voice router must send the user's own word, not a padded list of
+  synonyms: a padded bare "hair" made a spoken query looser than the same
+  typed one. Test what the router sends against /api/search too.

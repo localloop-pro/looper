@@ -7,7 +7,11 @@ everyday word into a few alternatives BEFORE matching.
 
 Rules (keep them when you add an entry):
 - Expansion only ADDS alternatives. The user's own word is always kept and
-  still matches as a substring, exactly as before.
+  still matches as a substring, exactly as before — with two exceptions that
+  keep typed and spoken queries agreeing (PR #34 QA): the two parts of a
+  recognised compound ("hair dresser") and a word that is also an added
+  alternative of another word in the same query ("barber hair") must start a
+  word too, so neither reaches "Chair Hire".
 - Added alternatives must match at the START of a word ("hair" matches
   "Aesthete Hair", never "Chair Hire"). There is deliberately no blanket
   "query word contains a name word" rule: "carpet cleaner" must never match
@@ -73,25 +77,27 @@ COMPOUNDS: dict[tuple[str, str], str] = {
 
 
 class Term:
-    """One alternative: the user's own word matches anywhere (substring, the
-    pre-#29 behaviour); an added alternative must start a word."""
+    """One alternative. By default the user's own word matches anywhere
+    (substring, the pre-#29 behaviour) and an added alternative must start a
+    word; `anywhere` overrides that for the exceptions above."""
 
-    __slots__ = ("text", "original", "_re")
+    __slots__ = ("text", "original", "anywhere", "_re")
 
-    def __init__(self, text: str, original: bool):
+    def __init__(self, text: str, original: bool, anywhere: bool | None = None):
         self.text = text
         self.original = original
-        self._re = None if original else re.compile(r"(?<![a-z0-9])" + re.escape(text))
+        self.anywhere = original if anywhere is None else anywhere
+        self._re = re.compile(r"(?<![a-z0-9])" + re.escape(text))
 
     def matches(self, haystack: str | None) -> bool:
         if not haystack:
             return False
-        if self.original:
+        if self.anywhere:
             return self.text in haystack
         return self._re.search(haystack) is not None
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return f"Term({self.text!r}, original={self.original})"
+        return f"Term({self.text!r}, original={self.original}, anywhere={self.anywhere})"
 
 
 def expand(tokens: list[str]) -> list[list[Term]]:
@@ -109,13 +115,24 @@ def expand(tokens: list[str]) -> list[list[Term]]:
             originals = [tokens[i]]
             key = tokens[i]
             i += 1
-        group = [Term(w, original=True) for w in originals]
+        # Compound parts are pieces of one word, so they start words too.
+        compound = len(originals) > 1
+        group = [Term(w, original=True, anywhere=not compound) for w in originals]
         seen = set(originals)
         for alt in (key, *EXPANSIONS.get(key, ())):
             if alt not in seen:
                 seen.add(alt)
                 group.append(Term(alt, original=False))
         groups.append(group)
+    # A word the user typed that another word in the same query already adds
+    # as an alternative ("barber hair", "hairdresser salon hair") gets the
+    # alternative's word-start rule, so padding a query never widens it.
+    for gi, group in enumerate(groups):
+        added_elsewhere = {t.text for gj, g in enumerate(groups) if gj != gi
+                           for t in g if not t.original}
+        for t in group:
+            if t.original and t.text in added_elsewhere:
+                t.anywhere = False
     return groups
 
 

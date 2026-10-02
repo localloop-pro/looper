@@ -94,9 +94,12 @@
     // hair BEFORE health (looper#29): mirrors backend/services/query_terms.py
     // so spoken and typed "hairdresser" / "hair dresser" / "salon" / "barber"
     // reach the brain as hair words, not the generic health bucket.
-    // Barbers keep "barber" (a barber shop may not say "hair" anywhere).
-    { re: /\b(barbers?|barber ?shops?)\b/, pin: null, term: "barber hair" },
-    { re: /\b(hair ?dress(?:ers?|ing)|hair ?salons?|salons?|hair)\b/, pin: null, term: "hairdresser salon hair" },
+    // Send only the user's own noun: the backend table expands it, and a
+    // padded bare "hair" would reach "Chair Hire" (PR #34 QA).
+    { re: /\b(barbers?|barber ?shops?)\b/, pin: null, term: "barber" },
+    { re: /\b(hair ?dress(?:ers?|ing))\b/, pin: null, term: "hairdresser" },
+    { re: /\b(hair ?salons?|salons?)\b/, pin: null, term: "salon" },
+    { re: /\b(hair)\b/, pin: null, term: "hair" },
     // health & wellbeing (spa/relax/fitness — no fixed pin category; brain-only)
     { re: /\b(spas?|relax|massage|fitness|gyms?|yoga|pilates|doctors?|dentists?|physio|chemist|pharmac(?:y|ies)|health|wellness|beauty)\b/, pin: null, term: "health fitness wellness" },
     // shopping → the Offers pin (host voice table maps shops/shopping to

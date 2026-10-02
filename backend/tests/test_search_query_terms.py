@@ -63,6 +63,33 @@ def test_added_alternatives_must_start_a_word(client, seeded):
     assert "Bondi Chair Hire" not in _names(client, "hairdresser")
 
 
+# PR #34 QA: what web/jarvis/voice-command-router.js sends for a spoken hair
+# word — now, and the padded terms the first draft sent (cached widgets) —
+# must return exactly what typed "hairdresser" returns. Never Chair Hire.
+@pytest.mark.parametrize("q", [
+    "hairdresser", "hair dresser hairdresser", "hairdressers hairdresser",
+    "salon", "hair salon salon", "barber", "barbers barber",
+    "hair dresser", "hairdresser salon hair", "barber hair",
+])
+def test_spoken_and_typed_hair_words_agree(client, seeded, q):
+    names = _names(client, q)
+    assert "Aesthete Hair" in names
+    assert "Bondi Chair Hire" not in names
+    assert sorted(names) == sorted(_names(client, "hairdresser"))
+
+
+def test_padded_word_follows_the_word_start_rule():
+    groups = query_terms.expand(["barber", "hair"])
+    [hair] = [t for t in groups[1] if t.text == "hair"]
+    assert hair.original and not hair.anywhere
+
+
+def test_bare_hair_still_matches_as_substring(client, seeded):
+    # Typed "hair" behaved like this on main; this PR keeps it.
+    assert query_terms.expand(["hair"])[0][0].anywhere
+    assert "Aesthete Hair" in _names(client, "hair")
+
+
 def test_cafe_and_coffee_agree(client, seeded):
     for q in ("cafe", "café", "coffee", "cafes"):
         assert "Speedo's Café" in _names(client, q), q
