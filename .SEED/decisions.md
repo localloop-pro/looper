@@ -18,6 +18,11 @@
   domain/asset/inscription/transaction/owner/status/verified-domain agreement
   is required; mismatch fails immediately, provider failure uses only a bounded
   validated cache, and every UI must scope the claim to the organization.
+  2026-10-02 (#12): identity log lines are structured JSON with fixed keys
+  (`event`, `domain`, `provider` id, mismatch `reason`/`assetCount`/bounded
+  `observedOwner`). A `KNS_API_BASE_URL` override is logged only as
+  scheme://host[:port]/path — userinfo, query and fragment are dropped because
+  they can carry provider credentials. Raw upstream errors are never logged.
 
 - 2026-07-10: `plans/IMPLEMENTATION_PLAN.md` created — this repo owns the
   cross-system bridge plan (looper ↔ llx11 map ↔ HybridCard). llx11 keeps its
@@ -315,3 +320,32 @@
   (localloop.pro-main#100), map/gateway ids (#101/#102), HybridCard outbox
   logs (hybridcard-v2#62), a named non-prod staging target for the cross-repo
   browser E2E, and the owner's production sign-off.
+
+### E6 release gate — Looper slice: correlation, SLO report, non-prod checks (2026-10-02, looper#9)
+
+- One correlation convention: `X-Request-ID` on HTTP hops (opaque 8–128
+  `[A-Za-z0-9._:-]` with at least one letter, else replaced by uuid4 hex,
+  so a dictated phone number can never become a trace key); bridge events
+  join on the existing payload `eventId` — no header or payload change, the
+  contract stays frozen.
+- `backend/services/correlation.py` is the outermost ASGI layer. It writes
+  the canonical id back into the scope, so the merged PR #16 read boundary
+  echoes the same id. It emits allowlisted JSON lines (`kind: http` / `kind: bridge`) to
+  stderr: route template only, never query/IP/UA/auth/body/business data.
+  `LOOPER_TRACE_LOG=off` is the kill switch. It writes no rows.
+- Bridge delivery age = receive time − payload `updated_at`, because
+  `X-HC-Timestamp` is re-signed on every retry.
+- `tools/slo_report.py` (report + compare) is the release gate.
+  `tools/slo_thresholds.json` is PROVISIONAL until the E1 ADR
+  (localloop.pro-main#100). Too few samples = fail.
+- `tools/e6_nonprod_check.py` refuses localloop/hybridcard/sslip hosts and
+  any non-loopback host without `--non-prod-host`.
+- Runbook: `docs/E6-RELEASE-GATE.md`. The cross-repo staging E2E and the
+  owner production sign-off remain open by design.
+- uvicorn's default access log was ON in production (`Dockerfile` CMD). It
+  logged the client IP and the raw query string, and voice queries can carry
+  dictated emails/mobiles. `main.py` now passes `access_log=False` (local
+  runs). The Dockerfile `--no-access-log` is a deploy change, so it waits for
+  the owner's OK on looper#9; until then the release gate marks it ⚠️ and a
+  strict-xfail test tracks it. Security reviews must say what is still open,
+  never ✅ a gap outside the code they changed.

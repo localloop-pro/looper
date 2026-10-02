@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -99,6 +100,18 @@ def public_record(expected: ExpectedIdentity, state: str, verified_at: str | Non
     }
 
 
+def redact_url(url: str) -> str:
+    """Scheme, host, port and path only: userinfo, query and fragment can carry
+    provider credentials and must never reach a log line."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname or ""
+        port = f":{parts.port}" if parts.port else ""
+    except ValueError:
+        return "<unparseable>"
+    return f"{parts.scheme}://{host}{port}{parts.path}" if parts.scheme and host else "<unparseable>"
+
+
 def _env_int(name: str, default: int) -> int:
     raw = os.getenv(name)
     return int(raw) if raw else default
@@ -124,7 +137,7 @@ class KaspaIdentityVerifier:
                  clock: Callable[[], datetime] = utc_now):
         self.provider_url = (provider_url or os.getenv("KNS_API_BASE_URL") or DEFAULT_PROVIDER_URL).rstrip("/")
         if self.provider_url != DEFAULT_PROVIDER_URL:
-            LOGGER.warning(json.dumps({"event": "kaspa_identity.provider_override", "provider": self.provider_url}))
+            LOGGER.warning(json.dumps({"event": "kaspa_identity.provider_override", "provider": redact_url(self.provider_url)}))
         # Docker deployments point this at the persistent volume via
         # KASPA_IDENTITY_CACHE_PATH (see docker-compose.yml); this default is only
         # correct for a plain checkout.
