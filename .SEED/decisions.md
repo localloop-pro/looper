@@ -408,3 +408,22 @@
   of a word. Typed bare "hair" still matches as a substring, as on main.
 - Code only. The Coolify redeploy of looper-api and the Aesthete category
   change on hybridcard.ai stay with the owner.
+
+### Origin locked to the Worker; no localhost CORS in production (2026-10-02, looper#28)
+
+- BLIND-SPOTS §3.12. Worker secret `ORIGIN_KEY` → header `x-looper-origin-key`
+  (inbound value always replaced). API env `LOOPER_ORIGIN_KEY` → 403
+  `{"detail":"forbidden"}` without it (`services/origin_guard.py`); `GET /health`
+  exempt. Unset/blank = off, so the PR merged dark. Owner rollout and rollback:
+  `docs/EDGE-READ-BOUNDARY.md` §8.
+- Middleware order in `main.py`, inner → outer: PublicReadBoundary,
+  OriginKeyGuard, CORS, Correlation. A rejected caller spends no rate-limit
+  bucket and gets no cached answer; the 403 still has CORS + X-Request-ID.
+- The guard covers the bridge receivers too. HybridCard must post to
+  `https://api.localloop.ai`, never the sslip origin, before the key is set.
+- CORS: https production hosts only (`services/cors_policy.py`), localhost only
+  via `LOOPER_DEV_ORIGINS`, `*` ignored there. `allow_credentials=False`: no
+  caller sends cookies (web/ uses plain fetch or `credentials: 'omit'`;
+  HybridCard and looper-bot call server-side).
+- The Worker's 502 body is `{ok:false,error:"origin_unreachable"}`; the error
+  text is logged with the request id, never returned.

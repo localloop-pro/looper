@@ -11,3 +11,9 @@
   The voice router must send the user's own word, not a padded list of
   synonyms: a padded bare "hair" made a spoken query looser than the same
   typed one. Test what the router sends against /api/search too.
+- looper#28: a per-IP limit is only as good as the IP header, and that header
+  is only trustworthy when the origin can't be reached around the proxy. Lock
+  the origin with a shared key the proxy *replaces* (never appends), check it
+  with `hmac.compare_digest`, and place the guard outside the rate limiter but
+  inside CORS/correlation so a 403 still reads well in the browser and logs.
+  Never return `String(err)` from a proxy: it can name the origin.
