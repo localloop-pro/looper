@@ -76,7 +76,10 @@ the fixed values. `total_pages` is `0` when empty and `ceil(total/limit)` otherw
 `error: code` even when it collapses a 5xx message. **Latent break:** with
 `PLATFORM_ENV=live` the gateway sends every route except auth/admin/owner/member/zones/claims
 to `proxyPlatform`, which answers 503 `migration_endpoint_pending` for O1, O2 (and X1, X2).
-Filed as **#50** (localloop.pro-main must change before the cutover).
+Tracked as **#50** and filed upstream as **localloop.pro-main#335** (localloop.pro-main must
+change before the cutover). Until then looper-bot reports that 503 by name: both the
+pending-pin reader and `health()` return `error: "migration_endpoint_pending"` with a
+`PLATFORM_ENV=live` message, still fail closed (no queue data, gateway body never echoed).
 
 ## 3. Calls between HybridCard and the map (no Looper involvement, listed for completeness)
 
