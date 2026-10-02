@@ -427,3 +427,16 @@
   text. Map-only changes (card-link canonicalizer, SPEC-067 panel) are
   allowed to differ. Which repo owns these files stays ADR
   localloop.pro-main#100's call.
+
+### Gateway live-mode cutover is named, not hidden (2026-10-02, looper#50)
+
+- localloop.pro-main's looper-gateway returns 503
+  `{"error":"migration_endpoint_pending"}` for every path its platform proxy
+  hasn't migrated once `PLATFORM_ENV=live` is set. Today that includes
+  `/api/bot/map/pins` and `/health`, which looper-bot reads.
+- The fix belongs in localloop.pro-main: keep those routes in live mode, or
+  publish the successor endpoint (localloop.pro-main#239) with the same shape.
+- Looper's side: `localloop-gateway-tools.cjs` treats
+  `migration_endpoint_pending` as a known code for both the pin reader and
+  health. Bill hears that the gateway changed mode instead of a generic
+  "request failed". It still fails closed: no queue data, no body echoed.

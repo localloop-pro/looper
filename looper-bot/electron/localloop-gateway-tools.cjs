@@ -38,7 +38,13 @@ const KNOWN_GATEWAY_ERRORS = new Set([
   "read_backend_not_configured",
   "select_failed",
   "audit_failed",
+  "migration_endpoint_pending",
 ]);
+// #50: localloop.pro-main's looper-gateway answers every path its platform proxy
+// has not migrated with 503 {"error":"migration_endpoint_pending"} once
+// PLATFORM_ENV=live is set. That includes /api/bot/map/pins and /health today.
+const MIGRATION_PENDING_MESSAGE = "The LocalLoop gateway is in PLATFORM_ENV=live mode and no longer serves this route. "
+  + "Ask the LocalLoop team to keep it in live mode or publish the successor endpoint, then update LOCALLOOP_GATEWAY_URL.";
 
 function normalizeBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -171,6 +177,7 @@ function gatewayErrorResult(response, body) {
     read_backend_not_configured: "The LocalLoop gateway read backend is not configured.",
     select_failed: "The pending-pin queue is temporarily unavailable.",
     audit_failed: "The gateway could not audit this read, so it correctly withheld all queue data.",
+    migration_endpoint_pending: `${MIGRATION_PENDING_MESSAGE} No queue data was shown.`,
     gateway_read_failed: "The pending-pin gateway request failed safely.",
   };
   return { ok: false, status: response.status, error, message: messages[error] };
@@ -285,6 +292,9 @@ function createLocalLoopGatewayTools({ baseUrl, readToken, fetchImpl = globalThi
         body = await response.json();
       } catch {}
       if (!response.ok) {
+        if (body && body.error === "migration_endpoint_pending") {
+          return { ok: false, status: response.status, error: "migration_endpoint_pending", message: MIGRATION_PENDING_MESSAGE };
+        }
         return { ok: false, status: response.status, error: "gateway_health_failed", message: "LocalLoop gateway health check failed." };
       }
       const status = {
