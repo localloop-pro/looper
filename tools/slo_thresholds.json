@@ -1,6 +1,7 @@
 {
   "provisional": true,
-  "note": "Provisional E6 numbers measured at the FastAPI origin. Replace with the E1 ADR thresholds (localloop.pro-main#100) once accepted. See docs/E6-RELEASE-GATE.md section 2.",
+  "adr": null,
+  "note": "Provisional E6 numbers measured at the FastAPI origin. Replace with the E1 ADR thresholds (localloop.pro-main#100) once accepted. See docs/E6-RELEASE-GATE.md section 2. When you paste in the ADR numbers set provisional to false and adr to the ADR reference; slo_report.py rejects a final file without one.",
   "min_samples_per_route": 20,
   "availability_min": 0.995,
   "routes": {

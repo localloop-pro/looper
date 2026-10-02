@@ -104,3 +104,73 @@ def test_nonprod_check_needs_explicit_opt_in_for_remote_hosts():
     with pytest.raises(SystemExit):
         e6_nonprod_check.guard_target("http://staging.example:8010", None)
     e6_nonprod_check.guard_target("http://staging.example:8010", "staging.example")
+
+
+# --- looper#20: provisional thresholds can never sign off a production release ---
+
+def test_shipped_thresholds_are_valid_and_still_provisional():
+    # Flip this assert in the same PR that pastes in the E1 ADR numbers.
+    assert slo_report.threshold_problems(THRESHOLDS) == []
+    assert THRESHOLDS["provisional"] is True
+    assert THRESHOLDS["adr"] is None
+
+
+@pytest.mark.parametrize("mutate, problem", [
+    (lambda t: t.pop("availability_min"), "availability_min"),
+    (lambda t: t.update(availability_min=1.5), "availability_min"),
+    (lambda t: t["routes"]["/api/search"].update(p95_ms_max=-1), "/api/search"),
+    (lambda t: t["routes"].clear(), "routes"),
+    (lambda t: t["bridge"].update(unauthorized_max="0"), "unauthorized_max"),
+    (lambda t: t["compare"].pop("min_p95_improvement_pct"), "min_p95_improvement_pct"),
+    (lambda t: t.update(provisional=False), "adr"),
+    (lambda t: t.pop("provisional"), "provisional"),
+])
+def test_bad_threshold_files_are_rejected(mutate, problem):
+    bad = json.loads(json.dumps(THRESHOLDS))
+    mutate(bad)
+    problems = slo_report.threshold_problems(bad)
+    assert any(problem in p for p in problems), problems
+
+
+def test_final_thresholds_need_an_adr_reference():
+    final = json.loads(json.dumps(THRESHOLDS))
+    final.update(provisional=False, adr="localloop-pro/localloop.pro-main#100")
+    assert slo_report.threshold_problems(final) == []
+
+
+def test_require_final_fails_a_green_window_on_provisional_numbers(tmp_path):
+    log = tmp_path / "trace.log"
+    log.write_text("\n".join(_lines()))
+    out = tmp_path / "r.json"
+    assert slo_report.main(["report", str(log), "--out", str(out)]) == 0
+    assert slo_report.main(["report", str(log), "--require-final", "--out", str(out)]) == 1
+    result = json.loads(out.read_text())
+    assert result["thresholds_provisional"] is True
+    assert [c["slo"] for c in result["slo"] if not c["ok"]] == ["thresholds final (E1 ADR)"]
+
+    final = json.loads(json.dumps(THRESHOLDS))
+    final.update(provisional=False, adr="localloop-pro/localloop.pro-main#100")
+    tfile = tmp_path / "final.json"
+    tfile.write_text(json.dumps(final))
+    assert slo_report.main(["report", str(log), "--require-final",
+                            "--thresholds", str(tfile)]) == 0
+
+
+def test_require_final_applies_to_compare(tmp_path):
+    base = tmp_path / "base.json"
+    cand = tmp_path / "cand.json"
+    base.write_text(json.dumps(slo_report.summarize(*slo_report.read_records(_lines(dur=100.0)))))
+    cand.write_text(json.dumps(slo_report.summarize(*slo_report.read_records(_lines(dur=50.0)))))
+    assert slo_report.main(["compare", str(base), str(cand)]) == 0
+    assert slo_report.main(["compare", str(base), str(cand), "--require-final"]) == 1
+
+
+def test_invalid_threshold_file_exits_2(tmp_path, capsys):
+    bad = json.loads(json.dumps(THRESHOLDS))
+    bad["routes"]["/api/search"]["p95_ms_max"] = 0
+    tfile = tmp_path / "bad.json"
+    tfile.write_text(json.dumps(bad))
+    log = tmp_path / "trace.log"
+    log.write_text("\n".join(_lines()))
+    assert slo_report.main(["report", str(log), "--thresholds", str(tfile)]) == 2
+    assert "/api/search" in capsys.readouterr().err
