@@ -65,6 +65,11 @@ open http://localhost:8000/docs       # all routes listed
 > Port 8000 busy? (a local TypeDB server also defaults to 8000) — run
 > `LOOPER_PORT=8010 python main.py` and check `localhost:8010/health`.
 
+> Calling it from a local page in the browser (llx11 on `localhost:3000`, a
+> Vite app on `5173`)? List those origins, or the browser blocks the call (CORS):
+> `LOOPER_DEV_ORIGINS=http://localhost:3000,http://localhost:5173 python main.py`.
+> The `/demo` page is same-origin and needs nothing.
+
 ### 2. llx11 map site (sibling repo)
 
 ```bash

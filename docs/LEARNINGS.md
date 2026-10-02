@@ -20,3 +20,9 @@
   required check and a skipped or cancelled job can't pass as green. Check
   action runtimes before copying a workflow: `gitleaks-action@v2` runs on
   Node 20, which GitHub removed from hosted runners on 2026-09-16, so use `@v3`.
+- looper#28: a per-IP limit is only as good as the IP header, and that header
+  is only trustworthy when the origin can't be reached around the proxy. Lock
+  the origin with a shared key the proxy *replaces* (never appends), check it
+  with `hmac.compare_digest`, and place the guard outside the rate limiter but
+  inside CORS/correlation so a 403 still reads well in the browser and logs.
+  Never return `String(err)` from a proxy: it can name the origin.
