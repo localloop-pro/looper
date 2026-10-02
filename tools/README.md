@@ -71,3 +71,18 @@ Point it at a local server on a throwaway DB — never at production.
 ```bash
 python3 tools/bench_read_paths.py http://127.0.0.1:8010
 ```
+
+## `bench_search.py` (issue #30)
+
+In-process benchmark for `/api/search`, `/api/discover` and `/api/businesses`.
+It builds its own throwaway SQLite in a temp dir (2,000 fake businesses,
+10,000 fake reviews, fixed seed — it ignores `LOOPER_DB_URL`), then times 200
+TestClient requests per endpoint with the read cache off and on, counts SQL
+statements per request, and can print a cProfile. Needs the backend venv.
+
+```bash
+cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt && cd ..
+backend/.venv/bin/python tools/bench_search.py             # p50/p95 table
+backend/.venv/bin/python tools/bench_search.py --profile   # + where the time goes
+backend/.venv/bin/python tools/bench_search.py --dump-ids /tmp/ids.json  # ordered ids, to diff two branches
+```

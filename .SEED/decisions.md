@@ -382,3 +382,25 @@
   `{"detail": "could not complete sign-up"}` with no id, name or join code.
   The 409 still tells a caller the number exists (enumeration); acceptable
   while writes are off, revisit with OTP before flipping the flag.
+
+### Read path: batched review stats, cache stays opt-in (2026-10-02, looper#30)
+
+- `/api/search`, `/api/discover` (fallback and graph engine) and
+  `/api/businesses` get review count / average / latest time from one
+  `GROUP BY business_id` per 500 ids (`routes/search.py: review_stats`)
+  instead of 2–3 queries per business. `top_review` and `card_url` are still
+  looked up per row, but only for the returned page (≤ limit).
+- `fold_accents` returns `value.lower()` for ASCII input (identical to the
+  NFD walk; a test proves it). It runs per row × column inside SQLite.
+- No new index and no schema change: none was needed, so nothing touches
+  the production DB.
+- Proof of "same answers": `backend/tests/fixtures/read_path_snapshot.json`
+  was recorded on the old code (400 businesses, fixed seed) and the test
+  compares full payloads; the bench's `--dump-ids` diff at 2,000 businesses
+  was byte-identical too.
+- Bench: `tools/bench_search.py` (in-process, throwaway DB). Numbers are in
+  the PR. The read cache (`LOOPER_READ_CACHE_TTL_S`) stays OFF by default:
+  there is no production data on how often questions repeat (analytics are
+  not on yet), a HIT skips the telemetry row, and EDGE-READ-BOUNDARY.md
+  ties turning it on to the owner accepting the E1 ADR. When it is turned
+  on, 30 s is the suggested TTL.
