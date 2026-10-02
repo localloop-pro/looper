@@ -77,6 +77,12 @@ What the other hops must do to join the chain:
 Thresholds live in `tools/slo_thresholds.json`. They are provisional and
 measured at the FastAPI origin.
 
+Swapping in the E1 ADR numbers (localloop.pro-main#100) is a one-file
+change: paste the numbers, set `"provisional": false` and set `"adr"` to the
+ADR reference. `slo_report.py` checks the file before measuring anything and
+exits 2 on a missing key, a value out of range, or a final file with no `adr`.
+In the same PR, update `test_shipped_thresholds_are_valid_and_still_provisional`.
+
 | SLO | Threshold | Source |
 |---|---|---|
 | Availability (non-5xx share) | ≥ 99.5 % | `http` records |
@@ -130,6 +136,10 @@ A release goes to the owner only when all of these are true:
 6. The rollback steps (section 5) were run once on the non-prod target.
 7. The non-prod evidence is attached to the PR, and the owner signs off on
    the issue. **Nobody but the owner flips production.**
+8. The evidence for that sign-off was produced with `--require-final` on
+   both `report` and `compare`. That flag adds a failing
+   `thresholds final (E1 ADR)` check while the thresholds are provisional,
+   so a green run on the placeholder numbers can't be taken as approval.
 
 ## 4. Feature flags and canary
 
@@ -194,11 +204,18 @@ contract checks passed.
 ## 8. Evidence and what is still open
 
 The local non-prod evidence is in the PR for looper#9. Still open, and outside
-this repo or owner-gated:
+this repo or owner-gated (tracked in looper#20; status checked 2026-10-02:
+localloop.pro-main#100 has no accepted ADR, #101/#102 and hybridcard-v2#62
+are open, no staging target is named):
 
 - [ ] Cross-repo browser E2E (map → Worker → Looper → card link) against a
   staging target. This needs localloop.pro-main#101/#102 and a non-prod
   HybridCard.
-- [ ] Replace the provisional thresholds with the E1 ADR numbers.
+- [ ] Replace the provisional thresholds with the E1 ADR numbers. Until then
+  `--require-final` fails by design.
+- [ ] HybridCard outbox logs `eventId`, `attempts`, `status`, `lastError` per
+  drain, with no payload (hybridcard-v2#62).
+- [ ] Deploy the updated `looper-api-proxy` Worker in an approved change
+  window (owner/devops, never agents).
 - [ ] LocalLoop and HybridCard adopt section 1 (their E2/E3/E5 issues).
 - [ ] Owner sign-off on production rollout.

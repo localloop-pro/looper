@@ -349,3 +349,16 @@
   the owner's OK on looper#9; until then the release gate marks it ⚠️ and a
   strict-xfail test tracks it. Security reviews must say what is still open,
   never ✅ a gap outside the code they changed.
+
+### Provisional SLO thresholds can't sign off production (2026-10-02, looper#20)
+
+- Every item in looper#20 is blocked outside this repo or needs the owner
+  (ADR localloop.pro-main#100 still Proposed; #101/#102 and hybridcard-v2#62
+  open; no staging target named; deploy and sign-off are owner-only). Agents
+  don't invent threshold numbers or a staging host.
+- What could be done in this repo: `slo_report.py` validates the thresholds file
+  (exit 2 when invalid) and `--require-final` fails while `provisional` is true. A
+  final file must name its `adr`. The ADR swap is now a one-file edit plus
+  one test assert, and a green run on placeholder numbers can't be
+  taken as production approval.
+

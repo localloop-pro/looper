@@ -5,14 +5,19 @@ Reads the JSON lines written by backend/services/correlation.py (`kind:
 http` / `kind: bridge`) from a log file or stdin. Other log lines are
 skipped, so a raw `docker logs` / Coolify log export works as input.
 
-  report  LOG [--thresholds F] [--out F]   p50/p95/p99 per route, availability,
+  report  LOG [--thresholds F] [--out F] [--require-final]
+                                            p50/p95/p99 per route, availability,
                                             429s, bridge outcomes and delivery
                                             age; exit 1 if any SLO is breached
-  compare BASE.json CAND.json [--thresholds F]
+  compare BASE.json CAND.json [--thresholds F] [--require-final]
                                             release gate: candidate must beat
                                             the baseline p95 on at least one
                                             target route and regress nowhere;
                                             exit 1 otherwise
+
+--require-final adds a failing check while the thresholds file is still
+provisional, so production sign-off can't rest on the placeholder numbers.
+An invalid thresholds file exits 2 before anything is measured.
 
 Stdlib only. Reads logs, never the network or a database.
 """
@@ -172,6 +177,58 @@ def compare(base, cand, thresholds):
     return checks
 
 
+def _is_num(value):
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value))
+
+
+def threshold_problems(t):
+    """Everything wrong with a thresholds file; [] means usable."""
+    if not isinstance(t, dict):
+        return ["thresholds file must be a JSON object"]
+    problems = []
+
+    def need(where, key, low=0, high=None, positive=False):
+        value = where.get(key) if isinstance(where, dict) else None
+        if not _is_num(value):
+            problems.append(f"{key}: missing or not a number")
+        elif value < low or (positive and value <= 0) or (high is not None and value > high):
+            problems.append(f"{key}: {value} is out of range")
+
+    if not isinstance(t.get("provisional"), bool):
+        problems.append("provisional: must be true or false")
+    elif not t["provisional"] and not (isinstance(t.get("adr"), str) and t["adr"].strip()):
+        problems.append("adr: final thresholds must name the E1 ADR they came from")
+    need(t, "availability_min", high=1, positive=True)
+    need(t, "min_samples_per_route", positive=True)
+    routes = t.get("routes")
+    if not isinstance(routes, dict) or not routes:
+        problems.append("routes: at least one target route is required")
+    else:
+        for route, limits in routes.items():
+            if not (isinstance(limits, dict) and _is_num(limits.get("p95_ms_max"))
+                    and limits["p95_ms_max"] > 0):
+                problems.append(f"{route} p95_ms_max: must be a positive number")
+    bridge = t.get("bridge") if isinstance(t.get("bridge"), dict) else {}
+    need(bridge, "delivery_age_p95_s_max", positive=True)
+    need(bridge, "duplicate_ratio_max", high=1)
+    for key in ("unauthorized_max", "invalid_payload_max", "too_large_max"):
+        need(bridge, key)
+    rules = t.get("compare") if isinstance(t.get("compare"), dict) else {}
+    for key in ("min_p95_improvement_pct", "max_p95_regression_pct",
+                "max_availability_drop"):
+        need(rules, key)
+    return problems
+
+
+def _final_check(thresholds):
+    ok = thresholds.get("provisional") is False
+    check = {"slo": "thresholds final (E1 ADR)", "ok": ok, "adr": thresholds.get("adr")}
+    if not ok:
+        check["why"] = "slo_thresholds.json is provisional (localloop.pro-main#100)"
+    return check
+
+
 def _load_json(path):
     return json.loads(Path(path).read_text())
 
@@ -184,12 +241,22 @@ def main(argv=None):
     rep.add_argument("log", help="trace log file, or - for stdin")
     rep.add_argument("--thresholds", default=str(DEFAULT_THRESHOLDS))
     rep.add_argument("--out", help="also write the report JSON here")
+    rep.add_argument("--require-final", action="store_true",
+                     help="fail while the thresholds are provisional (production sign-off)")
     cmp_ = sub.add_parser("compare")
     cmp_.add_argument("baseline")
     cmp_.add_argument("candidate")
     cmp_.add_argument("--thresholds", default=str(DEFAULT_THRESHOLDS))
+    cmp_.add_argument("--require-final", action="store_true",
+                      help="fail while the thresholds are provisional (production sign-off)")
     args = ap.parse_args(argv)
     thresholds = _load_json(args.thresholds)
+    problems = threshold_problems(thresholds)
+    if problems:
+        print(f"invalid thresholds file {args.thresholds}:", file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 2
 
     if args.cmd == "report":
         if args.log == "-":
@@ -198,6 +265,8 @@ def main(argv=None):
             lines = Path(args.log).read_text(errors="replace").splitlines()
         summary = summarize(*read_records(lines))
         checks = evaluate(summary, thresholds)
+        if args.require_final:
+            checks.append(_final_check(thresholds))
         result = {**summary, "slo": checks, "pass": all(c["ok"] for c in checks),
                   "thresholds_provisional": thresholds.get("provisional", False)}
         text = json.dumps(result, indent=2, sort_keys=True)
@@ -207,6 +276,8 @@ def main(argv=None):
         return 0 if result["pass"] else 1
 
     checks = compare(_load_json(args.baseline), _load_json(args.candidate), thresholds)
+    if args.require_final:
+        checks.append(_final_check(thresholds))
     result = {"gate": checks, "pass": all(c["ok"] for c in checks),
               "thresholds_provisional": thresholds.get("provisional", False)}
     print(json.dumps(result, indent=2, sort_keys=True))
