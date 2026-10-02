@@ -91,6 +91,35 @@ jobs:
       - name: Unit tests
         run: npm test
 
+  # Known-vulnerability scan of what ships (looper#54). A finding fails the
+  # run: bump the pin. If a bump breaks the tests, file "Security finding: …"
+  # and add ONE `--ignore-vuln <ID>` here with a comment naming that issue and
+  # a review date. No blanket ignores, no continue-on-error.
+  deps-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: Install pip-audit (pinned)
+        run: pip install pip-audit==2.10.1
+      # Runtime deps only: requirements.txt is what the production image
+      # installs. --strict fails the run if any dependency can't be resolved,
+      # so a broken resolve can't pass as "no vulnerabilities".
+      - name: pip-audit backend runtime deps
+        run: pip-audit --strict --progress-spinner off -r backend/requirements.txt
+      # Reads package-lock.json only, so no npm ci is needed. Dev deps
+      # (vite, typescript, electron-builder) never reach users.
+      - name: npm audit looper-bot (high and above)
+        working-directory: looper-bot
+        run: npm audit --omit=dev --audit-level=high
+      # workers/looper-api-proxy has zero dependencies (no package-lock), so
+      # there is nothing to audit there.
+
   # Same setup as hybridcard-v2's ci.yml, on gitleaks-action@v3: v2 runs on
   # Node 20, which GitHub removed from hosted runners on 2026-09-16.
   gitleaks:
@@ -112,7 +141,7 @@ jobs:
   # The one check to mark as required in branch protection.
   ci:
     if: always()
-    needs: [backend, web, worker, looper-bot, gitleaks]
+    needs: [backend, web, worker, looper-bot, deps-audit, gitleaks]
     runs-on: ubuntu-latest
     steps:
       - name: All jobs passed
