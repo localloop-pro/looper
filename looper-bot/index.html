@@ -2,6 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Production Content-Security-Policy (looper#63). `npm run dev` loosens it
+      for the Vite dev server only (see devCspPlugin in vite.config.ts).
+      Images: generated thumbnails are data:, screenshots are file:, OpenAI
+      image URLs are https:. connect-src: OpenAI Realtime (SDP + WebSocket).
+      style 'unsafe-inline' is for Mermaid's inline SVG styles. No unsafe-eval.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: https:; font-src 'self' data:; media-src 'self' blob: mediastream:; connect-src 'self' https://api.openai.com wss://api.openai.com; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Looper</title>
   </head>
