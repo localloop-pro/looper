@@ -408,3 +408,17 @@
   of a word. Typed bare "hair" still matches as a substring, as on main.
 - Code only. The Coolify redeploy of looper-api and the Aesthete category
   change on hybridcard.ai stay with the owner.
+
+### GitHub Actions CI (2026-10-02, looper#32)
+
+- `.github/workflows/ci.yml` runs on PRs to main and pushes to main with
+  `permissions: contents: read`, no repo secrets and no deploy steps. Jobs:
+  backend (Python 3.12, pytest), web (Node 20, voice router tests), worker
+  (looper-api-proxy tests), looper-bot (npm ci, typecheck, build, test; no
+  Electron binary download, no packaging, no keys), gitleaks, and a final `ci`
+  job that needs all of them.
+- gitleaks matches hybridcard-v2's setup (full-history checkout, auto
+  `GITHUB_TOKEN`, job-level `pull-requests: read`) but on `gitleaks-action@v3`,
+  because v2's Node 20 runtime is gone from hosted runners since 2026-09-16.
+  The repo is owned by a personal account, so no `GITLEAKS_LICENSE` is needed.
+- Making `ci` a required status check on `main` is the owner's step.

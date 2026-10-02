@@ -1,0 +1,126 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Looper CI (looper#32). The office auto-merges once QA signs off AND GitHub
+# checks are green, so this workflow is what "green" means. Make the single
+# `ci` job a required check in branch protection (owner step, see the PR).
+#
+# FORBIDDEN ACTIONS — read before "fixing" a red run:
+#   1. Do NOT delete, rename or skip the `gitleaks` job, and do NOT set
+#      `continue-on-error: true` or `if: false` on any job.
+#   2. Do NOT add secrets, deploy steps or write scopes. This workflow only
+#      reads the code and runs tests (`contents: read`).
+#   3. Do NOT add gitleaks allowlist entries to make a run green. A real leak
+#      is removed from history AND rotated, then the scan is re-run.
+# If CI is red, the fix is in the code — never in this workflow.
+# ─────────────────────────────────────────────────────────────────────────────
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - name: Install
+        run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - name: Tests (TypeDB test skips without a server)
+        working-directory: backend
+        run: python -m pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: Voice command router tests
+        run: node web/tests/voice-command-router.test.js
+
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: looper-api-proxy Worker tests (zero deps, fetch is stubbed)
+        run: node workers/looper-api-proxy/test/index.test.mjs
+
+  looper-bot:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: looper-bot
+    env:
+      # No Electron packaging in CI, so skip the ~100 MB Electron binary.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: looper-bot/package-lock.json
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Unit tests
+        run: npm test
+
+  # Same setup as hybridcard-v2's ci.yml, on gitleaks-action@v3: v2 runs on
+  # Node 20, which GitHub removed from hosted runners on 2026-09-16.
+  gitleaks:
+    runs-on: ubuntu-latest
+    # gitleaks-action on pull_request lists PR commits via the GitHub API,
+    # which needs pull-requests: read (contents: read alone returns 403).
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history for gitleaks
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The one check to mark as required in branch protection.
+  ci:
+    if: always()
+    needs: [backend, web, worker, looper-bot, gitleaks]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All jobs passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "needs results: $RESULTS"
+          for r in $RESULTS; do
+            if [ "$r" != "success" ]; then
+              echo "::error::a required job did not succeed ($r)"
+              exit 1
+            fi
+          done
