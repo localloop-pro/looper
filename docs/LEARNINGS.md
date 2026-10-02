@@ -15,3 +15,8 @@
   the sender really sends. HybridCard signs `JSON.stringify` output (compact,
   raw UTF-8, `undefined` keys dropped), not Python's `json.dumps` default.
   Pin the caller's commit SHA in the test so a later failure points at a real diff.
+- looper#32: CI uses one final `ci` job with `if: always()` that fails unless
+  every needed job reports `success`, so branch protection needs only one
+  required check and a skipped or cancelled job can't pass as green. Check
+  action runtimes before copying a workflow: `gitleaks-action@v2` runs on
+  Node 20, which GitHub removed from hosted runners on 2026-09-16, so use `@v3`.
