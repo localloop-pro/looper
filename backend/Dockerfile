@@ -11,6 +11,13 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY requirements-brain.txt requirements-brain.txt
 RUN pip install --no-cache-dir -r requirements-brain.txt
 
+# news_audio_worker.py runs as a Coolify scheduled task inside this image,
+# so its deps (openai, supabase) stay in by default. The API itself never
+# imports them: build with --build-arg WITH_TOOLS=0 for an API-only image.
+ARG WITH_TOOLS=1
+COPY tools/requirements.txt tools/requirements.txt
+RUN if [ "$WITH_TOOLS" = "1" ]; then pip install --no-cache-dir -r tools/requirements.txt; fi
+
 COPY backend/ backend/
 COPY brain/ brain/
 COPY tools/ tools/

@@ -30,8 +30,10 @@ over browser TTS — no client changes needed.
 ### Install
 
 ```bash
-pip install supabase openai
+pip install -r tools/requirements.txt
 ```
+
+The API (`backend/requirements.txt`) does not include openai or supabase.
 
 ### Env vars
 
