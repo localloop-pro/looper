@@ -54,6 +54,8 @@ jobs:
           node-version: 20
       - name: Voice command router tests
         run: node web/tests/voice-command-router.test.js
+      - name: Jarvis drift check tests
+        run: node web/tests/jarvis-sync.test.js
 
   worker:
     runs-on: ubuntu-latest
