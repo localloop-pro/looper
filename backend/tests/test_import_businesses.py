@@ -145,6 +145,54 @@ def test_bad_rows_are_rejected_with_reasons_and_the_rest_carry_on(tmp_path):
     assert [b.name for b in _rows(url)] == ["Café Test Card", "Test Good Row"]
 
 
+MALFORMED_WEBSITES = [
+    "https://[bad",          # urlparse raises ValueError: Invalid IPv6 URL
+    "https://[not-an-ip]/",  # same, with a closing bracket
+    "https://:443",          # netloc but no hostname
+    "https://user@:443",     # userinfo, still no hostname
+    "https://",              # nothing after the scheme
+]
+
+
+def _malformed_website_csv(tmp_path):
+    rows = [_row(name="Test Valid Before")]
+    rows += [_row(name=f"Test Bad Site {i}", website=w) for i, w in enumerate(MALFORMED_WEBSITES)]
+    rows.append(_row(name="Test Valid After"))
+    return _csv(tmp_path / "in.csv", rows)
+
+
+def test_malformed_website_is_rejected_and_dry_run_continues(tmp_path):
+    url, path = _db(tmp_path)
+    before = _sha(path)
+    counts, out = _run(_malformed_website_csv(tmp_path), url)
+    bad = len(MALFORMED_WEBSITES)
+    assert counts == {"inserted": 2, "skipped_duplicate": 0, "rejected": bad}
+    for line in range(3, 3 + bad):
+        assert f"line {line}: website must start with https://" in out
+    assert f"would insert 2 / skipped duplicate 0 / rejected {bad}" in out
+    assert _sha(path) == before
+
+
+def test_malformed_website_is_rejected_and_apply_continues(tmp_path):
+    url, _ = _db(tmp_path)
+    counts, out = _run(_malformed_website_csv(tmp_path), url, apply=True)
+    bad = len(MALFORMED_WEBSITES)
+    assert counts == {"inserted": 2, "skipped_duplicate": 0, "rejected": bad}
+    assert f"APPLIED: inserted 2 / skipped duplicate 0 / rejected {bad}" in out
+    assert [b.name for b in _rows(url)] == ["Café Test Card", "Test Valid Before", "Test Valid After"]
+
+
+def test_cli_malformed_website_exits_zero_with_summary(tmp_path):
+    url, _ = _db(tmp_path)
+    src = _malformed_website_csv(tmp_path)
+    proc = subprocess.run([sys.executable, str(SCRIPTS / "import_businesses.py"),
+                           "--csv", str(src), "--db", url],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert "Traceback" not in proc.stderr
+    assert f"would insert 2 / skipped duplicate 0 / rejected {len(MALFORMED_WEBSITES)}" in proc.stdout
+
+
 def test_running_twice_inserts_nothing_new(tmp_path):
     url, _ = _db(tmp_path)
     src = _csv(tmp_path / "in.csv", [_row(), _row(name="Test Fake Florist", category="florist")])

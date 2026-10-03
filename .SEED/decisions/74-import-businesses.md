@@ -12,13 +12,15 @@
   A match is skipped, never updated, never reactivated.
 - Validation: name, category, suburb, lat, lng required; lat/lng finite and in
   lat -44..-9, lng 112..154.5 (mainland + Tasmania; Lord Howe and Norfolk
-  excluded until needed); website `https://` with a host, or empty; text
+  excluded until needed); website `https://` with a nonempty `hostname` (a URL `urlparse` cannot
+  parse is a row rejection, not a crash), or empty; text
   lengths within the model's String sizes. Bad rows are rejected with a
   reason; the run continues.
 - Exit 2 (nothing created) for a missing SQLite file, a DB without a
   `businesses` table, or a CSV header without the required columns.
 - Template `docs/templates/businesses.csv` is header-only. No example
   businesses anywhere in the repo; test rows exist only inside the test file.
-- Rollback: restore the pre-import backup (RUNBOOK-BACKUP-RESTORE §3), or
-  hide only imported rows with `is_active=0 WHERE source='owner_verified'`
-  (docs/RUNBOOK-IMPORT-BUSINESSES.md §6). Never delete.
+- Rollback: restore the pre-import backup (RUNBOOK-BACKUP-RESTORE §3,
+  docs/RUNBOOK-IMPORT-BUSINESSES.md §6). No `WHERE source='owner_verified'`
+  shortcut: `source` is shared by every import, so it would also hide earlier
+  imports (QA, PR #103). Never delete.

@@ -24,3 +24,9 @@ Lessons:
   ends up measuring that quirk instead of the import.
 - Prove "no ranking change" by flipping `source` on every row and checking
   the `/api/search` order doesn't move.
+- `urlparse` raises `ValueError` on a bad bracketed host (`https://[bad`), and
+  `netloc` is non-empty for hostless `https://:443`. Wrap the parse and check
+  `.hostname`, so one bad cell rejects its row instead of aborting the run.
+- A rollback keyed on a shared column (`WHERE source='owner_verified'`) undoes
+  every past import, not just the last one. Roll back by backup, or by the
+  exact ids one run created.

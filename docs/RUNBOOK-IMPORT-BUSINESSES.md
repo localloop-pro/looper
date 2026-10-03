@@ -38,14 +38,14 @@ business, **only businesses you have checked yourself**:
 | lat | yes | a number inside Australia, e.g. `-33.8908` (note the minus) |
 | lng | yes | a number inside Australia, e.g. `151.2748` |
 | phone | no | the business's public number, at most 20 characters |
-| website | no | must start with `https://`, or leave it empty |
+| website | no | must start with `https://` and a site name, or leave it empty |
 | description | no | |
 
 Tip: in Google Maps, right-click the shop and click the numbers at the top to
 copy `lat, lng`. Save as **CSV UTF-8**.
 
 A bad line is rejected with its reason (for example
-`REJECT  line 7: website must start with https:// (or be empty)`) and the rest
+`REJECT  line 7: website must start with https:// and name a host (or be empty)`) and the rest
 still import. Fix the line and run again: rows already imported are skipped.
 
 ## 2. Make a fresh backup first
@@ -115,21 +115,17 @@ match, then most reviews, then nearest).
 
 ## 6. Roll back
 
-**Option A: restore the backup from step 2** (puts the whole database back
-to that moment; anything written since is lost). Follow
+Restore the backup from step 2. It puts the whole database back to that
+moment; anything written since is lost. Follow
 `docs/RUNBOOK-BACKUP-RESTORE.md` §3 with the file name you wrote down.
 
-**Option B: hide just the imported rows, keep everything else.** Nothing is
-deleted; the rows are only switched off, so search stops showing them. In
-**looper-api → Terminal**:
-
-```bash
-python -c "import sqlite3; c=sqlite3.connect('/app/data/looper.db'); n=c.execute(\"UPDATE businesses SET is_active=0 WHERE source='owner_verified'\").rowcount; c.commit(); print(n, 'rows hidden')"
-```
-
-To show them again, run the same line with `is_active=1`.
+There is deliberately no "hide every `owner_verified` row" shortcut: that
+would also hide businesses from your earlier imports, not just this one. If
+one listing is wrong, tell the team the business name and it is switched off
+by its exact id.
 
 ## 7. Remove this tool (rollback of the code)
 
 Revert the PR that added it. It changed no schema and no route, so nothing
-else needs undoing. Rows already imported stay (hide them with 6B if needed).
+else needs undoing. Rows already imported stay (restore the backup, §6, to
+undo an import).

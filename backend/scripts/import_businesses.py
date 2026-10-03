@@ -75,6 +75,16 @@ def _coord(raw: str, label: str, lo: float, hi: float) -> tuple[float | None, st
     return value, None
 
 
+def _https_with_host(raw: str) -> bool:
+    # urlparse raises ValueError on a bad bracketed host ("https://[bad");
+    # netloc alone accepts hostless "https://:443", so require .hostname.
+    try:
+        url = urlparse(raw)
+        return url.scheme.lower() == "https" and bool(url.hostname)
+    except ValueError:
+        return False
+
+
 def validate(row: dict[str, str]) -> tuple[dict | None, str | None]:
     """Return (clean fields, None) or (None, reason)."""
     clean = {c: (row.get(c) or "").strip() for c in COLUMNS}
@@ -90,10 +100,8 @@ def validate(row: dict[str, str]) -> tuple[dict | None, str | None]:
     lng, err = _coord(clean["lng"], "lng", *LNG_RANGE)
     if err:
         return None, err
-    if clean["website"]:
-        url = urlparse(clean["website"])
-        if url.scheme.lower() != "https" or not url.netloc:
-            return None, "website must start with https:// (or be empty)"
+    if clean["website"] and not _https_with_host(clean["website"]):
+        return None, "website must start with https:// and name a host (or be empty)"
     out = {c: (clean[c] or None) for c in COLUMNS}
     out["lat"], out["lng"] = lat, lng
     return out, None
