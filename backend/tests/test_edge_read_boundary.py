@@ -290,8 +290,7 @@ def test_preflight_untouched(client, db, cache_on, monkeypatch):
         assert resp.headers["access-control-allow-origin"] == ORIGIN
 
 
-@pytest.mark.parametrize("path", ["/api/users/1", "/api/code/ABC123", "/api/reviews/1",
-                                  "/api/ingest/status", "/health"])
+@pytest.mark.parametrize("path", ["/api/reviews/1", "/api/ingest/status", "/health"])
 def test_private_and_operational_reads_are_no_store(client, db, cache_on, path):
     first = client.get(path)
     second = client.get(path)
@@ -308,3 +307,51 @@ def test_review_reads_never_served_from_cache(client, db, cache_on):
     db.add(Review(business_id=a.id, user_id=user.id, rating=5, review_text="Another fine visit here"))
     db.commit()
     assert client.get(f"/api/reviews/{a.id}").json()["total_reviews"] == before + 1
+
+
+# ---- looper#40: identity reads are outside the per-IP limiter ------------------
+
+class _FakeVerifier:
+    """No provider I/O in tests; counts calls so we see every request answered."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def verify(self, domain):
+        self.calls += 1
+        return {"domain": domain, "verificationState": "verified"}
+
+    def list_domains(self):
+        return []
+
+    def health(self):
+        return {"status": "ok"}
+
+
+def test_identity_proxy_from_one_ip_is_never_rate_limited(client, db, monkeypatch):
+    """HybridCard's badge proxy calls from ONE server IP for every visitor."""
+    from routes import identity as identity_route
+    fake = _FakeVerifier()
+    monkeypatch.setattr(identity_route, "verifier", fake)
+    monkeypatch.setenv("LOOPER_READ_RATE_LIMIT_PER_MIN", "2")
+    monkeypatch.setenv("LOOPER_CLIENT_IP_HEADER", "cf-connecting-ip")
+    hybridcard_server = {"CF-Connecting-IP": "198.51.100.7"}
+    for _ in range(25):
+        resp = client.get("/api/identity/domains/localloop.kas", headers=hybridcard_server)
+        assert resp.status_code == 200
+        assert resp.json()["verificationState"] == "verified"
+    assert client.get("/api/identity/domains", headers=hybridcard_server).status_code == 200
+    assert client.get("/api/identity/health", headers=hybridcard_server).status_code == 200
+    assert fake.calls == 25
+    # Identity calls did not use up that IP's read budget, and other reads are still limited.
+    assert client.get("/api/search", params={"q": "café"}, headers=hybridcard_server).status_code == 200
+    assert client.get("/api/search", params={"q": "café"}, headers=hybridcard_server).status_code == 200
+    assert client.get("/api/search", params={"q": "café"}, headers=hybridcard_server).status_code == 429
+
+
+def test_identity_exemption_is_prefix_exact(client, db, monkeypatch):
+    """Lookalike paths can't borrow the exemption to dodge the limiter."""
+    monkeypatch.setenv("LOOPER_READ_RATE_LIMIT_PER_MIN", "1")
+    assert edge_boundary.RATE_LIMIT_EXEMPT_PREFIXES == ("/api/identity/",)
+    assert client.get("/api/identityx").status_code == 404
+    assert client.get("/api/identityx").status_code == 429

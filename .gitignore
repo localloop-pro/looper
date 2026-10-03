@@ -20,6 +20,9 @@ data/exports/
 data/hf_dataset/
 *.db-journal
 *.db-wal
+# SQLite backups hold raw names + mobiles (docs/RUNBOOK-BACKUP-RESTORE.md)
+looper-*.db
+backups/
 
 # Environment
 .env
@@ -40,6 +43,9 @@ Thumbs.db
 
 # Training
 training/output/
-training/checkpoints/workers/**/.wrangler/
+training/checkpoints/
+
+# Wrangler local cache/state (never commit; can hold account ids)
+workers/**/.wrangler/
 
 node_modules/

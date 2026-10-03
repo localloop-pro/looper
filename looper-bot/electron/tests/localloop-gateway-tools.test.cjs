@@ -272,3 +272,13 @@ test("gateway health is public, read-only, and allowlisted", async () => {
   assert.equal(result.internal_secret, undefined);
   assert.doesNotMatch(result.artifact.content, /must-not-escape/);
 });
+
+// #50: the migration_endpoint_pending case itself is pinned in gateway-contract.test.cjs.
+test("other health failures keep the generic gateway_health_failed code", async () => {
+  const tools = createLocalLoopGatewayTools({
+    baseUrl: BASE,
+    fetchImpl: async () => jsonResponse(500, { error: "something_else" }),
+  });
+  const result = await tools.health();
+  assert.equal(result.error, "gateway_health_failed");
+});

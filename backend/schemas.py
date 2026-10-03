@@ -48,6 +48,9 @@ class SearchResponse(BaseModel):
     results: List[SearchResult]
     message: str  # contextual message from LOOPER
     total_results: int
+    # Set (km) only when nothing matched inside radius_km and the one
+    # widened pass ran (looper#73). Additive and optional; null otherwise.
+    widened_to_km: Optional[float] = None
 
 
 class SubmitReviewRequest(BaseModel):
@@ -55,7 +58,7 @@ class SubmitReviewRequest(BaseModel):
     user_id: int
     rating: int = Field(..., ge=1, le=5)
     review_text: str = Field(..., min_length=10, max_length=2000)
-    verified_visit: bool = False
+    # No verified_visit: it is set server-side (always False for direct posts).
 
 
 class MapPinRequest(BaseModel):

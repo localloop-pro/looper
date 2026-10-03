@@ -11,15 +11,13 @@ pydantic==2.9.0
 python-dotenv==1.2.2
 starlette>=1.3.1
 
-# LLM / AI (runtime — API client only)
-openai==1.51.0
+# HTTP client (runtime): services/kaspa_identity.py, services/facebook_pipeline.py
 httpx==0.27.0
 
-# Database (runtime)
-aiosqlite==0.20.0
-
-# Geo (runtime)
-geopy==2.4.1
+# looper#55: openai, aiosqlite and geopy removed — nothing under backend/
+# imports them (the engine is sync sqlite://). openai lives in
+# tools/requirements.txt for news_audio_worker.py.
+# python-dotenv stays: uvicorn[standard] pulls it in for --env-file.
 
 # Training / ML workloads moved to requirements-ml.txt
 # Install only when actually fine-tuning or running inference with local models:

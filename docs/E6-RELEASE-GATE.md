@@ -11,6 +11,35 @@ the real numbers. Nothing here is deployed.
 
 ---
 
+## One suburb, one loop: owner readiness check (#75)
+
+From the repo root, with Python 3 (no dependencies to install):
+```bash
+python3 scripts/loop_check.py --base-url https://api.localloop.ai
+# Expect PASS for every check, then READY; exit 0 means every check passed.
+# Any FAIL ends NOT READY (exit 1): fix the named blocker before inviting the group.
+```
+
+**Owner only on production.** Agents and QA use a local preview or the
+`backend/tests/test_loop_check.py` TestClient with stubbed card HEAD requests;
+they never probe api.localloop.ai or hybridcard.ai. Defaults match BLIND-SPOTS
+§5 step 8: hairdresser, Bondi centre (-33.8908, 151.2748), 1.5 km. Override
+with `--query`, `--lat`, `--lng`, and `--radius-km` after panning the map.
+
+The command checks health, closed profile reads, at least two returned options,
+HTTPS HybridCard URLs and each card's HEAD status (2xx/3xx). It sends only
+GET/HEAD, follows no redirects, sends no credentials/cookies and skips unsafe
+card URLs. Network failures and malformed results fail closed. A redirect
+passes the requested HEAD status check; it does not prove the destination page
+works. This is a narrow readiness probe, not full release approval: public-write
+guards from §5 step 7 and the owner/browser funnel checks remain separate.
+Existing server-side search telemetry may still run on GET requests.
+
+Rollback: stop using this local command; it changes no server configuration.
+To verify locally: `cd backend && .venv/bin/python -m pytest -q tests/test_loop_check.py`
+(expect all tests passed). These tests run automatically in the existing CI
+backend job, which the required `ci` job needs.
+
 ## 1. One correlation convention (no PII)
 
 There is one key per hop type:
@@ -30,7 +59,7 @@ Rules, enforced in `backend/services/correlation.py`:
   the same id, and it is echoed on the response.
 - **Allowlisted fields only.** The `http` record has exactly `ts, kind, rid,
   method, route, status, dur_ms, cache`. `route` is the template
-  (`/api/users/{user_id}`), never the raw path or the query string. Voice
+  (`/api/reviews/{business_id}`), never the raw path or the query string. Voice
   queries are free text and can contain dictated contact details.
 - **Never in a trace record:** the client IP, `User-Agent`, cookies, the
   `Authorization` header, `X-HC-Signature`, request or response bodies,
@@ -39,9 +68,11 @@ Rules, enforced in `backend/services/correlation.py`:
   trace records. It prints the client IP, the raw path and the full query
   string on every request, for example
   `INFO: 127.0.0.1:52707 - "GET /api/search?q=john%20smith%200412999888 …" 200 OK`.
-  `python main.py` now runs with `access_log=False`. **Production still has it
-  on**: the `backend/Dockerfile` `CMD` has no `--no-access-log`. That change
-  affects deploys, so it waits for the owner's OK on looper#9 (see section 7).
+  `python main.py` runs with `access_log=False`, and since looper#62 the
+  `backend/Dockerfile` `CMD` passes `--no-access-log`, so the image no longer
+  writes that line. **Gap closed in code; production redeploy pending**: the
+  running looper-api container keeps logging until the owner redeploys it in
+  Coolify (see section 7).
 - **The `bridge` record** has exactly `ts, kind, receiver, rid, event_id,
   event_type, outcome, delivery_age_s`.
   - `outcome` is one of `processed`, `duplicate`, `stale_skipped`,
@@ -167,7 +198,9 @@ A percentage split belongs at the Worker (devops lane, other issue).
 |---|---|---|
 | Tracing (this PR) | set `LOOPER_TRACE_LOG=off` and restart, or `git revert` and redeploy | none: tracing writes no rows |
 | uvicorn access log off in `main.py` (this PR, local runs only) | remove `access_log=False` from `uvicorn.run` (brings back IP + query-text logging) | none |
+| uvicorn access log off in the Docker image (looper#62) | remove `"--no-access-log"` from the `backend/Dockerfile` `CMD` (or `git revert` the PR) and redeploy looper-api in Coolify. Brings back IP + query-text logging | none: the flag only changes stdout |
 | Read cache / rate limit (PR #16) | set the flags to `0` and restart | none: in-process only |
+| `looper-api-proxy` Worker (looper#17) | `npx wrangler rollback` (`docs/WORKER-DEPLOY-RUNBOOK.md` §4) | none: the Worker stores nothing |
 | Any backend release | Coolify: redeploy the previous commit | none: bridge receipts are idempotent on `eventId`, and the sender retries every non-2xx, so events missed during a bad deploy re-arrive |
 | Bridge receiver regression | revert. Do **not** delete `bridge_events` rows; replays become `duplicate` | none |
 
@@ -191,14 +224,14 @@ contract checks passed.
 | Area | Status | Evidence / gap |
 |---|---|---|
 | Logging leakage (trace records) | ✅ allowlist records, unsafe ids replaced | `tests/test_correlation_trace.py` |
-| Logging leakage (uvicorn access log) | ⚠️ **open gap in production.** The Dockerfile `CMD` runs uvicorn with its default access log, which writes the client IP, raw path and full query string (dictated phone numbers/emails) to stdout on every request. QA reproduced a planted mobile in it. Off for local runs (`access_log=False` in `main.py`). Fix waiting on owner OK (deploy change): add `"--no-access-log"` to the Dockerfile `CMD` | `test_uvicorn_access_log_off_in_main` |
+| Logging leakage (uvicorn access log) | ✅ **closed in code (looper#62); production redeploy pending.** The Dockerfile `CMD` runs uvicorn with `--no-access-log`, so the image no longer writes the client IP, raw path or query string (dictated phone numbers/emails) to stdout. Local runs: `access_log=False` in `main.py`. The running Coolify container keeps the old behaviour until the owner redeploys looper-api | `test_uvicorn_access_log_off_in_main`, `test_uvicorn_access_log_off_in_dockerfile` |
 | Replay | ✅ idempotent on `eventId`; out-of-order retries skipped; ±5 min HMAC window | `test_bridge_hmac.py`, `test_ingest_*`, non-prod check |
 | Authorization (bridge) | ✅ HMAC over the raw body, constant-time compare, 401/413 | non-prod check: tampered, expired, unknown key, wrong secret, unsigned → 401 |
 | CORS | ✅ exact allowlist; a foreign origin gets no grant; preflight from a foreign origin is 400 | non-prod check + tests |
 | SSRF / open proxy | ✅ the origin never fetches caller-supplied URLs; proxy-shaped paths are 404 | non-prod check. Worker: forwards only to its fixed `ORIGIN` |
 | Cache isolation | ✅ at the origin, shipped dark (PR #16): key = ranking params only, no identity; `Authorization` bypasses | `test_edge_read_boundary.py`. A future Worker cache must key on `Origin` (`docs/EDGE-READ-BOUNDARY.md` §5) |
 | Rate limits | ⏳ built, dark (PR #16) | do not enable until the origin is locked to Cloudflare (`docs/EDGE-READ-BOUNDARY.md`). 429s are traced: `test_one_id_through_read_boundary_and_hits_are_traced` |
-| Authorization (public writes) | ❌ known gap | `POST /api/reviews` is open (BLIND-SPOTS §3.6). Hot zone (auth): owner decision needed |
+| Authorization (public writes) | ✅ closed in code (#27 / merged PR #33); production unverified (owner probe needed) | `backend/tests/test_public_writes_lockdown.py`: POST reviews/onboard/pins → 403 unless `LOOPER_PUBLIC_WRITES=true`; profile GETs users/code → 404 even when writes open; public reads preserved; caller `verified_visit` ignored. Enabling writes still needs owner approval |
 | `/api/ingest/status` | ⚠️ public | event ids, types and counts only; no payload bodies (asserted by the non-prod check) |
 
 ## 8. Evidence and what is still open
@@ -216,6 +249,21 @@ are open, no staging target is named):
 - [ ] HybridCard outbox logs `eventId`, `attempts`, `status`, `lastError` per
   drain, with no payload (hybridcard-v2#62).
 - [ ] Deploy the updated `looper-api-proxy` Worker in an approved change
-  window (owner/devops, never agents).
+  window (owner/devops, never agents). Steps: `docs/WORKER-DEPLOY-RUNBOOK.md`.
 - [ ] LocalLoop and HybridCard adopt section 1 (their E2/E3/E5 issues).
 - [ ] Owner sign-off on production rollout.
+
+### How each open item gets unblocked (who does what)
+
+Re-checked 2026-10-02: localloop.pro-main#100, #101 and #102 are open;
+hybridcard-v2#62 is open, and draft hybridcard-v2#105 covers only the part
+that doesn't depend on E1.
+
+| Item | Waiting on | Then, in this repo |
+|---|---|---|
+| E1 thresholds | ADR accepted on localloop.pro-main#100 | Paste numbers into `tools/slo_thresholds.json`, set `provisional: false` and `adr`, run `slo_report.py --require-final` (one small PR) |
+| `X-Request-ID` at map/gateway | localloop.pro-main#101 / #102 merged | Nothing; Looper already echoes it (section 1) |
+| Outbox drain logging | hybridcard-v2#62 merged | Nothing |
+| Worker deploy | Owner/devops change window | Nothing (agents never deploy). The owner follows `docs/WORKER-DEPLOY-RUNBOOK.md`: deploy, checks, one-command rollback |
+| Staging E2E | Owner/devops names a non-prod URL on looper#20 | Run `HYBRIDCARD_INGEST_SECRET=<staging secret> python3 tools/e6_nonprod_check.py https://<host> --non-prod-host <host>` and `python3 tools/slo_report.py report <server-log> --require-final`, run the browser E2E, attach the output to looper#20 |
+| Production sign-off | Owner (Bill), after all of the above | Nothing |

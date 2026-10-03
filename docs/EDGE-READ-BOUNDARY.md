@@ -18,13 +18,13 @@ Harness: `tools/bench_read_paths.py`.
 | `GET /api/discover` | **cacheable** | anonymous, public, slowest read in E1 (p95 249 ms @10 workers) |
 | `GET /api/businesses` | **cacheable** | anonymous, public list |
 | `GET /api/reviews/{id}` | no-store | carries reviewer first names |
-| `GET /api/users/{id}`, `GET /api/code/{code}` | no-store | per-person data (BLIND-SPOTS §3.6) |
 | `GET /api/ingest/status`, `/health` | no-store | operational, must be live |
-| `GET /api/pins`, `/api/tourist-info`, `/api/identity/*` | pass-through | headers unchanged; identity already has its own bounded cache |
-| every `POST` (reviews, onboard, pins, bridge receivers) | pass-through | never cached, never rate limited, auth untouched |
+| `GET /api/pins`, `/api/tourist-info` | pass-through | headers unchanged |
+| `GET /api/identity/*` | pass-through, **not rate limited** | identity has its own bounded cache; HybridCard calls it server-side from one IP (looper#40) |
+| every `POST` (reviews, onboard, pins, bridge receivers) | pass-through | never cached, never rate limited, auth untouched (reviews/onboard/pins are 403 unless `LOOPER_PUBLIC_WRITES=true`, looper#27) |
 
-The read **rate limit** covers every `GET`/`HEAD` under `/api/`. `/health`,
-`/docs`, `/web` and all writes are outside it.
+The read **rate limit** covers every `GET`/`HEAD` under `/api/` except
+`/api/identity/*`. `/health`, `/docs`, `/web` and all writes are outside it.
 
 ## 2. Cache rules
 
@@ -62,6 +62,13 @@ equals the uncached one, that reviews still outrank a 90 % discount with
   behind the Worker until the origin is locked to Cloudflare (or set a high
   limit as a global brake).
 - In-process memory, max 10 000 clients, per uvicorn worker.
+- `/api/identity/*` is exempt (looper#40). HybridCard's `KaspaIdentityBadge`
+  sits in its root layout and fetches `/api/identity/domains/{domain}` from
+  HybridCard's **server**, so every hybridcard.ai visitor shares one IP. A
+  per-IP bucket would 429 that IP and hide the badge for everyone. The exemption
+  is cheap: only the two allowlisted `.kas` domains resolve, and the verifier
+  answers from its TTL cache (1 h) with single-flight and a 30 s failure
+  back-off, so no request rate reaches the KNS provider more than once per window.
 
 ## 4. Request correlation
 

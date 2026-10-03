@@ -1,3 +1,5 @@
+Archived 2026-10: superseded by STATUS.md
+
 # Looper completion status
 
 Last verified: **2026-08-12**

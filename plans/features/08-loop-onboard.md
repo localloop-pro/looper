@@ -3,7 +3,8 @@
 > Extracted verbatim from `plans/IMPLEMENTATION_PLAN.md` §5
 > (v1.0, 2026-07-10; split 2026-07-11 per Bill's go-ahead).
 > The master plan stays authoritative. Before implementing anything:
-> read `SEED.md`, `.SEED/decisions.md`, `.SEED/gotchas.md`, and the
+> read `SEED.md`, `.SEED/decisions.md` + `.SEED/decisions/`,
+> `.SEED/gotchas.md`, and the
 > master plan's Section 4 Golden Rules. Implement features in order;
 > tick a box only when that feature's Acceptance criteria all pass.
 
@@ -158,4 +159,4 @@
   with a working card link; a second comment produces nothing; webhook
   outage degrades silently (welcome post still links to join page).
 - **Depends:** F7.3. If the webhook proves dead, close the feature and note
-  it in `.SEED/decisions.md` — Layers 1–3 carry the funnel.
+  it in `.SEED/decisions/` — Layers 1–3 carry the funnel.
