@@ -8,7 +8,8 @@ there was no copy anywhere (BLIND-SPOTS §3.12). This runbook gives you:
 
 1. a daily backup (section 2),
 2. a restore you can do in about five minutes (section 3),
-3. a monthly restore test so you know the backups really work (section 4).
+3. a monthly restore test so you know the backups really work (section 4),
+4. a weekly numbers report read from the newest backup (section 5).
 
 The tool is `backend/scripts/sqlite_backup.py`. It is already inside the
 Docker image at `/app/looper/backend/scripts/sqlite_backup.py`.
@@ -229,8 +230,51 @@ Stop the server with Ctrl+C and delete the downloaded file afterwards.
 
 ---
 
-## 5. Remove this (rollback)
+## 5. Weekly numbers (5 minutes, every Monday)
+
+One read-only command turns the newest backup into a few numbers: queries,
+distinct sessions, the zero-result rate, what people asked for that found
+nothing, bridge events by status, and current business/review/pin/deal
+counts, each with the previous week next to it (looper#68). It opens the file
+read-only and never changes or creates anything. Run it against a **backup**,
+never the live `/app/data/looper.db`. Agents never run it against production.
+
+In Coolify, open a terminal on the `looper-api` container and run:
+
+```bash
+ls -t /app/backups/looper-*.db | head -1          # newest backup
+python /app/looper/backend/scripts/weekly_numbers.py --db "$(ls -t /app/backups/looper-*.db | head -1)"
+```
+
+Or on your Mac, against a backup you downloaded to a private folder:
+
+```bash
+cd backend
+.venv/bin/python scripts/weekly_numbers.py --db /full/path/to/looper-20261002T030000Z.db
+.venv/bin/python scripts/weekly_numbers.py --db /full/path/to/looper-20261002T030000Z.db --days 30
+.venv/bin/python scripts/weekly_numbers.py --db /full/path/to/looper-20261002T030000Z.db --json
+```
+
+How to read it:
+
+- **Zero-result searches** is the share of searches that returned nothing.
+  The list under it ("Asked for, found nothing") is what to fix or onboard
+  next. A text only shows up once two or more searches asked for it, so
+  one-off free text never appears; emails and mobiles show as `[email]` /
+  `[mobile]`.
+- **Bridge events** counts HybridCard events by status. Anything other than
+  `processed` or `stale_skipped` needs a look.
+- Exit code 2 with `no database file at ...` means the path is wrong;
+  nothing was created.
+
+The output has no names or mobiles in it, so it is safe to paste into
+STATUS.md or an issue.
+
+---
+
+## 6. Remove this (rollback)
 
 Delete the Coolify scheduled task, then delete
-`backend/scripts/sqlite_backup.py`, `backend/tests/test_sqlite_backup.py`
-and this file. Nothing in the app imports the script.
+`backend/scripts/sqlite_backup.py`, `backend/tests/test_sqlite_backup.py`,
+`backend/scripts/weekly_numbers.py`, `backend/tests/test_weekly_numbers.py`
+and this file. Nothing in the app imports either script.
