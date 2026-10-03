@@ -47,12 +47,21 @@ with container state/logs printed. This derivative image is local only.
 - Web router/drift tests: 183 + 15 passed; Worker: 16 passed; bot typecheck,
   build and 47 unit tests passed. Compose configuration and Wrangler dry-run
   passed; local Wrangler dev preflight returned 200.
-- Local Docker build and broken-CMD experiment are blocked: Docker Desktop's
-  daemon is unreachable despite startup/restart attempts. Hosted Docker result
-  and runtime must be recorded in the PR before acceptance.
-- #86 and #76 were open at preparation time. No SOURCE_COMMIT build arg or
-  commit assertion is included yet; preserve the Jarvis job if it lands before
-  this PR and add the #86 check when its contract is merged.
+- Local Docker daemon remained unreachable; container evidence comes from
+  [hosted CI](https://github.com/localloop-pro/looper/actions/runs/37094224602)
+  at restored commit `ca9aead`: every job passed. Docker build + smoke job took
+  **32 seconds** (03:44:43–03:45:15 UTC); the smoke script took **6 seconds**.
+  Health/search returned 200 JSON, reviews 403, query-log privacy passed.
+- [Broken-CMD run](https://github.com/localloop-pro/looper/actions/runs/37094131435)
+  at throwaway commit `285ade4`: container exited 42, smoke exited 1, aggregate
+  `ci` failed. Reverted by `ca9aead`; final Dockerfile matches main. The existing
+  backend CMD regression test also failed in that negative run. An earlier
+  [run](https://github.com/localloop-pro/looper/actions/runs/37094030065) had only
+  Docker smoke fail (a corrected urllib method-accessor bug), and `ci` failed,
+  independently proving aggregation.
+- #76 landed during validation. Merged main into the already-published branch
+  without force-pushing; kept both smoke jobs in `ci.needs`. #86 remains open:
+  no SOURCE_COMMIT build arg/assertion until that contract is merged.
 
 ## Follow-up: non-root runtime needs a separate volume plan
 
