@@ -39,4 +39,4 @@ WORKDIR /app/looper/backend
 # --no-access-log: uvicorn's access line holds the client IP and the raw query
 # string (dictated names, phone numbers, emails). The no-PII `kind: http` trace
 # record from services/correlation.py replaces it (looper#62).
-CMD ["python", "-c", "raise SystemExit(42)"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
