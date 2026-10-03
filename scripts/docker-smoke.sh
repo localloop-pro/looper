@@ -62,7 +62,7 @@ def probe(path, expected, data=None):
         assert response.code == expected, f"{path}: expected {expected}, got {response.code}"
         assert response.headers.get_content_type() == "application/json", f"{path}: not JSON"
         payload = json.load(response)
-    print(f"{request.method} {path.split('?')[0]}: {expected} JSON")
+    print(f"{request.get_method()} {path.split('?')[0]}: {expected} JSON")
     return payload
 
 health = probe("/health", 200)
