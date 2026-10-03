@@ -28,6 +28,7 @@
       backdrop-filter: blur(10px); transition: all .15s ease;
     }
     .chip:hover { border-color: rgba(86,189,255,.8); }
+    .chip:disabled { opacity: .5; cursor: wait; }
     .chip.active { background: #56bdff; color: #04121e; border-color: #56bdff; }
     .hint {
       position: fixed; left: 16px; bottom: 16px; z-index: 20; max-width: 300px;
@@ -109,6 +110,7 @@
       var b = document.createElement("button");
       b.className = "chip";
       b.dataset.cat = cat;
+      b.disabled = true; // enabled once LooperJarvis.init has mounted the dock (looper#70)
       b.textContent = cat.replace(/_/g, " ").replace("Fetch Deliveries", "Deliveries");
       b.addEventListener("click", function () {
         if (b.classList.contains("active")) { LooperJarvis.bus.reset(); return; }
@@ -136,6 +138,7 @@
           (location.pathname.indexOf("/web/") === 0 ? location.origin : "http://localhost:8000"),
         onCategory: highlightChip,
       });
+      Array.prototype.forEach.call(chipsEl.children, function (c) { c.disabled = false; });
     });
   </script>
 </body>

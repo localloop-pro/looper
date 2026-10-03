@@ -87,6 +87,24 @@ const { chromium } = require("playwright");
   await page.evaluate(() => { document.querySelector("#looper-jarvis .looper-face").className = "looper-face lf-speaking"; });
   await page.screenshot({ path: require("node:path").join(__dirname, "jarvis-smoke.png") });
 
+  // 6b. ask() before init (a /demo chip clicked before map load, looper#70):
+  // must not throw, and the search must run once the dock is mounted
+  const early = await browser.newPage({ viewport: { width: 900, height: 700 } });
+  early.on("pageerror", (e) => errors.push("pre-init pageerror: " + e.message));
+  await early.goto("http://127.0.0.1:8088/tests/jarvis-harness.html?defer=1");
+  const preInit = await early.evaluate(() => {
+    LooperJarvis.ask("food");
+    LooperJarvis.ask("find me a cafe"); // latest wins
+    return window.__calls.filter((c) => c[0] === "fetch").length;
+  });
+  if (preInit) errors.push("ask() fetched before init: " + preInit);
+  await early.evaluate(() => window.__initJarvis());
+  await early.waitForSelector("#looper-jarvis .lj-option");
+  const earlyFetches = await early.evaluate(() => window.__calls.filter((c) => c[0] === "fetch" && /\/search\?/.test(c[1])).map((c) => c[1]));
+  console.log("pre-init ask ran after init:", JSON.stringify(earlyFetches));
+  if (earlyFetches.length !== 1) errors.push("queued ask should search exactly once, got " + earlyFetches.length);
+  await early.close();
+
   // 7. Mobile fit: on a 320px phone the dock must stay inside the viewport
   const mob = await browser.newPage({ viewport: { width: 320, height: 640 } });
   mob.on("pageerror", (e) => errors.push("mobile pageerror: " + e.message));

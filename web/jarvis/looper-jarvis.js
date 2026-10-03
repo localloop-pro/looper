@@ -83,6 +83,7 @@
     wantHandsFree: false, // the USER's intent — survives recognizer deaths so hidden-tab drops can re-arm
     droppedWhileHidden: false, // the last bail happened while the page was hidden (screen-lock/tab-switch)
     statusPinned: false, // "brain offline" stays visible until the next turn instead of being settled away
+    pendingAsk: null, // an ask() that arrived before init mounted the dock — runs once init is done (looper#70)
     ui: {},
     map: null,
     speechSupported: false,
@@ -814,6 +815,14 @@
   }
 
   function ask(text) {
+    // Before init there is no dock (S.ui.status is undefined): a host chip
+    // clicked before map load used to throw in setStatus. Keep the LATEST
+    // request and run it once the dock is mounted (looper#70).
+    if (!S.inited) {
+      S.pendingAsk = text;
+      if (root.console) console.warn("LooperJarvis.ask before init — queued until the dock is mounted");
+      return null;
+    }
     stopSpeaking(); // barge-in
     S.reqSeq++; // newer command owns the UI — in-flight responses go stale
     S.statusPinned = false; // a new turn unpins "brain offline"
@@ -921,6 +930,11 @@
     }
 
     S.inited = true;
+    if (S.pendingAsk !== null) {
+      var queued = S.pendingAsk;
+      S.pendingAsk = null;
+      ask(queued);
+    }
     return API;
   }
 
