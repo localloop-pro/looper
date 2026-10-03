@@ -91,6 +91,17 @@ jobs:
       - name: Unit tests
         run: npm test
 
+  # Exercise the same image/build context as Coolify, without secrets or a registry.
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build production image (default build args)
+        run: docker build -f backend/Dockerfile -t looper-api:ci .
+      - name: Smoke-test image health, reads, write lock and log privacy
+        run: bash scripts/docker-smoke.sh
+
   # Known-vulnerability scan of what ships (looper#54). A finding fails the
   # run: bump the pin. If a bump breaks the tests, file "Security finding: …"
   # and add ONE `--ignore-vuln <ID>` here with a comment naming that issue and
@@ -141,7 +152,7 @@ jobs:
   # The one check to mark as required in branch protection.
   ci:
     if: always()
-    needs: [backend, web, worker, looper-bot, deps-audit, gitleaks]
+    needs: [backend, web, worker, looper-bot, docker-smoke, deps-audit, gitleaks]
     runs-on: ubuntu-latest
     steps:
       - name: All jobs passed
