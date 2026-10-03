@@ -17,3 +17,8 @@
   reads POST to `audit_log`, and a smoke check sends signed ingest events, so
   all are HIGH (needs owner OK). Split a routine's read-only phases out before
   calling it read-only.
+- Check your own API's GET handlers for telemetry too. looper's `/api/search`
+  and `/api/discover` commit a `training_log` row on every call
+  (`backend/services/telemetry.py:33`), so a "read-only" search tool, a
+  health probe that defaults to production, and a 960-request bench all
+  write data. Grep the handler for `db.add`/`commit`/`log_` before rating it.
