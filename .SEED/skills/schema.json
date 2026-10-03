@@ -36,7 +36,7 @@
       "enum": ["candidate", "approved", "built", "shared"]
     },
     "owner_floor": {
-      "description": "Floor (team) that maintains it, kebab-case. Naming is an open owner question (GRILL-ME.md Q6); until answered use the home repo name",
+      "description": "Floor (team) that maintains it, kebab-case. Naming is an open owner question (GRILL-ME.md Q-F); until answered use the home repo name",
       "type": "string",
       "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$",
       "maxLength": 40

@@ -2,11 +2,13 @@
 
 **Status: AWAITING OWNER. Nothing below is decided yet.**
 
-The skills registry (looper#71, PR #80) needs seven answers from Bill
-before its folders are locked. The reasoning and the `file:line` evidence
-are in `.SEED/skills/GRILL-ME.md` (on branch `swarm/issue-71-ken` until
-PR #80 merges). No agent may fill in the "Owner answer" column. Only a
-comment from the owner on looper#79 counts.
+The skills registry (looper#71) needs seven answers from Bill before its
+folders are locked. Its folders, schema and `GRILL-ME.md` reached `main`
+through PR #105 (stacked on PR #80). The reasoning and the `file:line`
+evidence are in `.SEED/skills/GRILL-ME.md` §3. No agent may fill in the
+"Owner answer" column. Only a comment from the owner on looper#79 counts.
+`backend/tests/test_skills_answers_record.py` checks that: while Status is
+AWAITING OWNER every answer must stay `_pending_`.
 
 | Q | Question | Proposal | Owner answer |
 |---|----------|----------|--------------|
@@ -20,7 +22,8 @@ comment from the owner on looper#79 counts.
 
 ## Until the owner answers
 
-- PR #80's layout stays a proposal. New entries keep `status: candidate`.
+- The layout on `main` stays a proposal. New entries keep
+  `status: candidate` and `owner_floor` = home repo name.
 - No registry entry grants access, installs anything or changes search order.
   That holds whatever the answers are.
 
@@ -31,6 +34,8 @@ closes it:
 
 1. Copy each answer into the table ("all proposals OK" fills A, B, C, E, G
    with the proposal; D, F and G's publish location still need a choice).
-2. Change **Status** to `DECIDED <date>` and link the owner's comment.
+2. Change **Status** to `DECIDED <date>` and link the owner's comment
+   (`https://github.com/localloop-pro/looper/issues/79#issuecomment-…`).
+   The test fails if a row is still `_pending_` or the link is missing.
 3. Update `.SEED/skills/README.md`, its folders and `GRILL-ME.md` §3 to
    match, in that same follow-up PR.

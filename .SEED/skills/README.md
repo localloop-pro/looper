@@ -68,7 +68,7 @@ why: One line on what repeats or is done by hand that this captures.
 | `home_repo`   | `looper` · `localloop.pro-main` · `hybridcard-v2` | the one repo that owns it |
 | `path`        | repo-relative | for `looper`, the test checks it exists |
 | `status`      | `candidate` → `approved` → `built` → `shared` | `approved` needs the owner's OK on an issue |
-| `owner_floor` | kebab-case | until GRILL-ME Q6 is answered, the home repo name |
+| `owner_floor` | kebab-case | until GRILL-ME Q-F is answered, the home repo name |
 | `risk`        | `low` · `medium` · `high` | see below |
 | `why`         | one line, 10–200 chars | |
 
