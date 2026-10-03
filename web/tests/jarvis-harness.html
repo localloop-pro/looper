@@ -51,7 +51,12 @@
     });
   };
 
-  LooperJarvis.init({ map: fakeMap, district: "Bondi", apiBase: "http://stub" });
+  // ?defer=1 leaves init to the test (window.__initJarvis) so it can drive
+  // ask() BEFORE the dock is mounted, like a chip clicked before map load
+  window.__initJarvis = function () {
+    LooperJarvis.init({ map: fakeMap, district: "Bondi", apiBase: "http://stub" });
+  };
+  if (!/[?&]defer=1/.test(location.search)) window.__initJarvis();
 </script>
 </body>
 </html>

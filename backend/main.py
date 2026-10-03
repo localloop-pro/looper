@@ -1,7 +1,7 @@
 """LOOPER Backend API — FastAPI Application"""
 import os
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -69,8 +69,13 @@ if WEB_DIR.exists():
     app.mount("/web", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
 
     @app.get("/demo", include_in_schema=False)
-    def jarvis_demo():
-        return RedirectResponse("/web/jarvis/demo-map.html")
+    def jarvis_demo(request: Request):
+        # Carry ONLY the query string (F4.2 deep links: ?cat=&q=&fly=) — the
+        # path is fixed, so input can never redirect off-site (looper#70).
+        target = "/web/jarvis/demo-map.html"
+        if request.url.query:
+            target += "?" + request.url.query
+        return RedirectResponse(target)
 
 
 @app.get("/")
