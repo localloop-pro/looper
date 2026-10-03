@@ -45,6 +45,13 @@ class TestEndpointsStoreCleanLabels:
         assert row.intent == "business"
         assert row.session_id == "sess-1_AbC9"
 
+    def test_response_unchanged_by_dirty_telemetry(self, client, db, path, base):
+        _biz(db)
+        clean = client.get(path, params=base).json()
+        dirty = client.get(path, params={**base, "intent": "me@example.com",
+                                         "session": "0412 345 678"}).json()
+        assert clean == dirty
+
     def test_default_intent_still_recorded(self, client, db, path, base):
         row = self._row(client, db, path, base)
         assert row.intent == path.rsplit("/", 1)[-1]  # "search" / "discover"
@@ -90,3 +97,14 @@ def test_log_query_never_raises_on_odd_types(db):
     row = db.query(TrainingLog).one()
     assert row.intent == "other"
     assert row.session_id is None
+
+
+def test_log_query_swallows_db_failure():
+    class Boom:
+        def add(self, _):
+            raise RuntimeError("db down")
+
+        def rollback(self):
+            raise RuntimeError("still down")
+
+    log_query(Boom(), "cafe", intent="me@example.com", session_id="0412 345 678")
