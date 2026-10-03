@@ -1,137 +1,116 @@
 # LOOPER — Local Connection Agent
 
-Current status: STATUS.md
+Looper is the LocalLoop ecosystem's community-discovery and agent layer. It provides a FastAPI search/bridge service, a browser-embeddable Jarvis map experience, an Electron voice companion, and an optional TypeDB-backed knowledge layer.
 
-Community connection agent for LocalLoop. Connects people with businesses and services in their local area via Telegram and web search bar. Powered by genuine community reviews.
+Read [`SEED.md`](SEED.md), [`.SEED/decisions.md`](.SEED/decisions.md), [`.SEED/gotchas.md`](.SEED/gotchas.md), and [`AGENTS.md`](AGENTS.md) before changing the system. The cross-repository delivery sequence is maintained in [`plans/IMPLEMENTATION_PLAN.md`](plans/IMPLEMENTATION_PLAN.md).
 
-## Architecture
+## Repository map
 
-```
-looper/
-├── backend/           # FastAPI service
-│   ├── main.py        # API entry point
-│   ├── db.py          # SQLAlchemy + SQLite
-│   ├── models.py      # Database models
-│   ├── schemas.py     # Pydantic schemas
-│   ├── routes/        # API routes
-│   │   ├── users.py   # User onboarding + codes
-│   │   ├── search.py  # Business/service search
-│   │   └── map.py     # Map pins and layers
-│   ├── services/      # Business logic
-│   │   ├── review.py  # Review aggregation + ranking
-│   │   ├── matching.py # User-to-business matching
-│   │   └── training.py # Training data export
-│   └── requirements.txt
-├── hermes/            # Hermes agent integration
-│   └── SOUL.md        # LOOPER personality (symlink)
-├── training/          # Hugging Face pipeline
-│   ├── export.py      # Export training_log to HF format
-│   ├── finetune.py    # Fine-tune Mistral/Llama on local data
-│   └── config.yaml    # Training config
-├── web/               # Search bar widget
-│   ├── looper-widget.js   # Embeddable chat widget
-│   ├── looper-widget.css
-│   └── index.html     # Demo page
-├── data/              # Local data (gitignored)
-│   └── looper.db      # SQLite database
-└── README.md
+```text
+backend/       FastAPI API, SQLite persistence, bridge ingest, identity, tests
+brain/         Optional TypeDB schemas, migrations, and query layer
+looper-bot/    Electron + React + Vite voice companion
+web/           Embeddable widget and Jarvis map modules/demos
+training/      Privacy-filtered training export and optional ML tooling
+tools/         Operator and news/audio utilities
+workers/       Edge/API proxy workers
+plans/         Master plan, feature plans, completion state, and evidence
+data/          Local runtime data (not source-controlled)
 ```
 
-## Quick Start
+## Backend quick start
 
 ```bash
 cd backend
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-python main.py  # Starts on http://localhost:8000
+python seed.py
+python main.py
 ```
 
-## Run the ecosystem locally
-
-Verified commands for bringing up all three systems on one machine
-(paths for 2 and 3 are sibling repos, relative to this repo's parent).
-
-### 1. Looper backend (this repo)
+The default API is `http://localhost:8000`. If TypeDB or another service already uses that port:
 
 ```bash
-cd backend
-python3 -m venv .venv && source .venv/bin/activate   # first time only
-pip install -r requirements.txt
-python seed.py        # → ✅ Seeded: 20 businesses, 11 reviews, 1 users
-python main.py        # serves http://localhost:8000
-
-# check:
-curl http://localhost:8000/health     # {"status":"healthy"}
-open http://localhost:8000/docs       # all routes listed
+LOOPER_PORT=8010 python main.py
 ```
 
-> Port 8000 busy? (a local TypeDB server also defaults to 8000) — run
-> `LOOPER_PORT=8010 python main.py` and check `localhost:8010/health`.
-
-### 2. llx11 map site (sibling repo)
+Check the service with:
 
 ```bash
-cd "../localloop.pro/localloop.pro-main/llx11/localloop.pro-main"
-npm ci && npm start   # static serve on http://localhost:3000
-# check:
-curl http://localhost:3000/health.json   # {"status":"ok",...}
+curl http://localhost:8000/health
+open http://localhost:8000/docs
 ```
 
-Needs `MAPBOX_TOKEN` in its `.env` for the map itself to render
-(`npm run prestart` injects `assets/js/env.js`); `health.json` works
-without it.
+Use [`.env.example`](.env.example) as the configuration reference. The backend reads the process environment; export the required variables (or source a private local env file in your shell) before startup. Keep bridge secrets, TypeDB credentials, and production values out of source control.
 
-### 3. HybridCard new-card (sibling repo)
+## Docker / Coolify
+
+The default compose stack builds `backend/Dockerfile`, persists SQLite and the bounded KNS cache in the `looper-data` volume, and publishes the API on `LOOPER_PORT`:
 
 ```bash
-cd "../hybridcard.ai/new-card"
-npm ci && npm run dev   # http://localhost:3000 (stop llx11 first — same port)
-# check:
-curl http://localhost:3000/api/health    # {"ok":true,"service":"hybridcard",...}
+docker compose up -d --build
+curl http://localhost:8000/health
 ```
 
-Needs a local MongoDB (`mongod` on 27017) and `MONGODB_URI` in `.env.local`.
+For a host port of 8010:
 
-### 4. Looper-bot desktop companion (optional)
+```bash
+LOOPER_PORT=8010 docker compose up -d --build
+curl http://localhost:8010/health
+```
+
+## Looper desktop companion
 
 ```bash
 cd looper-bot
-npm ci && npm run dev   # Electron app; needs OPENAI_API_KEY in looper-bot/.env.local
+npm install
+npm run dev
 ```
 
-With the backend running, Looper can also answer local-business questions
-(`localloop_search`), open the live map deep-linked
-(`localloop_open_map` → `https://localloop.ai/?cat=Food&fly=…`), and report
-the HybridCard bridge status (`localloop_bridge_status`). Optional env in
-`looper-bot/.env.local`: `LOOPER_API_BASE` (default `http://localhost:8000`),
-`LOCALLOOP_MAP_URL` (default `https://localloop.ai`).
+The app uses OpenAI Realtime over WebRTC and can call Looper/LocalLoop tools. Configure `OPENAI_API_KEY`, `LOOPER_API_BASE`, and `LOCALLOOP_MAP_URL` in `looper-bot/.env.local` as needed.
 
-## Jarvis map demo (talk to Looper ON the map)
+Useful checks:
 
-The `web/jarvis/` modules put the animated Looper face on any
-Mapbox-GL-compatible map with full voice control (ported from the old
-explore-local build, bugs fixed). Try it locally — no keys needed:
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+## Jarvis map demo
+
+With the backend running, open `/demo` to exercise the animated map agent, category/search grammar, and typed fallback. Voice support depends on the browser; typed commands remain available without microphone access.
 
 ```bash
 cd backend
-pip install -r requirements.txt
-python seed.py          # once, seeds Bondi businesses
-python main.py          # serves API + demo
-# open http://localhost:8000/demo in Chrome (or Safari)
-# (on Bill's machine: LOOPER_PORT=8010 python main.py → http://localhost:8010/demo)
+python seed.py
+python main.py
+# open http://localhost:8000/demo
 ```
 
-Tap the face and say: *"find me a café"*, *"any deals near me"*,
-*"take me to Bronte"*, *"who can help me with my garden"*, *"zoom in"*,
-*"reset the map"*. Or press **🎙 Hey Looper** for hands-free mode — the mic
-stays open and only utterances starting with "Hey Looper …" act (say "stop"
-to interrupt). Voice needs Chrome/Edge/Safari (Firefox falls back to typed
-input). Category chips fire the same grammar as the voice.
+The reusable browser modules live in `web/jarvis/`. Deep links use query parameters such as `/?cat=Food&q=coffee&fly=151.2743,-33.8908,16`.
 
-Every search is logged to `training_log` (query + intent + anonymous
-session, emails/mobiles scrubbed) so `python training/export.py` now has
-real data.
+## API surface
 
-Verify without a mic or backend:
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health` | Service health |
+| `POST` | `/api/onboard` | User onboarding and join-code creation |
+| `GET` | `/api/code/{code}` | Validate a join code |
+| `GET` | `/api/search` | Community business/service search |
+| `GET` | `/api/discover` | Suburb/category discovery |
+| `GET` | `/api/businesses` | Browse businesses by category/location |
+| `POST` | `/api/reviews` | Submit a review |
+| `GET` | `/api/reviews/{business_id}` | Read business reviews |
+| `POST` | `/api/pins` | Create a map pin |
+| `GET` | `/api/pins` | Read nearby map pins |
+| `POST` | `/api/ingest/hybridcard-deal` | HMAC-verified HybridCard deal ingest |
+| `POST` | `/api/ingest/hybridcard-card` | HMAC-verified HybridCard card ingest |
+| `GET` | `/api/ingest/status` | Aggregate bridge status without PII |
+| `GET` | `/api/identity/domains` | Verified allowlisted KNS identities |
+| `GET` | `/api/identity/health` | KNS freshness/mismatch health |
+| `GET` | `/demo` | Jarvis voice-map demo |
 
 ```bash
 node web/tests/voice-command-router.test.js      # 46 grammar unit tests
@@ -264,17 +243,36 @@ cd backend && .venv/bin/python -m pytest tests/test_kaspa_identity.py -q
 
 Expected: all tests pass (they use an in-process mock provider).
 
-## Database Schema
+## Verification
 
-See `backend/models.py` for full schema:
+```bash
+cd backend
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -q
 
-- **users** — first_name, mobile, join_code, user_type, interest_category
-- **businesses** — name, category, address, lat/lng, hybrid_card_id
-- **reviews** — business_id, user_id, rating, text, verified
-- **map_pins** — user_id, type, title, desc, lat/lng, expires
-- **training_log** — query, response, user_id, feedback
+cd ../looper-bot
+npm run typecheck
+npm test
+npm run build
 
-## Anti-Bias Rules
+cd ../
+node web/tests/voice-command-router.test.js
+node web/tests/kaspa-identity.test.js
+```
+
+TypeDB tests and services are optional unless the active task enables that lane. Install [`requirements-brain.txt`](requirements-brain.txt) and follow [`brain/README.md`](brain/README.md) before enabling it.
+
+## Safety invariants
+
+- Rank only with verifiable signals such as proximity, recency, and review evidence. Never sell ranking or declare a business “best.”
+- Return multiple useful options where possible; discounts may affect marker presentation, not rank.
+- Bridge payloads are public-safe: never send names, mobiles, emails, VIP identity, or other PII.
+- `BRIDGE-CONTRACT-v1` payload shapes are frozen. Receivers adapt without silently changing sender contracts.
+- Bots write through audited gateway endpoints with idempotency and approval gates; they do not write directly to production databases.
+- KNS verification is read-only identity evidence, not authentication or authorization. A mismatch removes verified wording immediately.
+- Payments, auth, deployment, migration, customer-data, and real-message changes require owner approval.
+
+### Anti-bias rules
 
 1. NEVER rank by anything other than verifiable data (review count, recency)
 2. NEVER declare any business "the best"
@@ -282,11 +280,9 @@ See `backend/models.py` for full schema:
 4. ALWAYS attribute reviews to real users
 5. NEVER accept sponsorship or paid placement
 
-## HybridCard agent skills
+## Ecosystem links
 
-VIP checkout, member pass, and TypeDB bridge skills live in the HybridCard Looper hub:
-
-- **Skills index:** [`../hybridcard.ai/looper/skills/SKILLS.md`](../hybridcard.ai/looper/skills/SKILLS.md)
-- **VIP checkout:** [`../hybridcard.ai/looper/skills/hybridcard-vip-checkout/SKILL.md`](../hybridcard.ai/looper/skills/hybridcard-vip-checkout/SKILL.md)
-
-`businesses.hybrid_card_id` links this service to HybridCard slugs for search and checkout context.
+- LocalLoop public map: `../localloop.pro/localloop.pro-main/llx11/localloop.pro-main/`
+- HybridCard product: `../hybridcard.ai/new-card/`
+- Shared HybridCard/Looper skill hub: [`../hybridcard.ai/looper/skills/SKILLS.md`](../hybridcard.ai/looper/skills/SKILLS.md)
+- Bridge and rollout status: [`plans/COMPLETION_STATUS.md`](plans/COMPLETION_STATUS.md)
