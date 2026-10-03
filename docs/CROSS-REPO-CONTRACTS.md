@@ -49,6 +49,8 @@ radius, sorted exactly as before, and `message` says so in plain text
 C3, C3a, C3b, C4, C5 and C8 read only `results` and `message`, so they keep
 working unchanged; no caller has to read the new field.
 
+**Coordinate bounds on public reads (looper#95).** `/api/search`, `/api/businesses`, `/api/discover`, `/api/pins` and `/api/tourist-info` now answer 422 for a `lat`/`lng` that is not finite or outside -90..90 / -180..180 (and `/api/businesses` / `/api/pins` for `radius_km` outside >0..5000); the map and HybridCard only send real coordinates, so no caller changes.
+
 ### Looper routes with no caller in the other repos
 
 | Route | Callers found | Test |

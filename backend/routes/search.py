@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from models import Business, Deal, Review, fold_accents, get_db
+from routes.params import OptionalLatitude, OptionalLongitude, RadiusKm
 from schemas import SearchResponse, SearchResult
 from services import query_terms, telemetry
 
@@ -87,8 +88,8 @@ def _km(value: float) -> str:
 @router.get("/search", response_model=SearchResponse)
 def search_businesses(
     q: str = Query(..., min_length=1, description="Search query"),
-    lat: float | None = Query(None, description="User latitude"),
-    lng: float | None = Query(None, description="User longitude"),
+    lat: OptionalLatitude = None,
+    lng: OptionalLongitude = None,
     radius_km: float = Query(5.0, ge=0.1, le=5000.0),
     category: str | None = Query(None),
     limit: int = Query(5, ge=1, le=20),
@@ -287,10 +288,10 @@ def _message(q: str, category: str | None, ranked: list, radius_km: float,
 @router.get("/businesses")
 def list_businesses(
     category: str | None = Query(None),
-    lat: float | None = Query(None),
-    lng: float | None = Query(None),
-    radius_km: float = Query(5.0),
-    limit: int = Query(20, le=50),
+    lat: OptionalLatitude = None,
+    lng: OptionalLongitude = None,
+    radius_km: RadiusKm = 5.0,
+    limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
     """List businesses, optionally filtered by category and location."""
