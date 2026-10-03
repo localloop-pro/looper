@@ -84,9 +84,25 @@ def root():
     }
 
 
+def deployed_commit():
+    """Short commit baked in at build time (looper#86), or "" when unknown.
+
+    LOOPER_COMMIT comes from the Dockerfile's SOURCE_COMMIT build arg; Coolify
+    also sets SOURCE_COMMIT at runtime, so it is the fallback. Only a hex sha
+    is echoed. Never reads .git or runs git at request time.
+    """
+    raw = os.getenv("LOOPER_COMMIT", "").strip() or os.getenv("SOURCE_COMMIT", "").strip()
+    sha = raw[:12].lower()
+    return sha if sha and all(c in "0123456789abcdef" for c in sha) else ""
+
+
 @app.get("/health")
 def health():
-    return {"status": "healthy", "organization_identity": "/api/identity/health"}
+    return {
+        "status": "healthy",
+        "organization_identity": "/api/identity/health",
+        "commit": deployed_commit(),
+    }
 
 
 if __name__ == "__main__":

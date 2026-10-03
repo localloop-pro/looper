@@ -50,6 +50,18 @@ def one_line(value):
     return json.dumps(str(value), ensure_ascii=True)
 
 
+def health_commit(body):
+    """Commit from /health (looper#86); "unknown" unless it is a short hex sha."""
+    try:
+        commit = json.loads(body).get("commit")
+    except (ValueError, UnicodeError, RecursionError, AttributeError):
+        return "unknown"
+    if (isinstance(commit, str) and 0 < len(commit) <= 40 and
+            all(c in "0123456789abcdef" for c in commit)):
+        return commit
+    return "unknown"
+
+
 def check(args):
     checks = []
 
@@ -65,8 +77,9 @@ def check(args):
             return None, b""
 
     base = args.base_url.rstrip("/")
-    status, _ = probe(base + "/health")
-    report(status == 200, "health", f"HTTP {status or 'unavailable'} (expected 200)")
+    status, body = probe(base + "/health")
+    report(status == 200, "health", f"HTTP {status or 'unavailable'} (expected 200); "
+           f"commit {health_commit(body) if status == 200 else 'unknown'}")
     for path in ("/api/users/1", "/api/code/ABC123"):
         status, _ = probe(base + path)
         report(status in (403, 404, 405), path,
