@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/localloop-pro/looper/blob/main/.SEED/skills/schema.json",
+  "title": "LocalLoop skills registry entry (looper#71)",
+  "description": "Frontmatter of one .SEED/skills/<archetype>/<name>.md file. Documentation and routing only: an entry grants no access.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "form", "archetype", "home_repo", "path", "status", "owner_floor", "risk", "why"],
+  "properties": {
+    "name": {
+      "description": "kebab-case slug, equal to the file name without .md",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "form": {
+      "description": "function = code you call; skill = SKILL.md for coding agents; plugin = bundle of skills/commands; mcp = MCP server or tool",
+      "enum": ["function", "skill", "plugin", "mcp"]
+    },
+    "archetype": {
+      "description": "Equal to the folder the file sits in. Six map archetypes (localloop.pro-main assets/js/category-taxonomy.js labels) plus media and platform",
+      "enum": ["news", "events", "offers", "stays", "jobs", "dining", "media", "platform"]
+    },
+    "home_repo": {
+      "description": "The one repo that owns the code or SKILL.md",
+      "enum": ["looper", "localloop.pro-main", "hybridcard-v2"]
+    },
+    "path": {
+      "description": "Repo-relative path in home_repo (file or folder), no leading slash, no '..'",
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9_.\\[\\]/@+-]+$",
+      "maxLength": 200
+    },
+    "status": {
+      "description": "candidate = scouted, not agreed; approved = owner OK on an issue; built = exists in home_repo; shared = built and used by more than one repo",
+      "enum": ["candidate", "approved", "built", "shared"]
+    },
+    "owner_floor": {
+      "description": "Floor (team) that maintains it, kebab-case. Naming is an open owner question (GRILL-ME.md Q6); until answered use the home repo name",
+      "type": "string",
+      "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$",
+      "maxLength": 40
+    },
+    "risk": {
+      "description": "high = writes data, sends messages, spends money, calls an LLM on a platform key, or touches a hot zone",
+      "enum": ["low", "medium", "high"]
+    },
+    "why": {
+      "description": "One line: what repeats or is done by hand that this entry captures",
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 200,
+      "pattern": "^[^\\n]+$"
+    }
+  }
+}
