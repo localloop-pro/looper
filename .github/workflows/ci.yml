@@ -7,7 +7,8 @@
 #   1. Do NOT delete, rename or skip the `gitleaks` job, and do NOT set
 #      `continue-on-error: true` or `if: false` on any job.
 #   2. Do NOT add secrets, deploy steps or write scopes. This workflow only
-#      reads the code and runs tests (`contents: read`).
+#      reads the code and runs tests (`contents: read`). Issue #96 explicitly
+#      permits issues: write ONLY on the main-red reporting job below.
 #   3. Do NOT add gitleaks allowlist entries to make a run green. A real leak
 #      is removed from history AND rotated, then the scan is re-run.
 # If CI is red, the fix is in the code — never in this workflow.
@@ -41,6 +42,8 @@ jobs:
             backend/requirements-dev.txt
       - name: Install
         run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - name: Main CI reporting script tests (stdlib only)
+        run: python -m unittest discover -s .github/scripts -p "test_*.py" -v
       - name: Tests (TypeDB test skips without a server)
         working-directory: backend
         run: python -m pytest -q
@@ -202,3 +205,29 @@ jobs:
               exit 1
             fi
           done
+
+  # Reporting is independent of the required ci gate; PRs get no issue writer.
+  main-red:
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, web, jarvis-smoke, worker, looper-bot, docker-smoke, deps-audit, gitleaks, ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read # commit-to-merged-PR lookup
+    # Serialize the read/create sequence, including overlapping reruns.
+    concurrency:
+      group: main-red-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Report main CI state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: python .github/scripts/main_red.py

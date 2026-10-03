@@ -36,6 +36,8 @@ Bill runs these; agents never run them against production. From the repo root on
 3. Deployed commit: not available yet. When #86 / PR #91 merges, compare `curl -s https://api.localloop.ai/health` (`commit`) with `git rev-parse --short=12 origin/main`.
 4. Update **What is live** (first bullet: `READY`/`NOT READY` and the date) and the **Weekly numbers** line (queries, zero-result rate, top "found nothing"), then the `Updated` date at the top.
 
+CI recovery (#96): an open `main is red` issue means the latest completed main-push CI run failed; its body/comments identify jobs, commit, merged PR and run. Fix the failure with a normal small PR and keep every gate intact. A fully green main run comments “green again at <sha>” and closes it automatically; cancelled/skipped runs cannot close it. [Run/verify steps](docs/MAIN-RED-RUNBOOK.md).
+
 ## One thing being built
 - In review on 2026-10-03: `/health` deployed commit (#86 / PR #91), 422 for bad coordinates on public reads (#95 / PR #97), origin lock (#28 / PR #47). Older open PRs: #35, #43, #80, #81, #15; #25 is a draft blocked on #23.
 
