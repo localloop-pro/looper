@@ -5,6 +5,44 @@
  */
 const { chromium } = require("playwright");
 
+// Replaces speechSynthesis before the page loads; every utterance's text
+// lands in window.__spoken and ends at once, so speech is synchronous.
+function captureSpeech() {
+  window.__spoken = [];
+  Object.defineProperty(window, "speechSynthesis", {
+    configurable: true,
+    value: {
+      speak: (u) => { window.__spoken.push(u.text); if (u.onend) u.onend(); },
+      cancel: () => {},
+      getVoices: () => [],
+      addEventListener: () => {},
+    },
+  });
+}
+
+// Ask Jarvis something with one stubbed API answer (null = harness
+// default) and return everything it said for that answer.
+async function spokenFor(page, text, response) {
+  await page.evaluate((r) => { window.__searchResponse = r; window.__spoken = []; }, response);
+  await page.evaluate((t) => LooperJarvis.ask(t), text);
+  await page.waitForFunction(() => /I found|listed|couldn't find/.test(window.__spoken.join(" ")));
+  return page.evaluate(() => window.__spoken.join(" "));
+}
+
+const VET = { category: "vet", review_count: 0, avg_rating: null, top_review: null, website: null, card_url: null };
+const WIDENED_VETS = {
+  query: "vet",
+  message: "Nothing within 1.5 km for 'vet'. The nearest match is 2.3 km away. " +
+    "Here are 2 options for 'vet': best match first, then most community reviews, then nearest.",
+  total_results: 2,
+  widened_to_km: 10,
+  results: [
+    Object.assign({ business_id: 11, name: "Coogee Vet", lat: -33.9115, lng: 151.2748, distance_km: 2.3 }, VET),
+    Object.assign({ business_id: 12, name: "Clovelly Vet", lat: -33.9113, lng: 151.2752, distance_km: 2.3 }, VET),
+  ],
+};
+const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10 km yet.", total_results: 0, widened_to_km: 10, results: [] };
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
   try {
@@ -104,6 +142,41 @@ const { chromium } = require("playwright");
     console.log("mobile dock fits 320px viewport:", fits, JSON.stringify(dockBox));
     if (!fits) errors.push("dock overflows 320px viewport: " + JSON.stringify(dockBox));
     await mob.close();
+
+    // 8. Spoken answers follow the API's widened radius (looper#73 QA r1):
+    // vets 2.3 km away must never be announced "within 1.5 kilometres",
+    // and an empty answer speaks the API's message, not an "add it" invite.
+    for (const vp of [{ width: 900, height: 700 }, { width: 390, height: 844 }]) {
+      const sp = await browser.newPage({ viewport: vp });
+      sp.setDefaultTimeout(10_000);
+      sp.on("pageerror", (e) => errors.push(vp.width + "px pageerror: " + e.message));
+      await sp.addInitScript(captureSpeech);
+      await sp.goto("http://127.0.0.1:8088/tests/jarvis-harness.html");
+      await sp.waitForSelector("#looper-jarvis .lj-face-btn .looper-face");
+      const tag = "speech " + vp.width + "px";
+
+      const widened = await spokenFor(sp, "find me a vet", WIDENED_VETS);
+      console.log(tag + " widened:", JSON.stringify(widened));
+      if (/options? within 1\.5 kilometres/.test(widened)) errors.push(tag + ": said 'within 1.5' for 2.3 km results");
+      for (const want of ["Nothing within 1.5 kilometres", "The nearest is 2.3 kilometres away", "I found 2 options within 10 kilometres"]) {
+        if (!widened.includes(want)) errors.push(tag + ": widened speech missing '" + want + "': " + widened);
+      }
+
+      const inRange = await spokenFor(sp, "find me a cafe", null); // harness default: all < 1.5 km
+      console.log(tag + " in range:", JSON.stringify(inRange));
+      if (!/I found 4 options within 1\.5 kilometres\./.test(inRange) || /Nothing within/.test(inRange)) {
+        errors.push(tag + ": in-range speech wrong: " + inRange);
+      }
+
+      const empty = await spokenFor(sp, "find me a vet", EMPTY_VETS);
+      console.log(tag + " empty:", JSON.stringify(empty));
+      if (empty !== EMPTY_VETS.message) errors.push(tag + ": empty speech ignored the API message: " + empty);
+
+      const bare = await spokenFor(sp, "find me a vet", { query: "vet", results: [], total_results: 0 });
+      console.log(tag + " empty, no message:", JSON.stringify(bare));
+      if (/add (it|one)|first to add/i.test(bare)) errors.push(tag + ": empty speech invites adding: " + bare);
+      await sp.close();
+    }
 
     console.log("errors:", errors.length ? errors : "none");
     if (errors.length) throw new Error("Jarvis smoke failed: " + errors.join("; "));

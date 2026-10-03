@@ -45,6 +45,35 @@ def test_default_fallback_is_10_km():
     assert routes.search.FALLBACK_KM == 10.0
 
 
+@pytest.mark.parametrize("raw", ["inf", "-inf", "Infinity", "nan", "NaN",
+                                 "1e309", "-1e309", "0", "-3", "abc", ""])
+def test_startup_rejects_non_finite_or_non_positive_fallback(monkeypatch, raw):
+    """QA round 1: "inf"/"1e309" used to pass km > 0, so a business 12 km
+    away came back with widened_to_km null."""
+    monkeypatch.setenv("LOOPER_SEARCH_FALLBACK_KM", raw)
+    assert routes.search._read_fallback_km() == 10.0
+
+
+@pytest.mark.parametrize("raw,km", [("10", 10.0), ("4.5", 4.5), (" 25 ", 25.0)])
+def test_startup_accepts_finite_positive_fallback(monkeypatch, raw, km):
+    monkeypatch.setenv("LOOPER_SEARCH_FALLBACK_KM", raw)
+    assert routes.search._read_fallback_km() == km
+
+
+def test_unset_fallback_env_is_10_km(monkeypatch):
+    monkeypatch.delenv("LOOPER_SEARCH_FALLBACK_KM", raising=False)
+    assert routes.search._read_fallback_km() == 10.0
+
+
+def test_widened_to_km_is_always_a_finite_number(client, db):
+    """With the default fallback, a match 12 km away stays out and
+    widened_to_km serializes as 10, never null."""
+    _biz(db, "Twelve Km Vet", LAT - 0.11)  # ~12.2 km
+    data = _search(client)
+    assert data["results"] == []
+    assert data["widened_to_km"] == 10
+
+
 def test_in_radius_hit_runs_no_fallback(client, db):
     _biz(db, "Close Vet", LAT - 0.005)  # ~0.6 km
     _biz(db, "Far Vet", LAT - 0.036)    # ~4 km: outside, and not added

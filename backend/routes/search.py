@@ -59,12 +59,16 @@ def resolve_card_url(biz: Business, db: Session) -> str | None:
 
 
 def _read_fallback_km() -> float:
-    """LOOPER_SEARCH_FALLBACK_KM, read once at startup (default 10 km)."""
+    """LOOPER_SEARCH_FALLBACK_KM, read once at startup (default 10 km).
+
+    float() accepts "inf", "nan" and overflows like "1e309" (-> inf); an
+    infinite radius would return every business and serialize
+    widened_to_km as null, so anything not finite and positive is 10."""
     try:
         km = float(os.getenv("LOOPER_SEARCH_FALLBACK_KM", "10"))
     except ValueError:
         return 10.0
-    return km if km > 0 else 10.0
+    return km if math.isfinite(km) and km > 0 else 10.0
 
 
 # Widened radius for one retry when nothing matches inside radius_km

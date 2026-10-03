@@ -20,3 +20,11 @@ Lessons:
 - The fallback must not change the order: the anti-bias test for it uses a
   closer business with a 90% deal, a HybridCard source and `rank_boost=true`,
   and checks that the reviewed one still ranks first.
+- (QA round 1) Every surface that repeats the answer must read the new
+  field. The panel showed the API message, but Jarvis built its spoken line
+  from the requested radius and said "within 1.5 kilometres" for 2.3 km
+  vets. Speech now uses `widened_to_km` and speaks the API's empty message;
+  the Jarvis smoke test captures `speechSynthesis` to pin it.
+- `float()` accepts "inf", "nan" and "1e309" (overflows to inf). A
+  numeric env var needs `math.isfinite()` as well as a range check;
+  `json` serializes inf as null, so the bug looked like "no widening".
