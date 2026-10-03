@@ -48,6 +48,9 @@ class SearchResponse(BaseModel):
     results: List[SearchResult]
     message: str  # contextual message from LOOPER
     total_results: int
+    # Set (km) only when nothing matched inside radius_km and the one
+    # widened pass ran (looper#73). Additive and optional; null otherwise.
+    widened_to_km: Optional[float] = None
 
 
 class SubmitReviewRequest(BaseModel):
