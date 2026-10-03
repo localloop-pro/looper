@@ -16,6 +16,8 @@ Updated 2026-10-03; review every Monday. Single status file (#69); feature defin
 
 Weekly numbers: [#68](https://github.com/localloop-pro/looper/issues/68) owns the read-only DB report (queries, zero-result rate, coverage gaps). Visitors, searches, card clicks and verified reviews remain **unverified (owner probe needed)** ([audit](plans/BLIND-SPOTS-2026-09-08.md) §§5, 7).
 
+CI recovery (#96): an open `main is red` issue means the latest completed main-push CI run failed; its body/comments identify jobs, commit, merged PR and run. Fix the failure with a normal small PR and keep every gate intact. A fully green main run comments “green again at <sha>” and closes it automatically; cancelled/skipped runs cannot close it. [Run/verify steps](docs/MAIN-RED-RUNBOOK.md).
+
 ## One thing being built
 - This update: consolidate status and correct the release gate (#69); next focus is the #68 weekly report, pending implementation/QA evidence.
 
