@@ -26,8 +26,11 @@ comment from the owner on looper#79 counts.
 
 ## When the owner answers
 
+looper#79 stays open until then. Record the answers in a follow-up PR that
+closes it:
+
 1. Copy each answer into the table ("all proposals OK" fills A, B, C, E, G
    with the proposal; D, F and G's publish location still need a choice).
 2. Change **Status** to `DECIDED <date>` and link the owner's comment.
 3. Update `.SEED/skills/README.md`, its folders and `GRILL-ME.md` §3 to
-   match, in the same PR.
+   match, in that same follow-up PR.
