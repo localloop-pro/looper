@@ -26,6 +26,12 @@ COPY web/ web/
 #   python /app/looper/tools/news_audio_worker.py
 #   python /app/looper/brain/full_sync.py
 
+# Commit marker for GET /health (looper#86). Coolify passes SOURCE_COMMIT only
+# when "Include Source Commit in Build" is on; without it the value is "" and
+# /health reports "commit": "". Declared late so it only busts the last layers.
+ARG SOURCE_COMMIT=""
+ENV LOOPER_COMMIT=$SOURCE_COMMIT
+
 RUN mkdir -p /app/data
 ENV LOOPER_DB_URL=sqlite:////app/data/looper.db
 

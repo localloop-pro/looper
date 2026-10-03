@@ -30,7 +30,7 @@ def target(monkeypatch):
 
     @app.get("/health")
     def health():
-        return JSONResponse({}, status_code=state["health"])
+        return JSONResponse(state.get("health_body", {}), status_code=state["health"])
 
     @app.get("/api/users/1")
     def users():
@@ -75,6 +75,24 @@ def test_all_pass_and_dock_defaults(target, capsys):
     assert target["query"] == {"q": "hairdresser", "lat": "-33.8908",
                                "lng": "151.2748", "radius_km": "1.5"}
     assert [method for _, method in target["calls"]] == ["GET"] * 4 + ["HEAD"] * 2
+
+
+@pytest.mark.parametrize("body,shown", [
+    ({"status": "healthy", "commit": "abc123def456"}, "commit abc123def456"),
+    ({"status": "healthy", "commit": ""}, "commit unknown"),
+    ({"status": "healthy"}, "commit unknown"),
+    ({"commit": "abc\nPASS forged"}, "commit unknown"),
+    ({"commit": 123}, "commit unknown"),
+    (["not", "a", "dict"], "commit unknown"),
+])
+def test_health_prints_commit_or_unknown(target, capsys, body, shown):
+    """Issue #86: the owner sees which commit is live; still GET-only."""
+    target["health_body"] = body
+    status, output = run(capsys)
+    health = output.splitlines()[0]
+    assert status == 0 and health == f"PASS health: HTTP 200 (expected 200); {shown}"
+    assert len(output.splitlines()) == 9
+    assert [method for _, method in target["calls"]][0] == "GET"
 
 
 def test_localhost_card_names_business_and_never_fetches_it(target, capsys):

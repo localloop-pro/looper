@@ -3,6 +3,9 @@
 set -euo pipefail
 
 image="${1:-looper-api:ci}"
+# /health "commit" the image must report (looper#86): "" for a build without
+# --build-arg SOURCE_COMMIT, else the first 12 hex chars of that value.
+export EXPECT_COMMIT="${EXPECT_COMMIT:-}"
 container=""
 started=$SECONDS
 cleanup() {
@@ -21,10 +24,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Loopback-only random port avoids local collisions; no host env or data mounted.
+# Loopback-only random port avoids local collisions; no data mounted. The only
+# host env forwarded is HYBRIDCARD_INGEST_SECRET, and only when the caller sets
+# it (CI passes the dummy "preview-secret"; docker skips it when unset).
 # Do not override CMD or HEALTHCHECK: those are part of the production contract.
 container=$(docker create -p 127.0.0.1::8000 -v /app/data \
-  -e TYPEDB_ENABLED=false "$image")
+  -e TYPEDB_ENABLED=false -e HYBRIDCARD_INGEST_SECRET "$image")
 docker start "$container" >/dev/null
 deadline=$((SECONDS + 60))
 while true; do
@@ -46,6 +51,7 @@ echo 'Image HEALTHCHECK: healthy'
 address=$(docker port "$container" 8000/tcp)
 python3 - "http://$address" <<'PY'
 import json
+import os
 import sys
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -66,7 +72,11 @@ def probe(path, expected, data=None):
     return payload
 
 health = probe("/health", 200)
+print("GET /health body:", json.dumps(health, sort_keys=True))
 assert health["status"] == "healthy", health
+expected_commit = os.environ["EXPECT_COMMIT"]
+assert health.get("commit") == expected_commit, f"/health commit: expected {expected_commit!r}, got {health.get('commit')!r}"
+print(f"GET /health commit: {expected_commit!r}")
 search = probe("/api/search?q=cafe&lat=-33.8908&lng=151.2748", 200)
 assert isinstance(search, dict), search
 assert search["query"] == "cafe", search
