@@ -1,5 +1,7 @@
 # AGENTS.md — looper repo rules
 
+Current status: STATUS.md
+
 > **Read @SEED.md first.** It is the knowledge index for this repo. Then read
 > `.SEED/decisions.md` plus `.SEED/decisions/` (decisions already made) and
 > `.SEED/gotchas.md` (mistakes we never repeat) before changing anything.

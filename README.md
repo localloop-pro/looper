@@ -1,5 +1,7 @@
 # LOOPER — Local Connection Agent
 
+Current status: STATUS.md
+
 Community connection agent for LocalLoop. Connects people with businesses and services in their local area via Telegram and web search bar. Powered by genuine community reviews.
 
 ## Architecture

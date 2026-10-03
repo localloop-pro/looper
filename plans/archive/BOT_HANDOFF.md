@@ -1,3 +1,5 @@
+Archived 2026-10: superseded by STATUS.md
+
 # BOT_HANDOFF.md — give this file to any coding agent
 
 **Date:** 2026-07-18 · **Owner:** Bill (QikFlo Pty Ltd) · **Repo:** `localloop-pro/looper`

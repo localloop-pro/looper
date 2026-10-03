@@ -227,7 +227,7 @@
   machine endpoint for pending HybridCard pins and defines no bot auth,
   response/pagination schema, or read-audit semantics. The existing admin
   browser direct-Supabase query is not a machine contract and must not be
-  copied. Exact restart state is in `plans/COMPLETION_STATUS.md`.
+  copied. Current restart state is in `STATUS.md` (historical tracker archived).
 - 2026-08-12: Coordinator sanctioned the F4.3 Looper client against LocalLoop
   SPEC-055. Added Electron-main-only `localloop_pending_pins` bearer client and
   `localloop_gateway_health`. The pending client fixes HybridCard/pending filters,

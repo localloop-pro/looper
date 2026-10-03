@@ -171,7 +171,7 @@ pin read returned a rejected row, so treat that as open.
 
 ### 3.7 Every gate leads to you, and you are the bottleneck
 
-- **Evidence:** `plans/COMPLETION_STATUS.md` lists eight packages "waiting on Bill":
+- **Evidence:** the archived July/August completion tracker (see `STATUS.md`) lists eight packages "waiting on Bill":
   pin approvals, TypeDB deploy, TTS cost, voice acceptance, staging proof, flag flips.
   In HybridCard: SMS, payments, alert fan-out, push, Polar. In LocalLoop: TLS,
   Pages env vars, branch protection, Supabase target.
@@ -220,8 +220,9 @@ pin read returned a rejected row, so treat that as open.
   unchecked boxes, 13 governance rules, plus FollowMe, HANDOFF, three continuity
   layers, RAMP, Hermes, autoforge, Codex, Cursor, pi and Claude conventions all
   active at once.
-- **Evidence (looper):** three status documents disagree. `plans/BOT_HANDOFF.md`
-  says Phases 2 to 9 are not started. `plans/COMPLETION_STATUS.md` says they are
+- **Evidence (looper):** three status documents disagreed at audit time. The archived
+  July agent handoff says Phases 2 to 9 are not started; the archived August
+  completion tracker says they are (current status: `STATUS.md`)
   code complete. `plans/features/03-05` are unticked. Live probes show the Looper leg of the
   F9.4 "flag flip" is already live (180 events) while its box is unticked. The
   map-pin leg was not probed here, so the box may be honest, but nothing records
@@ -683,7 +684,7 @@ Unfreeze when the section 5 success rule has a number next to it.
 
 1. One `STATUS.md` per repo, 10 lines, updated every Monday: what is live, the
    four numbers, the one thing being built, the one thing blocked and on whom.
-2. Retire `BOT_HANDOFF.md` and `COMPLETION_STATUS.md` into that file.
+2. Retire the two historical status trackers into `plans/archive/`; use `STATUS.md`.
 3. Fix LocalLoop `CLAUDE.md` to be `@AGENTS.md` and add `SEED.md` plus `.SEED/`
    there, matching the other two repos.
 4. Record in `.SEED/decisions/` that the Looper leg of F9.4 item 1 is live
