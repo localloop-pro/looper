@@ -28,6 +28,8 @@
     return Promise.resolve({
       ok: true,
       json: function () {
+        // tests may set __searchResponse to stub one specific API answer
+        if (window.__searchResponse) return Promise.resolve(window.__searchResponse);
         return Promise.resolve({
           query: "café",
           message: "Here are 2 options for 'café', ranked by community experience.",
