@@ -1,0 +1,7 @@
+# Append-only logs (looper#53): a local `git merge` keeps both sides' new lines
+# instead of conflicting. GitHub's own mergeability check ignores custom merge
+# drivers, so new entries go in one file per PR under docs/learnings/ and
+# .SEED/decisions/ — that is the real fix; this is the safety net.
+docs/LEARNINGS.md merge=union
+.SEED/decisions.md merge=union
+.SEED/gotchas.md merge=union
