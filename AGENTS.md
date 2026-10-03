@@ -58,11 +58,17 @@ cd backend && python3 -m venv .venv \
 # web (Node 20+)
 node web/tests/voice-command-router.test.js
 node web/tests/jarvis-sync.test.js
+# Jarvis browser smoke (CI runs this on every PR; no manual-only gate)
+(cd web/tests && npm ci && npx playwright install --with-deps chromium && npm run smoke)
 # worker
 node workers/looper-api-proxy/test/index.test.mjs
 # looper-bot (ELECTRON_SKIP_BINARY_DOWNLOAD=1 skips the Electron download)
 cd looper-bot && npm ci && npm run typecheck && npm run build && npm test && cd ..
 ```
+
+The `jarvis-smoke` job is included in the required `ci` check. It tests the
+local stubbed map/API harness; live-map and microphone acceptance remain
+owner checks. The smoke runner stops its server on success and failure.
 
 If CI is red, fix the code, never the workflow (see the header of `ci.yml`).
 
