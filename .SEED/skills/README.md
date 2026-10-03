@@ -8,7 +8,8 @@ by archetype. It lives in looper; Supa Admin will read it later.
 no permission and installs nothing. It records what exists or should exist,
 which repo owns it, and who shares it.
 
-Open owner questions on this layout: [GRILL-ME.md](GRILL-ME.md).
+Open owner questions on this layout: [GRILL-ME.md](GRILL-ME.md), asked on
+looper#79.
 
 ## Folders
 

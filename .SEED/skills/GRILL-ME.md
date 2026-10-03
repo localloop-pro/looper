@@ -2,8 +2,9 @@
 
 Before the folders are locked, this file states the proposed layout, attacks
 it with the questions the code can answer, and lists what only the owner can
-answer. Owner answers go in `.SEED/decisions/<question-issue>-<slug>.md`,
-one file per answer set; then this file is updated to point at them.
+answer. The owner's answers (looper#79) go in
+`.SEED/decisions/79-skills-registry-answers.md`; then this file is updated
+to point at them.
 
 Sources read (read-only), pinned:
 
@@ -125,6 +126,9 @@ from `tools/skills_index.py`. Where that JSON is published is for the
 floor-1 issue (Q-G).
 
 ## 3. Open questions — only the owner can answer
+
+Asked on **looper#79**. Answers will go in
+`.SEED/decisions/79-skills-registry-answers.md`.
 
 - **Q-A. `media`:** registry-only folder, or a seventh archetype on the map
   too? Proposal: registry-only. And is "MCP server → `media/`, single
