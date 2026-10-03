@@ -101,3 +101,22 @@ backend/.venv/bin/python tools/skills_index.py > /tmp/skills-index.json
 
 `tools/skills_index.py` exits 1 and lists every problem on stderr if an entry
 is invalid. CI runs the test with the rest of the backend suite.
+
+### Citations (looper#89)
+
+In the body, pin the commits you read on one line and name the repo before
+every `path:line`, so a script can re-check them:
+
+```markdown
+Pinned: looper @ `9becb9c` · map @ `13400a8` · cards @ `7a0e584`
+
+The API: looper `backend/routes/search.py:60`; gateway map `workers/looper-gateway/src/index.mjs:85`.
+```
+
+`map` = localloop.pro-main, `cards` = hybridcard-v2. CI checks that every
+cited repo is pinned; this proves each line exists at its pin (needs local
+clones of the other two repos, read-only):
+
+```bash
+python3 tools/check_skill_citations.py --repo map=../localloop.pro-main --repo cards=../hybridcard-v2
+```
