@@ -202,7 +202,7 @@ contract checks passed.
 | SSRF / open proxy | ✅ the origin never fetches caller-supplied URLs; proxy-shaped paths are 404 | non-prod check. Worker: forwards only to its fixed `ORIGIN` |
 | Cache isolation | ✅ at the origin, shipped dark (PR #16): key = ranking params only, no identity; `Authorization` bypasses | `test_edge_read_boundary.py`. A future Worker cache must key on `Origin` (`docs/EDGE-READ-BOUNDARY.md` §5) |
 | Rate limits | ⏳ built, dark (PR #16) | do not enable until the origin is locked to Cloudflare (`docs/EDGE-READ-BOUNDARY.md`). 429s are traced: `test_one_id_through_read_boundary_and_hits_are_traced` |
-| Authorization (public writes) | ❌ known gap | `POST /api/reviews` is open (BLIND-SPOTS §3.6). Hot zone (auth): owner decision needed |
+| Authorization (public writes) | ✅ closed in code (#27 / merged PR #33); production unverified (owner probe needed) | `backend/tests/test_public_writes_lockdown.py`: POST reviews/onboard/pins → 403 unless `LOOPER_PUBLIC_WRITES=true`; profile GETs users/code → 404 even when writes open; public reads preserved; caller `verified_visit` ignored. Enabling writes still needs owner approval |
 | `/api/ingest/status` | ⚠️ public | event ids, types and counts only; no payload bodies (asserted by the non-prod check) |
 
 ## 8. Evidence and what is still open

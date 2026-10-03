@@ -1,5 +1,7 @@
 # SEED.md — looper Knowledge Index
 
+Current status: STATUS.md
+
 Last updated: 2026-09-08
 
 ## What this project is
