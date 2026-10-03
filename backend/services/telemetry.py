@@ -4,8 +4,10 @@ Rules (master plan): query, response summary, intent, session_id — NO PII.
 Telemetry must NEVER break or block the request that triggered it.
 `training/export.py` consumes these rows for the fine-tune loop.
 """
+import re
+
 from models import TrainingLog
-from services.pii import scrub_pii
+from services.pii import AU_MOBILE_RE, EMAIL_RE, scrub_pii
 
 
 # `intent` and `session` arrive as public query params (looper#84), so they
