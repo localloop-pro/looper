@@ -121,12 +121,22 @@ jobs:
   docker-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 4
+    env:
+      # Dummy HMAC value (not a credential) so the container boots like a
+      # configured deploy; nothing in the smoke test signs or sends events.
+      HYBRIDCARD_INGEST_SECRET: preview-secret
     steps:
       - uses: actions/checkout@v7
       - name: Build production image (default build args)
         run: docker build -f backend/Dockerfile -t looper-api:ci .
       - name: Smoke-test image health, reads, write lock and log privacy
         run: bash scripts/docker-smoke.sh
+      # Coolify's "Include Source Commit in Build" path (looper#86). SOURCE_COMMIT
+      # is declared late in the Dockerfile, so this rebuild reuses cached layers.
+      - name: Build production image with SOURCE_COMMIT
+        run: docker build -f backend/Dockerfile --build-arg SOURCE_COMMIT=abc123def4567890 -t looper-api:ci-commit .
+      - name: Smoke-test the commit marker on /health
+        run: EXPECT_COMMIT=abc123def456 bash scripts/docker-smoke.sh looper-api:ci-commit
 
   # Known-vulnerability scan of what ships (looper#54). A finding fails the
   # run: bump the pin. If a bump breaks the tests, file "Security finding: …"
