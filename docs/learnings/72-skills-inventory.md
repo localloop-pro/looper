@@ -12,3 +12,8 @@
 - Inventories surface security gaps (here, an unauthenticated `/mcp` that can
   reach a platform-key LLM in another repo). Write them down and route them
   to the owning repo. Don't fix them inside a read-only scouting PR.
+- "Read-only" tools can still write: classify by what the handler persists,
+  not by the tool's name. Here MCP reads log an `McpRequest` row, pending-pin
+  reads POST to `audit_log`, and a smoke check sends signed ingest events, so
+  all are HIGH (needs owner OK). Split a routine's read-only phases out before
+  calling it read-only.
