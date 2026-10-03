@@ -250,9 +250,16 @@ Or on your Mac, against a backup you downloaded to a private folder:
 
 ```bash
 cd backend
-.venv/bin/python scripts/weekly_numbers.py --db /full/path/to/looper-20261002T030000Z.db
-.venv/bin/python scripts/weekly_numbers.py --db /full/path/to/looper-20261002T030000Z.db --days 30
-.venv/bin/python scripts/weekly_numbers.py --db /full/path/to/looper-20261002T030000Z.db --json
+python3 scripts/weekly_numbers.py --db /full/path/to/looper-20261002T030000Z.db
+python3 scripts/weekly_numbers.py --db /full/path/to/looper-20261002T030000Z.db --days 30
+python3 scripts/weekly_numbers.py --db /full/path/to/looper-20261002T030000Z.db --json
+```
+
+This command needs only Python's standard library. Verify without installed
+packages (expected: usage text, exit 0):
+
+```bash
+python3 -S scripts/weekly_numbers.py --help
 ```
 
 How to read it:
@@ -262,13 +269,28 @@ How to read it:
   next. A text only shows up once two or more searches asked for it, so
   one-off free text never appears; emails and mobiles show as `[email]` /
   `[mobile]`.
+- **By intent** exports only `search`, `voice`, `discover`, `(none)` and
+  `other`. Custom caller labels are combined under `other`, including labels
+  containing names, emails or mobiles. Their counts are preserved.
+- Repeated queries use Unicode lowercasing: `CAFÉ` and `café` appear as
+  `2x café` when both are in the same window.
 - **Bridge events** counts HybridCard events by status. Anything other than
   `processed` or `stale_skipped` needs a look.
 - Exit code 2 with `no database file at ...` means the path is wrong;
   nothing was created.
 
-The output has no names or mobiles in it, so it is safe to paste into
-STATUS.md or an issue.
+Intent labels never export arbitrary caller text. Query texts still contain
+free text after email/mobile redaction; review them before sharing the report.
+
+To roll back the PR #77 QA corrections in source, run from the repo root:
+
+```bash
+git revert <QA-fix-commit>
+```
+
+Expected: a new revert commit; no database changes. Reverting restores the
+known report privacy and Unicode defects, so stop sharing reports until a
+replacement fix is accepted.
 
 ---
 

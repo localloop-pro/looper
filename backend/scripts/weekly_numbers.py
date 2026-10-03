@@ -16,8 +16,9 @@ plus current totals: active businesses, businesses with a HybridCard, public
 reviews, active map pins, active deals.
 
 Safety: opens the DB with ``file:...?mode=ro``, so SQLite refuses every write
-and never creates a missing file (exit 2). It never prints names, mobiles or
-any column of ``users``. Stdlib only, plus ``scrub_pii`` from the backend.
+and never creates a missing file (exit 2). It reads no ``users`` columns;
+intent labels are classified and query email/mobile details are redacted.
+Stdlib only, including the shared contact-detail scrubber.
 """
 from __future__ import annotations
 
@@ -30,17 +31,35 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from services.telemetry import scrub_pii  # noqa: E402  (importing models never opens a DB)
+from services.pii import scrub_pii  # noqa: E402
 
 TOP_N = 10
 MIN_REPEATS = 2  # a zero-result text must occur this often to be listed
 # routes/discover.py logs a synthetic query; everything else is a search.
 DISCOVER_PREFIX = "discover suburb="
+SAFE_INTENTS = frozenset({"search", "voice", "discover"})
+
+
+def _intent_label(intent: str | None) -> str:
+    # Caller-controlled labels can contain names or contact details. Never
+    # export arbitrary free text, even if it evades the contact scrubber.
+    if not intent:
+        return "(none)"
+    return intent if intent in SAFE_INTENTS else "other"
+
+
+def _query_label(query: str | None) -> str | None:
+    # SQLite lower() handles ASCII only; Python lower() handles Unicode.
+    return query.strip().lower() if query is not None else None
 
 
 def open_readonly(path: pathlib.Path) -> sqlite3.Connection:
     # mode=ro: every write fails and a missing file is NOT created.
-    return sqlite3.connect(f"file:{quote(str(path))}?mode=ro", uri=True, timeout=30)
+    conn = sqlite3.connect(f"file:{quote(str(path))}?mode=ro", uri=True, timeout=30)
+    # Connection-local functions change no schema or stored data.
+    conn.create_function("query_label", 1, _query_label)
+    conn.create_function("intent_label", 1, _intent_label)
+    return conn
 
 
 def _ts(dt: datetime) -> str:
@@ -62,9 +81,9 @@ def _window(conn: sqlite3.Connection, tables: set[str], start: str, end: str) ->
         rng = (start, end)
         out["queries"] = conn.execute(
             f"SELECT COUNT(*) FROM training_log WHERE {where}", rng).fetchone()[0]
-        out["by_intent"] = {(k or "(none)"): n for k, n in conn.execute(
-            f"SELECT intent, COUNT(*) FROM training_log WHERE {where} "
-            "GROUP BY intent ORDER BY COUNT(*) DESC, intent", rng)}
+        out["by_intent"] = {k: n for k, n in conn.execute(
+            f"SELECT intent_label(intent) AS label, COUNT(*) FROM training_log WHERE {where} "
+            "GROUP BY label ORDER BY COUNT(*) DESC, label", rng)}
         out["sessions"] = conn.execute(
             f"SELECT COUNT(DISTINCT session_id) FROM training_log WHERE {where}",
             rng).fetchone()[0]
@@ -78,7 +97,7 @@ def _window(conn: sqlite3.Connection, tables: set[str], start: str, end: str) ->
             out["zero_result_pct"] = round(100 * out["zero_result"] / out["searches"], 1)
         out["top_zero_result"] = [
             {"query": scrub_pii(q), "count": n} for q, n in conn.execute(
-                f"SELECT lower(trim(query_text)) AS q, COUNT(*) FROM training_log "
+                f"SELECT query_label(query_text) AS q, COUNT(*) FROM training_log "
                 f"WHERE {zero} GROUP BY q HAVING COUNT(*) >= ? "
                 "ORDER BY COUNT(*) DESC, q LIMIT ?", (*rng, MIN_REPEATS, TOP_N))]
     if "bridge_events" in tables:

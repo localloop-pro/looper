@@ -171,3 +171,75 @@ def test_empty_schema_reports_zeros(tmp_path):
     assert r["current"]["queries"] == 0 and r["current"]["zero_result_pct"] is None
     assert r["totals"]["active_businesses"] is None
     assert "Zero-result searches: 0 of 0 (n/a)" in weekly_numbers.format_text(r)
+
+
+def test_unicode_repeat_grouping_in_both_windows(tmp_path):
+    db = _make_db(tmp_path / "looper.db")
+    with sqlite3.connect(db) as conn:
+        conn.executemany(
+            "INSERT INTO training_log (query_text, response_text, intent, created_at) "
+            "VALUES (?, ?, 'search', ?)",
+            [(q, ZERO, _at(d)) for q, d in
+             [("CAFÉ", 1), (" café ", 2), ("CAFÉ", 8), ("café", 9)]])
+    r = weekly_numbers.build_report(db, now=NOW)
+    for window in ("current", "previous"):
+        assert {"query": "café", "count": 2} in r[window]["top_zero_result"]
+
+
+def test_api_to_report_classifies_private_intents(client, db, tmp_path):
+    # Actual API writes, including single-occurrence PII and a name that a
+    # contact-detail regex cannot recognize. Use only synthetic details.
+    intents = ["qa-owner@example.invalid", "qa-other@example.invalid",
+               "0412 345 678", "+61 412 345 679", "Synthetic Owner", "other"]
+    for n, intent in enumerate(intents):
+        response = client.get("/api/search", params={
+            "q": "CAFÉ" if n == 0 else "café" if n == 1 else f"missing-{n}",
+            "intent": intent})
+        assert response.status_code == 200
+        assert response.json()["results"] == []
+    assert db.query(models.TrainingLog).count() == len(intents)
+    # The reporter operates on a backup, exactly as the owner instructions say.
+    backup = tmp_path / "api-backup.db"
+    with sqlite3.connect(models.engine.url.database) as source:
+        with sqlite3.connect(backup) as dest:
+            source.backup(dest)
+    before = backup.read_bytes()
+    report = weekly_numbers.build_report(
+        backup, now=datetime.now(timezone.utc) + timedelta(seconds=1))
+    assert report["current"]["by_intent"] == {"other": len(intents)}
+    assert report["current"]["queries"] == len(intents)
+    assert report["current"]["top_zero_result"] == [{"query": "café", "count": 2}]
+    for output in (json.dumps(report), weekly_numbers.format_text(report)):
+        for intent in intents[:-1]:
+            assert intent not in output
+    assert backup.read_bytes() == before
+
+
+def test_intent_collapse_preserves_counts_in_both_windows(tmp_path):
+    db = _make_db(tmp_path / "looper.db")
+    with sqlite3.connect(db) as conn:
+        conn.executemany(
+            "INSERT INTO training_log (query_text, response_text, intent, created_at) "
+            "VALUES ('one-off', ?, ?, ?)",
+            [(ZERO, intent, _at(d)) for d in (1, 8)
+             for intent in (None, "", "qa@example.invalid", "0412345678", "other")])
+    report = weekly_numbers.build_report(db, now=NOW)
+    for window in ("current", "previous"):
+        intents = report[window]["by_intent"]
+        assert intents["(none)"] == 2
+        assert intents["other"] == 3
+        assert sum(intents.values()) == report[window]["queries"]
+
+
+def test_cli_needs_only_stdlib(tmp_path):
+    script = str(SCRIPTS / "weekly_numbers.py")
+    help_run = subprocess.run([sys.executable, "-S", script, "--help"],
+                              capture_output=True, text=True, check=True)
+    assert "Read-only weekly numbers" in help_run.stdout
+    db = _make_db(tmp_path / "looper.db")
+    before = db.read_bytes()
+    for mode in ([], ["--json"]):
+        result = subprocess.run([sys.executable, "-S", script, "--db", str(db), *mode],
+                                capture_output=True, text=True, check=True)
+        assert "queries" in result.stdout.lower()
+    assert db.read_bytes() == before
