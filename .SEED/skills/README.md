@@ -8,8 +8,9 @@ by archetype. It lives in looper; Supa Admin will read it later.
 no permission and installs nothing. It records what exists or should exist,
 which repo owns it, and who shares it.
 
-Open owner questions on this layout: [GRILL-ME.md](GRILL-ME.md), asked on
-looper#79.
+The layout is decided: Bill answered all seven questions on looper#79
+([answers record](../decisions/79-skills-registry-answers.md)). Reasoning:
+[GRILL-ME.md](GRILL-ME.md).
 
 ## Folders
 
@@ -25,8 +26,8 @@ registry-only folders:
 | `stays/`    | `Accommodation`    | HybridCard `accommodation`, gateway `stays`|
 | `jobs/`     | `Job-Offers`       | gateway subagent `jobs`                    |
 | `dining/`   | `Food`             | HybridCard `food`, gateway `food`, map agent `food-agent` |
-| `media/`    | —                  | MCP servers, plugins, media tools (audio, image, video) |
-| `platform/` | —                  | cross-cutting: auth, bridge, deploy, QA, AI team |
+| `media/`    | —                  | whole MCP servers, plugins, media tools (audio, image, video); registry only, not a map archetype |
+| `platform/` | —                  | cross-cutting: auth, bridge, deploy, QA, AI team; Fetch_Deliveries (`fetch`) |
 
 Rules:
 
@@ -34,6 +35,13 @@ Rules:
   unknown folder.
 - Pick the archetype the **end user** sees. If the behaviour serves every
   archetype, it goes in `platform/`.
+- HybridCard-only archetypes (`retail, health, trades, professional,
+  creative, driver`) get no folder: file under the map archetype the end user
+  sees (retail deals → `offers`), else `platform/`.
+- An MCP tool that serves one archetype (e.g. HybridCard `get_menu`) goes in
+  that archetype's folder; a whole MCP server goes in `media/`.
+- A skill used by two or more repos lives in the repo where its code runs
+  (`home_repo`).
 - Empty folders keep a `.gitkeep`. Folder `README.md` files are allowed and
   are not entries.
 
@@ -67,8 +75,8 @@ why: One line on what repeats or is done by hand that this captures.
 | `archetype`   | one of the 8 folders | must equal the folder |
 | `home_repo`   | `looper` · `localloop.pro-main` · `hybridcard-v2` | the one repo that owns it |
 | `path`        | repo-relative | for `looper`, the test checks it exists |
-| `status`      | `candidate` → `approved` → `built` → `shared` | `approved` needs the owner's OK on an issue |
-| `owner_floor` | kebab-case | until GRILL-ME Q-F is answered, the home repo name |
+| `status`      | `candidate` → `approved` → `built` → `shared` | `approved` needs the owner's comment on the entry's "Skill: …" issue |
+| `owner_floor` | kebab-case | the home repo name (GRILL-ME Q-F, decided on looper#79) |
 | `risk`        | `low` · `medium` · `high` | see below |
 | `why`         | one line, 10–200 chars | |
 
@@ -95,7 +103,8 @@ VIP identities.
 ```bash
 # from the repo root
 cd backend && .venv/bin/python -m pytest -q tests/test_skills_registry.py && cd ..
-# machine-readable index for Supa Admin (stdout, never committed)
+# machine-readable index for Supa Admin (stdout, never committed in looper;
+# published in Supa-admin/ per looper#79; nothing here pushes it)
 backend/.venv/bin/python tools/skills_index.py > /tmp/skills-index.json
 ```
 

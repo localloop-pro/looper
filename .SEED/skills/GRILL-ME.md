@@ -2,9 +2,8 @@
 
 Before the folders are locked, this file states the proposed layout, attacks
 it with the questions the code can answer, and lists what only the owner can
-answer. The owner's answers (looper#79) go in
-`.SEED/decisions/79-skills-registry-answers.md`; then this file is updated
-to point at them.
+answer. **Decided 2026-10-04:** the owner's answers (looper#79) are in
+`.SEED/decisions/79-skills-registry-answers.md`; §3 below lists them.
 
 Sources read (read-only), pinned:
 
@@ -125,29 +124,39 @@ build step, so it cannot import Python or parse YAML easily. → Flat
 from `tools/skills_index.py`. Where that JSON is published is for the
 floor-1 issue (Q-G).
 
-## 3. Open questions — only the owner can answer
+## 3. Open questions — answered by the owner (looper#79)
 
-Asked on **looper#79**. Answers will go in
-`.SEED/decisions/79-skills-registry-answers.md`.
+Asked on **looper#79**. **Answered 2026-10-04**
+([comment](https://github.com/localloop-pro/looper/issues/79#issuecomment-5978692365)):
+"all proposals OK; D platform; F repo names; G index in Supa-admin/."
+Record: `.SEED/decisions/79-skills-registry-answers.md`. Each answer follows
+its question.
 
 - **Q-A. `media`:** registry-only folder, or a seventh archetype on the map
   too? Proposal: registry-only. And is "MCP server → `media/`, single
   archetype MCP tool → its archetype" the right split?
+  **Answer:** registry only; the proposed split holds.
 - **Q-B. Folder names:** keep the map **labels** (`stays`, `jobs`, `dining`)
   or switch to the code ids (`accommodation`, `job-offers`, `food`)?
   Proposal: keep labels; README carries the alias table.
+  **Answer:** map labels; README keeps the alias table.
 - **Q-C. HybridCard-only archetypes** (`retail, health, trades,
   professional, creative, driver`): file their skills under the map archetype
   the end user sees (retail/trades deals → `offers`), under `platform/`, or
   add folders? Proposal: map archetype the user sees, else `platform/`.
+  **Answer:** map archetype the user sees, else `platform/`.
 - **Q-D. `fetch` (Fetch_Deliveries):** own folder, `platform/`, or wait
   until it joins the taxonomy?
+  **Answer:** `platform/`.
 - **Q-E. Home repo for shared skills:** when a skill is used by two or more
   repos, where does the canonical SKILL.md live — the repo where the code
   runs (proposal), or always looper as registry home?
+  **Answer:** the repo where the code runs.
 - **Q-F. Floors:** what are the floor names for `owner_floor`? The brief
   says "floor 1" for Supa Admin. Repo names (today's default) or numbered
   floors?
+  **Answer:** repo names.
 - **Q-G. Who approves `candidate → approved`**, and where: a comment from
   you on the "Skill: …" issue (proposal), or something else? And where should
   the generated JSON index be published for Supa Admin?
+  **Answer:** owner's comment on the "Skill: …" issue; index published in `Supa-admin/`.

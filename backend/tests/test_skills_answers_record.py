@@ -132,8 +132,23 @@ def test_registry_docs_point_at_open_questions():
 
 # Synthetic id: no real comment is implied to be the owner's answer.
 GOOD_URL = "https://github.com/localloop-pro/looper/issues/79#issuecomment-1000000001"
-_REAL = RECORD.read_text(encoding="utf-8")
-_STATUS_LINE = _STATUS.search(_REAL).group(0)
+# Fixed fixtures, independent of the live record's answers and status, so the
+# checker's AWAITING and DECIDED rules stay tested after the record moves on.
+_AWAITING = "\n".join([
+    "# #79 fixture",
+    "",
+    "**Status: AWAITING OWNER. Nothing below is decided yet.**",
+    "",
+    f"**Owner evidence:** {PENDING}",
+    "",
+    "| Q | Question | Proposal | Owner answer |",
+    "|---|----------|----------|--------------|",
+    *[f"| {q} | question {q} | proposal {q} | {PENDING} |" for q in QUESTIONS],
+    "",
+    "## Notes",
+    "",
+])
+_STATUS_LINE = _STATUS.search(_AWAITING).group(0)
 _FILLED_A = "| A | duplicate | proposal | Registry only |"
 
 
@@ -141,7 +156,7 @@ def _set_evidence(text, value):
     return _EVIDENCE.sub(lambda _: f"**Owner evidence:** {value}".rstrip(), text, count=1)
 
 
-def _decided(evidence=GOOD_URL, text=_REAL):
+def _decided(evidence=GOOD_URL, text=_AWAITING):
     text = text.replace(_STATUS_LINE, "**Status: DECIDED 2026-10-05", 1)
     text = text.replace(f"| {PENDING} |", "| Proposal OK |")
     return _set_evidence(text, evidence)
@@ -151,18 +166,46 @@ def _insert_before_row(text, q, row):
     return re.sub(rf"^(\|\s*{q}\s*\|)", lambda m: f"{row}\n{m.group(1)}", text, count=1, flags=re.M)
 
 
-def test_checker_accepts_a_complete_decided_record():
+def test_checker_accepts_both_fixture_states():
+    assert record_problems(_AWAITING) == []
     assert record_problems(_decided()) == []
+
+
+# --- The live record: decided by the owner on looper#79 -----------------------
+
+VERIFIED_OWNER_COMMENT = "https://github.com/localloop-pro/looper/issues/79#issuecomment-5978692365"
+
+
+def test_live_record_is_fully_decided():
+    text = RECORD.read_text(encoding="utf-8")
+    assert _STATUS.search(text).group(1).startswith("DECIDED ")
+    assert _EVIDENCE.search(text).group(1).strip() == VERIFIED_OWNER_COMMENT
+    problems, answers = table_problems(text)
+    assert problems == [] and len(answers) == len(QUESTIONS)
+    assert all(a and PENDING not in a for a in answers)
+
+
+def test_registry_docs_match_the_answers():
+    readme = (ROOT / ".SEED/skills/README.md").read_text(encoding="utf-8")
+    schema = (ROOT / ".SEED/skills/schema.json").read_text(encoding="utf-8")
+    grill = GRILL_ME.read_text(encoding="utf-8").split("## 3. Open questions", 1)[1]
+    # No doc may still call the layout open.
+    for text in (readme, schema):
+        assert "until GRILL-ME" not in text and "open owner question" not in text
+    assert grill.count("**Answer:**") == len(QUESTIONS)
+    # D: Fetch_Deliveries goes in platform/, no new folder; F: repo names; G: index location.
+    assert "Fetch_Deliveries" in readme and not (ROOT / ".SEED/skills/fetch").exists()
+    assert "the home repo name" in readme and "Supa-admin/" in readme
 
 
 @pytest.mark.parametrize(
     "text",
     [
-        pytest.param(_REAL.replace(f"| {PENDING} |", "| Registry only |", 1), id="awaiting-one-answer-filled"),
-        pytest.param(_set_evidence(_REAL, GOOD_URL), id="awaiting-evidence-filled"),
-        pytest.param(_insert_before_row(_REAL, "A", _FILLED_A), id="awaiting-duplicate-filled-row"),
+        pytest.param(_AWAITING.replace(f"| {PENDING} |", "| Registry only |", 1), id="awaiting-one-answer-filled"),
+        pytest.param(_set_evidence(_AWAITING, GOOD_URL), id="awaiting-evidence-filled"),
+        pytest.param(_insert_before_row(_AWAITING, "A", _FILLED_A), id="awaiting-duplicate-filled-row"),
         pytest.param(_insert_before_row(_decided(), "A", _FILLED_A), id="decided-duplicate-row"),
-        pytest.param(re.sub(r"^\| G \|.*\n", "", _REAL, flags=re.M), id="missing-row"),
+        pytest.param(re.sub(r"^\| G \|.*\n", "", _AWAITING, flags=re.M), id="missing-row"),
         pytest.param(_decided().replace("| Proposal OK |", f"| {PENDING} |", 1), id="decided-answer-pending"),
         pytest.param(_EVIDENCE.sub("", _decided(), count=1), id="decided-evidence-missing"),
         pytest.param(_decided(PENDING), id="decided-evidence-pending"),
@@ -176,20 +219,20 @@ def test_checker_accepts_a_complete_decided_record():
         pytest.param(_decided() + "\n**Status: AWAITING OWNER\n", id="two-status-lines"),
         # QA round 2: duplicates indented like Markdown still renders them, extra ids.
         *[
-            pytest.param(_insert_before_row(_REAL, "A", " " * n + _FILLED_A), id=f"awaiting-duplicate-indented-{n}")
+            pytest.param(_insert_before_row(_AWAITING, "A", " " * n + _FILLED_A), id=f"awaiting-duplicate-indented-{n}")
             for n in (1, 2, 3, 4)
         ],
-        pytest.param(_insert_before_row(_REAL, "A", "\t" + _FILLED_A), id="awaiting-duplicate-tab-indented"),
+        pytest.param(_insert_before_row(_AWAITING, "A", "\t" + _FILLED_A), id="awaiting-duplicate-tab-indented"),
         pytest.param(_insert_before_row(_decided(), "A", "  " + _FILLED_A), id="decided-duplicate-indented"),
-        pytest.param(_insert_before_row(_REAL, "A", "A | duplicate | proposal | Registry only"), id="duplicate-without-outer-pipes"),
-        pytest.param(_insert_before_row(_REAL, "A", "| H | extra | proposal | _pending_ |"), id="extra-H-row-inside-table"),
-        pytest.param(re.sub(r"^(\| G \|.*)$", r"\1\n| H | extra | proposal | _pending_ |", _REAL, count=1, flags=re.M), id="extra-H-row-at-end"),
-        pytest.param(re.sub(r"^(\| G \|.*)$", r"\1\nRegistry only", _REAL, count=1, flags=re.M), id="text-line-glued-to-table"),
-        pytest.param(_REAL + "\n| A | duplicate | proposal | Registry only |\n", id="second-table-elsewhere"),
-        pytest.param(_REAL.replace("| Q | Question |", "| X | Question |", 1), id="wrong-header"),
-        pytest.param(_REAL.replace("| A |", "| A | extra |", 1), id="row-with-five-cells"),
+        pytest.param(_insert_before_row(_AWAITING, "A", "A | duplicate | proposal | Registry only"), id="duplicate-without-outer-pipes"),
+        pytest.param(_insert_before_row(_AWAITING, "A", "| H | extra | proposal | _pending_ |"), id="extra-H-row-inside-table"),
+        pytest.param(re.sub(r"^(\| G \|.*)$", r"\1\n| H | extra | proposal | _pending_ |", _AWAITING, count=1, flags=re.M), id="extra-H-row-at-end"),
+        pytest.param(re.sub(r"^(\| G \|.*)$", r"\1\nRegistry only", _AWAITING, count=1, flags=re.M), id="text-line-glued-to-table"),
+        pytest.param(_AWAITING + "\n| A | duplicate | proposal | Registry only |\n", id="second-table-elsewhere"),
+        pytest.param(_AWAITING.replace("| Q | Question |", "| X | Question |", 1), id="wrong-header"),
+        pytest.param(_AWAITING.replace("| A |", "| A | extra |", 1), id="row-with-five-cells"),
         pytest.param(_decided() + "\n   **Status: AWAITING OWNER\n", id="indented-second-status"),
-        pytest.param(_REAL + f"\n  **Owner evidence:** {GOOD_URL}\n", id="indented-second-evidence"),
+        pytest.param(_AWAITING + f"\n  **Owner evidence:** {GOOD_URL}\n", id="indented-second-evidence"),
     ],
 )
 def test_checker_rejects(text, request):

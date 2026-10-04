@@ -31,3 +31,9 @@ any filtering, and a non-blank line right after the table is rejected
 lines then flagged the record's own instructions, and a negative case can
 "pass" for that wrong reason, so each negative case now asserts its specific
 problem message.
+
+QA's transition defect: the negative cases were built by mutating the live
+record, so filling in the real answers would have changed what they tested.
+Checker fixtures are now fixed AWAITING/DECIDED strings inside the test; the
+live record gets its own checks (DECIDED, all seven answers, the verified
+owner comment) and the README/schema/GRILL-ME are checked against the answers.
