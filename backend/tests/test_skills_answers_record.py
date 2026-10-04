@@ -20,28 +20,66 @@ QUESTIONS = list("ABCDEFG")
 PENDING = "_pending_"
 OWNER_COMMENT = re.compile(r"https://github\.com/localloop-pro/looper/issues/79#issuecomment-[0-9]+")
 
-# Any table row whose first cell is a single letter A-G counts as a question
-# row, wherever it is in the file, so a duplicate cannot hide from the check.
-_ROW = re.compile(r"^\|\s*([A-G])\s*\|(.*)\|\s*$", re.M)
-_STATUS = re.compile(r"^\*\*Status: (AWAITING OWNER|DECIDED \d{4}-\d{2}-\d{2})\b", re.M)
-_EVIDENCE = re.compile(r"^\*\*Owner evidence:\*\*(.*)$", re.M)
+HEADER = ["Q", "Question", "Proposal", "Owner answer"]
+# Indented copies still count: Markdown renders a row or paragraph indented by
+# up to 3 spaces, so a hidden duplicate must not escape the check.
+_STATUS = re.compile(r"^[ \t]*\*\*Status: (AWAITING OWNER|DECIDED \d{4}-\d{2}-\d{2})\b", re.M)
+_EVIDENCE = re.compile(r"^[ \t]*\*\*Owner evidence:\*\*(.*)$", re.M)
+_SEPARATOR = re.compile(r"^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$")
+
+
+def _cells(line):
+    line = line.strip()
+    if line.startswith("|"):
+        line = line[1:]
+    if line.endswith("|") and not line.endswith("\\|"):
+        line = line[:-1]
+    return [c.strip() for c in re.split(r"(?<!\\)\|", line)]
+
+
+def table_problems(text):
+    """The record holds exactly one table: header, separator, rows A-G.
+
+    Every line that contains a pipe must belong to that table, wherever it is
+    and however it is indented or written (with or without outer pipes), so an
+    extra or duplicate row cannot hide. Rows are counted before any filtering.
+    Returns (problems, answers).
+    """
+    lines = text.splitlines()
+    piped = [i for i, line in enumerate(lines) if "|" in line]
+    if not piped:
+        return ["no question table"], []
+    if piped != list(range(piped[0], piped[-1] + 1)):
+        return ["every line with a '|' must be in one contiguous question table"], []
+    after = piped[-1] + 1
+    if after < len(lines) and lines[after].strip():
+        # A non-blank line right after a table is rendered as another row.
+        return ["the question table must be followed by a blank line"], []
+
+    header, separator, *rows = [lines[i] for i in piped]
+    problems = []
+    if _cells(header) != HEADER:
+        problems.append(f"table header must be {HEADER}")
+    if not _SEPARATOR.match(separator.strip()):
+        problems.append("second table line must be the |---| separator")
+    if len(rows) != len(QUESTIONS):
+        problems.append(f"table must have exactly {len(QUESTIONS)} question rows; found {len(rows)}")
+    ids, answers = [], []
+    for row in rows:
+        cells = _cells(row)
+        ids.append(cells[0])
+        if len(cells) != len(HEADER):
+            problems.append(f"row {cells[0]!r} must have {len(HEADER)} cells")
+        else:
+            answers.append(cells[-1])
+    if ids != QUESTIONS:
+        problems.append(f"question rows must be exactly A-G once each, in order; found {ids}")
+    return problems, answers
 
 
 def record_problems(text):
     """Every reason the record is not a valid AWAITING or DECIDED record."""
-    problems = []
-
-    rows = _ROW.findall(text)
-    ids = [q for q, _ in rows]
-    if ids != QUESTIONS:
-        problems.append(f"question rows must be exactly A-G once each, in order; found {ids}")
-    answers = []
-    for q, rest in rows:
-        cells = [c.strip() for c in rest.split("|")]
-        if len(cells) != 3:
-            problems.append(f"row {q} must have 4 cells (Q, Question, Proposal, Owner answer)")
-            continue
-        answers.append(cells[2])
+    problems, answers = table_problems(text)
 
     statuses = _STATUS.findall(text)
     if len(statuses) != 1:
@@ -136,7 +174,51 @@ def test_checker_accepts_a_complete_decided_record():
         pytest.param(_decided(GOOD_URL + " and more"), id="decided-evidence-trailing-text"),
         pytest.param(_decided() + f"\n**Owner evidence:** {GOOD_URL}\n", id="decided-two-evidence-lines"),
         pytest.param(_decided() + "\n**Status: AWAITING OWNER\n", id="two-status-lines"),
+        # QA round 2: duplicates indented like Markdown still renders them, extra ids.
+        *[
+            pytest.param(_insert_before_row(_REAL, "A", " " * n + _FILLED_A), id=f"awaiting-duplicate-indented-{n}")
+            for n in (1, 2, 3, 4)
+        ],
+        pytest.param(_insert_before_row(_REAL, "A", "\t" + _FILLED_A), id="awaiting-duplicate-tab-indented"),
+        pytest.param(_insert_before_row(_decided(), "A", "  " + _FILLED_A), id="decided-duplicate-indented"),
+        pytest.param(_insert_before_row(_REAL, "A", "A | duplicate | proposal | Registry only"), id="duplicate-without-outer-pipes"),
+        pytest.param(_insert_before_row(_REAL, "A", "| H | extra | proposal | _pending_ |"), id="extra-H-row-inside-table"),
+        pytest.param(re.sub(r"^(\| G \|.*)$", r"\1\n| H | extra | proposal | _pending_ |", _REAL, count=1, flags=re.M), id="extra-H-row-at-end"),
+        pytest.param(re.sub(r"^(\| G \|.*)$", r"\1\nRegistry only", _REAL, count=1, flags=re.M), id="text-line-glued-to-table"),
+        pytest.param(_REAL + "\n| A | duplicate | proposal | Registry only |\n", id="second-table-elsewhere"),
+        pytest.param(_REAL.replace("| Q | Question |", "| X | Question |", 1), id="wrong-header"),
+        pytest.param(_REAL.replace("| A |", "| A | extra |", 1), id="row-with-five-cells"),
+        pytest.param(_decided() + "\n   **Status: AWAITING OWNER\n", id="indented-second-status"),
+        pytest.param(_REAL + f"\n  **Owner evidence:** {GOOD_URL}\n", id="indented-second-evidence"),
     ],
 )
-def test_checker_rejects(text):
-    assert record_problems(text) != []
+def test_checker_rejects(text, request):
+    # Each case must fail for its own reason, not because another problem masks it.
+    case = request.node.callspec.id
+    expected = next(reason for prefix, reason in _REASONS.items() if case.startswith(prefix))
+    problems = record_problems(text)
+    assert any(expected in p for p in problems), (case, problems)
+
+
+_ROWS = "question rows must be exactly A-G"
+_EVIDENCE_URL = "needs owner evidence = full looper#79 comment URL"
+_REASONS = {
+    "awaiting-one-answer-filled": "answers filled in but status still AWAITING OWNER",
+    "awaiting-evidence-filled": "owner evidence filled in",
+    "awaiting-duplicate": _ROWS,
+    "decided-duplicate": _ROWS,
+    "missing-row": _ROWS,
+    "duplicate-without-outer-pipes": _ROWS,
+    "extra-H-row": _ROWS,
+    "decided-answer-pending": "an answer is still pending",
+    "decided-evidence-missing": "Owner evidence:**' line; found 0",
+    "decided-evidence-": _EVIDENCE_URL,
+    "decided-two-evidence-lines": "Owner evidence:**' line; found 2",
+    "indented-second-evidence": "Owner evidence:**' line; found 2",
+    "two-status-lines": "Status: DECIDED <date>' line; found 2",
+    "indented-second-status": "Status: DECIDED <date>' line; found 2",
+    "text-line-glued-to-table": "followed by a blank line",
+    "second-table-elsewhere": "one contiguous question table",
+    "wrong-header": "table header must be",
+    "row-with-five-cells": "must have 4 cells",
+}

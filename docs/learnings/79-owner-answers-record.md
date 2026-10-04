@@ -21,3 +21,13 @@ so a filled duplicate row hid behind a later pending one. Fix: an explicit
 `**Owner evidence:**` field that must fullmatch a numeric looper#79 comment
 URL, exactly seven A-G rows in order, and negative cases built by mutating the
 real record so the checker is proven to reject, not just to accept.
+
+QA round 2 hid the duplicate by indenting it 1-3 spaces (Markdown still
+renders it as a row) or by adding an H row; the row regex filtered to A-G at
+column zero before counting. Fix: parse the table as a block. Every line with
+a pipe must sit in the one contiguous table, all its rows are counted before
+any filtering, and a non-blank line right after the table is rejected
+(Markdown renders it as another row). Widening the evidence match to indented
+lines then flagged the record's own instructions, and a negative case can
+"pass" for that wrong reason, so each negative case now asserts its specific
+problem message.

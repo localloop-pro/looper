@@ -37,12 +37,15 @@ closes it:
 
 1. Copy each answer into the table ("all proposals OK" fills A, B, C, E, G
    with the proposal; D, F and G's publish location still need a choice).
-2. Change **Status** to `DECIDED <date>` and replace `_pending_` after
-   **Owner evidence:** with the full link to the owner's answering comment:
+2. Change **Status** to `DECIDED <date>`. In the owner-evidence line at the
+   top, replace `_pending_` with the full link to the owner's answering
+   comment:
    `https://github.com/localloop-pro/looper/issues/79#issuecomment-<number>`.
    First check that the comment really is Bill's answer, not a team reminder
    (agents post from the same account). The test fails if a row is still
-   `_pending_`, a row is missing or duplicated, or the link is not a numeric
-   comment on looper#79.
+   `_pending_`, a row is missing, duplicated or extra (indented or not), or
+   the link is not a numeric comment on looper#79. Keep the answers in the
+   one table; no other line in this file may contain a pipe
+   character.
 3. Update `.SEED/skills/README.md`, its folders and `GRILL-ME.md` §3 to
    match, in that same follow-up PR.
