@@ -78,3 +78,21 @@ def test_demo_redirect_is_never_off_site(client, qs):
     loc = _go(client, qs)
     assert loc.startswith(DEMO_PAGE), loc
     _params(loc)  # relative, fixed path
+
+
+@pytest.mark.parametrize("qs", [
+    "q=&q=coffee",
+    "cat=&cat=Food",
+    "fly=&fly=151.2743,-33.8908,16",
+    "q&q=coffee",
+    "%71=&q=coffee",          # %71 is "q"
+    "q=&%71=coffee",
+    "%63at=&cat=Food",        # %63 is "c"
+])
+def test_demo_blank_first_value_is_not_replaced_by_later(client, qs):
+    assert _go(client, qs) == DEMO_PAGE
+
+
+def test_demo_blank_first_drops_only_that_key(client):
+    loc = _go(client, "q=&cat=Food&q=coffee&fly=151.2743,-33.8908,16")
+    assert _params(loc) == {"cat": ["Food"], "fly": ["151.2743,-33.8908,16"]}

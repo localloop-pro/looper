@@ -76,10 +76,14 @@ if WEB_DIR.exists():
         # of each, re-encoded by us. Everything else (api=, next=, ...) is
         # dropped, and the path is fixed, so input can never pick the host
         # or point the page at another API (looper#70).
-        kept = {}
-        for key, value in parse_qsl(request.url.query, keep_blank_values=False):
-            if key in DEMO_DEEP_LINK_PARAMS and key not in kept:
-                kept[key] = value
+        # A blank first value still claims its key (?q=&q=x forwards no q):
+        # the page reads the first value only, so a later one must not win.
+        seen, kept = set(), {}
+        for key, value in parse_qsl(request.url.query, keep_blank_values=True):
+            if key in DEMO_DEEP_LINK_PARAMS and key not in seen:
+                seen.add(key)
+                if value:
+                    kept[key] = value
         target = "/web/jarvis/demo-map.html"
         if kept:
             target += "?" + urlencode(kept, quote_via=quote, safe=",")
