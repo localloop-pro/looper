@@ -2,13 +2,16 @@
 
 **Status: AWAITING OWNER. Nothing below is decided yet.**
 
+**Owner evidence:** _pending_
+
 The skills registry (looper#71) needs seven answers from Bill before its
 folders are locked. Its folders, schema and `GRILL-ME.md` reached `main`
 through PR #105 (stacked on PR #80). The reasoning and the `file:line`
 evidence are in `.SEED/skills/GRILL-ME.md` §3. No agent may fill in the
 "Owner answer" column. Only a comment from the owner on looper#79 counts.
 `backend/tests/test_skills_answers_record.py` checks that: while Status is
-AWAITING OWNER every answer must stay `_pending_`.
+AWAITING OWNER every answer and the owner evidence must stay `_pending_`,
+and the table has exactly one row for each of A–G.
 
 | Q | Question | Proposal | Owner answer |
 |---|----------|----------|--------------|
@@ -34,8 +37,12 @@ closes it:
 
 1. Copy each answer into the table ("all proposals OK" fills A, B, C, E, G
    with the proposal; D, F and G's publish location still need a choice).
-2. Change **Status** to `DECIDED <date>` and link the owner's comment
-   (`https://github.com/localloop-pro/looper/issues/79#issuecomment-…`).
-   The test fails if a row is still `_pending_` or the link is missing.
+2. Change **Status** to `DECIDED <date>` and replace `_pending_` after
+   **Owner evidence:** with the full link to the owner's answering comment:
+   `https://github.com/localloop-pro/looper/issues/79#issuecomment-<number>`.
+   First check that the comment really is Bill's answer, not a team reminder
+   (agents post from the same account). The test fails if a row is still
+   `_pending_`, a row is missing or duplicated, or the link is not a numeric
+   comment on looper#79.
 3. Update `.SEED/skills/README.md`, its folders and `GRILL-ME.md` §3 to
    match, in that same follow-up PR.

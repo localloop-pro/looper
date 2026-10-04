@@ -13,3 +13,11 @@ go stale silently. And GRILL-ME numbers its self stress-test `Q1..Qn` but the
 owner questions `Q-A..Q-G`; README and schema said "Q6" (an MCP question) when
 they meant floors (Q-F). The same test now checks every GRILL-ME pointer names
 a real owner question.
+
+QA round 1 broke the first guard twice. It searched the whole file for the
+comment URL prefix, and the record's own instructions contain that prefix, so
+a DECIDED record with no real link passed. It also parsed rows into a dict,
+so a filled duplicate row hid behind a later pending one. Fix: an explicit
+`**Owner evidence:**` field that must fullmatch a numeric looper#79 comment
+URL, exactly seven A-G rows in order, and negative cases built by mutating the
+real record so the checker is proven to reject, not just to accept.
