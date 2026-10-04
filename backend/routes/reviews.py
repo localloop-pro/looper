@@ -1,5 +1,5 @@
 """LOOPER API — Review Routes"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from models import Review, Business, User, get_db
@@ -63,10 +63,17 @@ def submit_review(req: SubmitReviewRequest, db: Session = Depends(get_db)):
 @router.get("/reviews/{business_id}")
 def get_reviews(
     business_id: int,
-    limit: int = 10,
+    limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
-    """Get reviews for a business, most recent first."""
+    """Get reviews for a business, most recent first.
+
+    404 for an unknown business, so callers can tell "no such business" from
+    "no reviews yet" (a known business with no reviews is 200 + []).
+    """
+    if not db.query(Business.id).filter(Business.id == business_id).first():
+        raise HTTPException(status_code=404, detail="Business not found")
+
     reviews = (
         db.query(Review)
         .filter(Review.business_id == business_id, Review.is_public == True)

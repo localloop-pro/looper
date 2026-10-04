@@ -7,7 +7,8 @@
 #   1. Do NOT delete, rename or skip the `gitleaks` job, and do NOT set
 #      `continue-on-error: true` or `if: false` on any job.
 #   2. Do NOT add secrets, deploy steps or write scopes. This workflow only
-#      reads the code and runs tests (`contents: read`).
+#      reads the code and runs tests (`contents: read`). Issue #96 explicitly
+#      permits issues: write ONLY on the main-red reporting job below.
 #   3. Do NOT add gitleaks allowlist entries to make a run green. A real leak
 #      is removed from history AND rotated, then the scan is re-run.
 # If CI is red, the fix is in the code — never in this workflow.
@@ -41,6 +42,8 @@ jobs:
             backend/requirements-dev.txt
       - name: Install
         run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - name: Main CI reporting script tests (stdlib only)
+        run: python -m unittest discover -s .github/scripts -p "test_*.py" -v
       - name: Tests (TypeDB test skips without a server)
         working-directory: backend
         run: python -m pytest -q
@@ -56,6 +59,32 @@ jobs:
         run: node web/tests/voice-command-router.test.js
       - name: Jarvis drift check tests
         run: node web/tests/jarvis-sync.test.js
+
+  jarvis-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: web/tests
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/tests/package-lock.json
+      - name: Install pinned Playwright
+        run: npm ci --no-audit --no-fund
+      - name: Cache Chromium
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: jarvis-chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('web/tests/package-lock.json') }}
+      # Always install OS dependencies, even when the browser cache hits.
+      - name: Install Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Jarvis browser smoke (server cleanup on success or failure)
+        run: bash run-jarvis-smoke.sh
 
   worker:
     runs-on: ubuntu-latest
@@ -90,6 +119,27 @@ jobs:
         run: npm run build
       - name: Unit tests
         run: npm test
+
+  # Exercise the same image/build context as Coolify, without secrets or a registry.
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      # Dummy HMAC value (not a credential) so the container boots like a
+      # configured deploy; nothing in the smoke test signs or sends events.
+      HYBRIDCARD_INGEST_SECRET: preview-secret
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build production image (default build args)
+        run: docker build -f backend/Dockerfile -t looper-api:ci .
+      - name: Smoke-test image health, reads, write lock and log privacy
+        run: bash scripts/docker-smoke.sh
+      # Coolify's "Include Source Commit in Build" path (looper#86). SOURCE_COMMIT
+      # is declared late in the Dockerfile, so this rebuild reuses cached layers.
+      - name: Build production image with SOURCE_COMMIT
+        run: docker build -f backend/Dockerfile --build-arg SOURCE_COMMIT=abc123def4567890 -t looper-api:ci-commit .
+      - name: Smoke-test the commit marker on /health
+        run: EXPECT_COMMIT=abc123def456 bash scripts/docker-smoke.sh looper-api:ci-commit
 
   # Known-vulnerability scan of what ships (looper#54). A finding fails the
   # run: bump the pin. If a bump breaks the tests, file "Security finding: …"
@@ -141,7 +191,7 @@ jobs:
   # The one check to mark as required in branch protection.
   ci:
     if: always()
-    needs: [backend, web, worker, looper-bot, deps-audit, gitleaks]
+    needs: [backend, web, jarvis-smoke, worker, looper-bot, docker-smoke, deps-audit, gitleaks]
     runs-on: ubuntu-latest
     steps:
       - name: All jobs passed
@@ -155,3 +205,29 @@ jobs:
               exit 1
             fi
           done
+
+  # Reporting is independent of the required ci gate; PRs get no issue writer.
+  main-red:
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, web, jarvis-smoke, worker, looper-bot, docker-smoke, deps-audit, gitleaks, ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read # commit-to-merged-PR lookup
+    # Serialize the read/create sequence, including overlapping reruns.
+    concurrency:
+      group: main-red-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Report main CI state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: python .github/scripts/main_red.py

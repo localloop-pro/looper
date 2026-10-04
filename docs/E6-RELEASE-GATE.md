@@ -11,6 +11,35 @@ the real numbers. Nothing here is deployed.
 
 ---
 
+## One suburb, one loop: owner readiness check (#75)
+
+From the repo root, with Python 3 (no dependencies to install):
+```bash
+python3 scripts/loop_check.py --base-url https://api.localloop.ai
+# Expect PASS for every check, then READY; exit 0 means every check passed.
+# Any FAIL ends NOT READY (exit 1): fix the named blocker before inviting the group.
+```
+
+**Owner only on production.** Agents and QA use a local preview or the
+`backend/tests/test_loop_check.py` TestClient with stubbed card HEAD requests;
+they never probe api.localloop.ai or hybridcard.ai. Defaults match BLIND-SPOTS
+§5 step 8: hairdresser, Bondi centre (-33.8908, 151.2748), 1.5 km. Override
+with `--query`, `--lat`, `--lng`, and `--radius-km` after panning the map.
+
+The command checks health, closed profile reads, at least two returned options,
+HTTPS HybridCard URLs and each card's HEAD status (2xx/3xx). It sends only
+GET/HEAD, follows no redirects, sends no credentials/cookies and skips unsafe
+card URLs. Network failures and malformed results fail closed. A redirect
+passes the requested HEAD status check; it does not prove the destination page
+works. This is a narrow readiness probe, not full release approval: public-write
+guards from §5 step 7 and the owner/browser funnel checks remain separate.
+Existing server-side search telemetry may still run on GET requests.
+
+Rollback: stop using this local command; it changes no server configuration.
+To verify locally: `cd backend && .venv/bin/python -m pytest -q tests/test_loop_check.py`
+(expect all tests passed). These tests run automatically in the existing CI
+backend job, which the required `ci` job needs.
+
 ## 1. One correlation convention (no PII)
 
 There is one key per hop type:

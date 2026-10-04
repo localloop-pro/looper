@@ -44,7 +44,8 @@
     ],
     acks: ["On it.", "One sec.", "Let me have a look.", "Checking the loop."],
     noResults: [
-      "I couldn't find anything for that around here yet. Want to be the first to add it to the loop?",
+      // no "add it" invite: public writes are off by default (looper#73)
+      "I couldn't find anything for that around here yet.",
     ],
     apiDown: [
       "Sorry — the Looper brain is offline right now. Try me again in a tick.",
@@ -614,11 +615,31 @@
     });
   }
 
-  function speakResults(results, cmd, radiusKm) {
+  // 1.5 -> "1.5", 10 -> "10" (same rounding as the API's _km)
+  function fmtKm(km) { return String(Math.round(km * 10) / 10); }
+
+  function finiteKm(v) { return typeof v === "number" && isFinite(v) && v > 0 ? v : null; }
+
+  // Where the results really are (looper#73). The API widens once when
+  // nothing is inside radius_km and says so in widened_to_km; speech must
+  // never call a 2.3 km match "within 1.5 kilometres".
+  function whereSpoken(results, radiusKm, data) {
+    var widened = finiteKm(data && data.widened_to_km);
+    var dists = results.map(function (r) { return r.distance_km; })
+      .filter(function (d) { return typeof d === "number" && isFinite(d); });
+    var nearest = dists.length ? Math.min.apply(null, dists) : null;
+    var outside = dists.some(function (d) { return d > radiusKm; });
+    if (!widened && !outside) return { prefix: "", within: " within " + fmtKm(radiusKm) + " kilometres" };
+    var prefix = "Nothing within " + fmtKm(radiusKm) + " kilometres, so I looked further. ";
+    if (nearest != null) prefix += "The nearest is " + fmtKm(nearest) + " kilometres away. ";
+    return { prefix: prefix, within: widened ? " within " + fmtKm(widened) + " kilometres" : "" };
+  }
+
+  function speakResults(results, cmd, radiusKm, data) {
     var n = results.length;
-    var lead = (cmd.superlative ? PERSONA.superlative : "") +
-      "I found " + n + " option" + (n === 1 ? "" : "s") +
-      (radiusKm ? " within " + radiusKm + " kilometres" : "") + ". ";
+    var where = radiusKm ? whereSpoken(results, radiusKm, data) : { prefix: "", within: "" };
+    var lead = (cmd.superlative ? PERSONA.superlative : "") + where.prefix +
+      "I found " + n + " option" + (n === 1 ? "" : "s") + where.within + ". ";
     var names = results.slice(0, 3).map(function (r) {
       var bit = r.name;
       if (r.avg_rating) bit += " has " + r.avg_rating + " stars from " + r.review_count + " reviews";
@@ -667,8 +688,11 @@
         // "nothing found" panel read as results for the new query
         Bus.clearResults();
         if (cmd.coords) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
-        showPanel('<p class="lj-msg">' + escapeHtml(data.message || pick(PERSONA.noResults)) + "</p>");
-        speak(pick(PERSONA.noResults));
+        // speak the API's own answer: it knows whether it widened
+        // ("No one's listed for 'vet' within 10 km yet.")
+        var none = (data && data.message) || pick(PERSONA.noResults);
+        showPanel('<p class="lj-msg">' + escapeHtml(none) + "</p>");
+        speak(none);
         return;
       }
       Bus.showResults(results);
@@ -681,7 +705,7 @@
       if (cmd.coords && !hasPins) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
       showPanel(optionsHtml(results, data.message || "Here's what the loop knows:"));
       wireOptionClicks(results);
-      speakResults(results, cmd, radiusKm);
+      speakResults(results, cmd, radiusKm, data);
     }).catch(function () {
       if (seq !== S.reqSeq) return; // superseded — don't clobber the newer UI
       Bus.clearResults(); // stale pins next to "brain offline" read as results

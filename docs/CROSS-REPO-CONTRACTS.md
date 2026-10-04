@@ -39,6 +39,18 @@ is live code. Archived pages (`index2.html`, `index001.html`, `index-OG.html`,
 | C6 | HC · `src/components/KaspaIdentityBadge.tsx:33-48` (browser, same-origin) → HC `src/app/api/identity/domains/[domain]/route.ts:16-24` (server) | `GET ${LOOPER_API_URL \|\| https://api.localloop.ai}/api/identity/domains/{domain}` (LP `routes/identity.py:14`) | none; `Accept: application/json`, `cache: 'no-store'`, 8 s timeout | path `domain` ∈ `localloop.kas`, `qikflo.kas` (pre-filtered by HC) | all of `KaspaIdentityRecord` (`src/lib/kaspaIdentity/types.ts:3-15`); the badge renders only `verificationState === 'fresh'`; non-2xx → HC serves its own `unavailable` record. **One server IP for all visitors → #40** | `test_c6_hybridcard_identity_proxy`, `test_c6_unknown_domain_is_non_2xx` |
 | C7 | MAP · `assets/js/kaspa-identity.js:44-46` (browser), mounted at `index.html:10735-10736`, `about.html:497-498` | `GET {looperApi \|\| https://api.localloop.ai}/api/identity/domains/localloop.kas` | none; `credentials: 'omit'` | path `domain` | `verificationState, domain, ownerAddress, assetId, verifiedAt, explorerUrl` (`:12-36`) | `test_c7_map_kaspa_identity_browser_call` |
 
+**`GET /api/search` response, additive field (looper#73).** The response
+also carries `widened_to_km` (number or `null`). It is `null` unless the
+request sent `lat`/`lng`, nothing matched inside `radius_km`, and Looper ran
+its one widened pass (`LOOPER_SEARCH_FALLBACK_KM`, default 10, never smaller
+than `radius_km`). Then `results[]` holds the matches inside that wider
+radius, sorted exactly as before, and `message` says so in plain text
+("Nothing within 1.5 km for 'vet'. The nearest match is 4 km away. ...").
+C3, C3a, C3b, C4, C5 and C8 read only `results` and `message`, so they keep
+working unchanged; no caller has to read the new field.
+
+**Coordinate bounds on public reads (looper#95).** `/api/search`, `/api/businesses`, `/api/discover`, `/api/pins` and `/api/tourist-info` now answer 422 for a `lat`/`lng` that is not finite or outside -90..90 / -180..180 (and `/api/businesses` / `/api/pins` for `radius_km` outside >0..5000); the map and HybridCard only send real coordinates, so no caller changes.
+
 ### Looper routes with no caller in the other repos
 
 | Route | Callers found | Test |

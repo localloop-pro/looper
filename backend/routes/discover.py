@@ -18,6 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models import Business, Review, fold_accents, get_db
+from routes.params import OptionalLatitude, OptionalLongitude
 from routes.search import get_top_review, haversine_km, resolve_card_url
 from schemas import SearchResult
 from services import telemetry
@@ -251,8 +252,8 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
 @router.get("/discover")
 def discover(
     suburb: str | None = Query(None, description="Suburb name, e.g. Bondi"),
-    lat: float | None = Query(None),
-    lng: float | None = Query(None),
+    lat: OptionalLatitude = None,
+    lng: OptionalLongitude = None,
     radius_km: float = Query(5.0, ge=0.1, le=50.0),
     category: str | None = Query(None, description="Business category, e.g. café"),
     limit: int = Query(10, ge=1, le=50),

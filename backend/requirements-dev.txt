@@ -1,2 +1,4 @@
 # Test/dev-only dependencies (prod image stays lean — see Dockerfile)
 pytest==8.3.3
+# looper#71: validates .SEED/skills entries against .SEED/skills/schema.json
+jsonschema==4.26.0

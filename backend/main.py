@@ -1,6 +1,7 @@
 """LOOPER Backend API — FastAPI Application"""
 import os
 from pathlib import Path
+from urllib.parse import parse_qsl, quote, urlencode
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -66,15 +67,22 @@ app.include_router(identity.router)
 # the demo needs zero CORS/config: http://localhost:8000/demo
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 if WEB_DIR.exists():
+    DEMO_DEEP_LINK_PARAMS = ("cat", "q", "fly")
     app.mount("/web", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
 
     @app.get("/demo", include_in_schema=False)
     def jarvis_demo(request: Request):
-        # Carry ONLY the query string (F4.2 deep links: ?cat=&q=&fly=) — the
-        # path is fixed, so input can never redirect off-site (looper#70).
+        # Forward ONLY the F4.2 deep-link params (cat, q, fly), first value
+        # of each, re-encoded by us. Everything else (api=, next=, ...) is
+        # dropped, and the path is fixed, so input can never pick the host
+        # or point the page at another API (looper#70).
+        kept = {}
+        for key, value in parse_qsl(request.url.query, keep_blank_values=False):
+            if key in DEMO_DEEP_LINK_PARAMS and key not in kept:
+                kept[key] = value
         target = "/web/jarvis/demo-map.html"
-        if request.url.query:
-            target += "?" + request.url.query
+        if kept:
+            target += "?" + urlencode(kept, quote_via=quote, safe=",")
         return RedirectResponse(target)
 
 
@@ -89,9 +97,25 @@ def root():
     }
 
 
+def deployed_commit():
+    """Short commit baked in at build time (looper#86), or "" when unknown.
+
+    LOOPER_COMMIT comes from the Dockerfile's SOURCE_COMMIT build arg; Coolify
+    also sets SOURCE_COMMIT at runtime, so it is the fallback. Only a hex sha
+    is echoed. Never reads .git or runs git at request time.
+    """
+    raw = os.getenv("LOOPER_COMMIT", "").strip() or os.getenv("SOURCE_COMMIT", "").strip()
+    sha = raw[:12].lower()
+    return sha if sha and all(c in "0123456789abcdef" for c in sha) else ""
+
+
 @app.get("/health")
 def health():
-    return {"status": "healthy", "organization_identity": "/api/identity/health"}
+    return {
+        "status": "healthy",
+        "organization_identity": "/api/identity/health",
+        "commit": deployed_commit(),
+    }
 
 
 if __name__ == "__main__":
