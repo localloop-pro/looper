@@ -127,6 +127,60 @@ const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10
     await page.evaluate(() => { document.querySelector("#looper-jarvis .looper-face").className = "looper-face lf-speaking"; });
     await page.screenshot({ path: require("node:path").join(__dirname, "jarvis-smoke.png") });
 
+    // 6b. ask() before init (a /demo chip clicked before map load, looper#70):
+    // no error, nothing fetched until the dock is mounted, then exactly ONE
+    // search for the LATEST queued request.
+    const early = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    early.setDefaultTimeout(10_000);
+    early.on("pageerror", (e) => errors.push("pre-init pageerror: " + e.message));
+    early.on("console", (m) => { if (m.type() === "error") errors.push("pre-init console: " + m.text()); });
+    await early.goto("http://127.0.0.1:8088/tests/jarvis-harness.html?defer=1");
+    const preInit = await early.evaluate(() => {
+      const r = [LooperJarvis.ask("food"), LooperJarvis.ask("find me a cafe")]; // latest wins
+      return { returned: r, fetches: window.__calls.filter((c) => c[0] === "fetch").length, dock: !!document.querySelector("#looper-jarvis") };
+    });
+    if (preInit.fetches) errors.push("ask() fetched before init: " + preInit.fetches);
+    if (preInit.dock) errors.push("dock mounted before init");
+    if (preInit.returned.some((x) => x !== null)) errors.push("pre-init ask() should return null: " + JSON.stringify(preInit.returned));
+    await early.evaluate(() => window.__initJarvis());
+    await early.waitForSelector("#looper-jarvis .lj-option");
+    const earlyFetches = await early.evaluate(() => window.__calls.filter((c) => c[0] === "fetch" && /\/search\?/.test(c[1])).map((c) => c[1]));
+    console.log("pre-init ask ran after init:", JSON.stringify(earlyFetches));
+    if (earlyFetches.length !== 1 || !/q=cafe/.test(earlyFetches[0])) {
+      errors.push("queued ask should search 'cafe' exactly once, got " + JSON.stringify(earlyFetches));
+    }
+    await early.close();
+
+    // 6c. Deep link + a chip clicked before init (looper#70 race): the deep
+    // link's cat/fly still apply, the later user request wins, and the deep
+    // link's SLOWER, now-stale answer must never overwrite the cards.
+    const race = await browser.newPage({ viewport: { width: 900, height: 700 } });
+    race.setDefaultTimeout(10_000);
+    race.on("pageerror", (e) => errors.push("race pageerror: " + e.message));
+    await race.goto("http://127.0.0.1:8088/tests/jarvis-harness.html?defer=1&cat=Offers&q=pizza&fly=153.6120,-28.6474,14");
+    await race.evaluate((vets) => {
+      const pizza = { query: "pizza", message: "Here are 2 options for 'pizza'.", total_results: 2, results: [
+        { business_id: 21, name: "Stale Pizza A", category: "pizza", lat: -28.64, lng: 153.61, review_count: 1, avg_rating: 4, distance_km: 0.2 },
+        { business_id: 22, name: "Stale Pizza B", category: "pizza", lat: -28.65, lng: 153.62, review_count: 1, avg_rating: 4, distance_km: 0.3 },
+      ] };
+      window.__searchFor = (url) => /q=pizza/.test(url) ? { body: pizza, delayMs: 400 } : { body: vets, delayMs: 0 };
+      LooperJarvis.ask("find me a vet");
+      window.__initJarvis();
+    }, WIDENED_VETS);
+    await race.waitForSelector("#looper-jarvis .lj-option");
+    await race.waitForTimeout(700); // let the stale pizza answer land
+    const raceNames = await race.$$eval("#looper-jarvis .lj-option .lj-name", (els) => els.map((e) => e.textContent));
+    const raceState = await race.evaluate(() => ({
+      cat: LooperMapBus.getActiveCategory(),
+      fly: window.__calls.filter((c) => c[0] === "flyTo").length,
+    }));
+    console.log("deep-link race:", JSON.stringify(raceNames), JSON.stringify(raceState));
+    if (raceNames.some((n) => /Stale Pizza/.test(n)) || !raceNames.some((n) => /Vet/.test(n))) {
+      errors.push("stale deep-link answer overwrote the later request: " + JSON.stringify(raceNames));
+    }
+    if (!raceState.fly) errors.push("deep-link fly not applied when an ask was queued");
+    await race.close();
+
     // 7. Mobile fit: on a 320px phone the dock must stay inside the viewport
     const mob = await browser.newPage({ viewport: { width: 320, height: 640 } });
     mob.setDefaultTimeout(10_000);

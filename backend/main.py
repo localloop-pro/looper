@@ -1,7 +1,8 @@
 """LOOPER Backend API — FastAPI Application"""
 import os
 from pathlib import Path
-from fastapi import FastAPI
+from urllib.parse import parse_qsl, quote, urlencode
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -66,11 +67,23 @@ app.include_router(identity.router)
 # the demo needs zero CORS/config: http://localhost:8000/demo
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 if WEB_DIR.exists():
+    DEMO_DEEP_LINK_PARAMS = ("cat", "q", "fly")
     app.mount("/web", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
 
     @app.get("/demo", include_in_schema=False)
-    def jarvis_demo():
-        return RedirectResponse("/web/jarvis/demo-map.html")
+    def jarvis_demo(request: Request):
+        # Forward ONLY the F4.2 deep-link params (cat, q, fly), first value
+        # of each, re-encoded by us. Everything else (api=, next=, ...) is
+        # dropped, and the path is fixed, so input can never pick the host
+        # or point the page at another API (looper#70).
+        kept = {}
+        for key, value in parse_qsl(request.url.query, keep_blank_values=False):
+            if key in DEMO_DEEP_LINK_PARAMS and key not in kept:
+                kept[key] = value
+        target = "/web/jarvis/demo-map.html"
+        if kept:
+            target += "?" + urlencode(kept, quote_via=quote, safe=",")
+        return RedirectResponse(target)
 
 
 @app.get("/")
