@@ -61,7 +61,7 @@ CI recovery is merged (#96 / PR #100): an open `main is red` issue means the lat
 
 ## Blocked and on whom
 - E6 follow-up #20 is closed, but its documented gates remain waiting: open LocalLoop E1 ADR (localloop.pro-main#100) and correlation (localloop.pro-main#101/#102), open HybridCard outbox tracing (hybridcard-v2#62), and Bill/devops naming staging, deploying the Worker and signing off ([E6 blockers](docs/E6-RELEASE-GATE.md)).
-- #23: Bill's partnership-contract decision and HybridCard routing; existing receiver returns 422 (merged PR #24; [contract inventory](docs/CROSS-REPO-CONTRACTS.md)). No dead-letter replay before a decision.
+- #23: Bill chose Option A on 2026-10-04: HybridCard stops sending partnership events (hybridcard-v2 change); Looper keeps the 422 guard (merged PR #24) and builds no receiver; never replay the dead letters ([contract inventory](docs/CROSS-REPO-CONTRACTS.md), draft PR #25).
 - Owner deploys and real-user loop acceptance: Bill; freeze expansion until ten strangers complete the loop ([audit](plans/BLIND-SPOTS-2026-09-08.md) §§5–6; [go-live gates](plans/features/10-deploy.md)).
 
 ## Not now
