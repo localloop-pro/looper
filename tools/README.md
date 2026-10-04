@@ -19,6 +19,21 @@ the map's `looper-jarvis.js` reads them; a fixed phrase list (wake mishears,
 barge-in, suburbs) routes the same as Looper. Exit 0 = in sync, 1 = drift,
 2 = bad path. Tests: `node web/tests/jarvis-sync.test.js`.
 
+## `check_skill_citations.py` (looper#89)
+
+Read-only check that every file:line citation in a skills registry entry
+(`.SEED/skills/<archetype>/*.md`) resolves at the commit the entry pins.
+Needs local clones of the other two repos; never fetches or writes.
+
+```bash
+python3 tools/check_skill_citations.py \
+  --repo map=../localloop.pro-main --repo cards=../hybridcard-v2
+```
+
+Exit 0 = all resolve, 1 = a citation is missing or blank, 2 = a cited repo
+or pinned commit isn't available locally. Tests:
+`backend/tests/test_skill_citations.py`.
+
 ## `news_audio_worker.py` (F6.1)
 
 Converts news posts (Supabase `news_post` table) to spoken MP3 using
