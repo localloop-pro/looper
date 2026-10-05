@@ -28,13 +28,35 @@
       backdrop-filter: blur(10px); transition: all .15s ease;
     }
     .chip:hover { border-color: rgba(86,189,255,.8); }
+    .chip:disabled { opacity: .5; cursor: wait; }
     .chip.active { background: #56bdff; color: #04121e; border-color: #56bdff; }
+    /* Help hint (#93). Bottom-left, lifted ABOVE the MapLibre
+       NavigationControl (3 x 29px buttons + 10px margin ~ 99px) so zoom,
+       compass and pitch stay clickable. The Jarvis dock owns bottom-right,
+       compact attribution sits bottom-right too. */
+    .hint-wrap {
+      position: fixed; left: 16px; bottom: 112px; z-index: 20;
+      display: flex; flex-direction: column-reverse; align-items: flex-start; gap: 8px;
+      max-width: min(300px, calc(100vw - 32px));
+    }
+    .hint-toggle {
+      min-width: 44px; min-height: 44px; padding: 0 14px;
+      border: 1px solid rgba(86,189,255,.35); border-radius: 999px;
+      background: rgba(10,12,18,.85); color: #bfe9ff; font: inherit; font-size: 13px; font-weight: 700;
+      cursor: pointer; backdrop-filter: blur(10px);
+    }
+    .hint-toggle:hover { border-color: rgba(86,189,255,.8); }
+    .hint-toggle:focus-visible { outline: 3px solid #7ddfff; outline-offset: 3px; }
     .hint {
-      position: fixed; left: 16px; bottom: 16px; z-index: 20; max-width: 300px;
       background: rgba(10,12,18,.85); border: 1px solid rgba(86,189,255,.3); border-radius: 14px;
       color: #9fb4c8; font-size: 12px; line-height: 1.55; padding: 12px 14px; backdrop-filter: blur(10px);
     }
+    .hint[hidden] { display: none; }
     .hint strong { color: #dff3ff; }
+    /* Phones: the open hint must not reach the dock column on the right. */
+    @media (max-width: 480px) {
+      .hint-wrap { max-width: calc(100vw - 32px - 96px); }
+    }
     .maplibregl-ctrl-attrib { background: rgba(5,7,11,.6) !important; }
     .maplibregl-ctrl-attrib a { color: #7ddfff !important; }
   </style>
@@ -50,14 +72,40 @@
     <div class="chips" id="chips"></div>
   </div>
 
-  <div class="hint">
-    <strong>Talk to Looper</strong> (tap the face, Chrome/Safari):
-    “find me a café” · “any deals near me” · “take me to Bronte” ·
-    “who can help me with my garden” · “zoom in” · “reset the map”.<br>
-    Chips fire the <em>same</em> voice grammar. Needs the LOOPER API on
-    <code>localhost:8000</code>.
+  <div class="hint-wrap">
+    <button type="button" class="hint-toggle" id="hint-toggle"
+            aria-controls="hint" aria-expanded="true">? Tips</button>
+    <div class="hint" id="hint" role="region" aria-label="Voice tips">
+      <strong>Talk to Looper</strong> (tap the face, Chrome/Safari):
+      “find me a café” · “any deals near me” · “take me to Bronte” ·
+      “who can help me with my garden” · “zoom in” · “reset the map”.<br>
+      Chips fire the <em>same</em> voice grammar.
+      <span id="hint-api" hidden>Needs the LOOPER API on
+      <code>localhost:8000</code> (or add <code>?api=…</code>).</span>
+    </div>
   </div>
 
+  <script>
+    // Help hint (#93): open on desktop, collapsed to "? Tips" on phones.
+    (function () {
+      var toggle = document.getElementById("hint-toggle");
+      var hint = document.getElementById("hint");
+      function setOpen(open) {
+        hint.hidden = !open;
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+      setOpen(!window.matchMedia("(max-width: 480px)").matches);
+      toggle.addEventListener("click", function () { setOpen(hint.hidden); });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !hint.hidden) { setOpen(false); toggle.focus(); }
+      });
+      // Same condition as apiBase below: only a standalone open (no ?api=,
+      // not served by the backend under /web/) falls back to localhost:8000.
+      var standalone = !new URLSearchParams(location.search).get("api") &&
+        location.pathname.indexOf("/web/") !== 0;
+      document.getElementById("hint-api").hidden = !standalone;
+    })();
+  </script>
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="voice-command-router.js"></script>
   <script src="looper-map-bus.js"></script>
@@ -109,6 +157,7 @@
       var b = document.createElement("button");
       b.className = "chip";
       b.dataset.cat = cat;
+      b.disabled = true; // enabled once LooperJarvis.init has mounted the dock (looper#70)
       b.textContent = cat.replace(/_/g, " ").replace("Fetch Deliveries", "Deliveries");
       b.addEventListener("click", function () {
         if (b.classList.contains("active")) { LooperJarvis.bus.reset(); return; }
@@ -136,6 +185,7 @@
           (location.pathname.indexOf("/web/") === 0 ? location.origin : "http://localhost:8000"),
         onCategory: highlightChip,
       });
+      Array.prototype.forEach.call(chipsEl.children, function (c) { c.disabled = false; });
     });
   </script>
 </body>

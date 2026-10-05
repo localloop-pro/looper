@@ -1,3 +1,5 @@
+Archived 2026-10: superseded by STATUS.md
+
 # BOT_HANDOFF.md — give this file to any coding agent
 
 **Date:** 2026-07-18 · **Owner:** Bill (QikFlo Pty Ltd) · **Repo:** `localloop-pro/looper`
@@ -11,7 +13,8 @@ down in this repo; your job is to execute the remaining features in order.
 1. `SEED.md` — what this project is, folder map, key docs.
 2. `AGENTS.md` — the non-negotiable rules (anti-bias, no PII, frozen
    contracts, hot zones, quality gates).
-3. `.SEED/decisions.md` — decisions already made. Never re-litigate them.
+3. `.SEED/decisions.md` and `.SEED/decisions/` — decisions already made.
+   Never re-litigate them.
 4. `.SEED/gotchas.md` — mistakes already made once. Never repeat them.
 5. `plans/IMPLEMENTATION_PLAN.md` — the master plan (authoritative).
 6. `plans/features/01-…10-*.md` — per-feature working files with checklists.
@@ -70,7 +73,8 @@ someone else's in-flight changes.
   `cd backend && python -m pytest` · `cd looper-bot && npm run typecheck && npm run build`.
 - **Every feature ends with copy-paste run/verify steps a beginner can run**,
   and evidence in `plans/evidence/<feature>/`.
-- Log new decisions in `.SEED/decisions.md`, new traps in `.SEED/gotchas.md`,
+- Log new decisions as one file per PR in `.SEED/decisions/`
+  (`<issue>-<short-slug>.md`), new traps in `.SEED/gotchas.md`,
   tick the feature checklist, and update `SEED.md`'s "Next steps" when done.
 
 ## 5. Known open items you may hit

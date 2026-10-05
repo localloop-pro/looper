@@ -1,12 +1,29 @@
 # LEARNINGS.md — one short lesson per merged PR
 
+> New entries: one file per PR in `docs/learnings/` (or `.SEED/decisions/`).
+> Read both. Name it `<issue>-<short-slug>.md`. Do not append here (looper#53).
+
 - looper#27: guard unauthenticated writes with a per-route FastAPI dependency
   (`dependencies=[Depends(...)]`) so an empty body gets 403 instead of 422, and
   delete leaky reads outright rather than putting them behind the same flag.
   Also: never name a zsh loop variable `path` — it is tied to `$PATH`.
-- looper#30: measure statements, not just milliseconds — `/api/discover` ran
-  ~2,300 SQL queries per request (3 review lookups per candidate business),
-  but cursor time was only 24 ms of 265 ms; the rest was SQLAlchemy overhead
-  per statement. One `GROUP BY` per 500 ids fixed it. Record a snapshot of
-  the full responses on the old code BEFORE refactoring, so "same results"
-  is a test, not a claim.
+- looper#29: substring search misses compound words ("hairdresser" is not
+  inside "Aesthete Hair"). Fix it with a small explicit synonym table that only
+  adds word-start alternatives and scores each query word once, never with a
+  blanket "contains" rule (that lets "carpet cleaner" hit "Car Wash").
+  The voice router must send the user's own word, not a padded list of
+  synonyms: a padded bare "hair" made a spoken query looser than the same
+  typed one. Test what the router sends against /api/search too.
+- looper#31: a cross-repo contract test is only honest if it signs the bytes
+  the sender really sends. HybridCard signs `JSON.stringify` output (compact,
+  raw UTF-8, `undefined` keys dropped), not Python's `json.dumps` default.
+  Pin the caller's commit SHA in the test so a later failure points at a real diff.
+- looper#32: CI uses one final `ci` job with `if: always()` that fails unless
+  every needed job reports `success`, so branch protection needs only one
+  required check and a skipped or cancelled job can't pass as green. Check
+  action runtimes before copying a workflow: `gitleaks-action@v2` runs on
+  Node 20, which GitHub removed from hosted runners on 2026-09-16, so use `@v3`.
+- looper#38: Looper sends card_url (the sender's public_card_url, any host,
+  as sent) as the only card link and never a slug. When a consumer reads a
+  field we don't send, fix the consumer (localloop.pro-main#333) instead of
+  adding a column to live data without the owner's OK.

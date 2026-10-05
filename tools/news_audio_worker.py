@@ -21,7 +21,7 @@ Anti-bias / public-safe notes:
     - No PII is read or written.
     - audio_error is set in payload on failure; the row is skipped next run.
 
-Install: pip install supabase openai
+Install: pip install -r tools/requirements.txt
 """
 from __future__ import annotations
 

@@ -1280,7 +1280,7 @@
   "total_results": 292
  },
  "/api/search?{\"lat\": -33.8908, \"lng\": 151.2743, \"q\": \"café near Bondi Beach\", \"radius_km\": 3}": {
-  "message": "Here are 5  options for 'café near Bondi Beach', ranked by community experience (most reviewed first). I don't pick favorites — you decide! ✨",
+  "message": "Here are 5 options for 'café near Bondi Beach': best match first, then most community reviews, then nearest. I don't pick favorites — you decide! ✨",
   "query": "café near Bondi Beach",
   "results": [
    {
@@ -1354,10 +1354,11 @@
     "website": null
    }
   ],
-  "total_results": 70
+  "total_results": 70,
+  "widened_to_km": null
  },
  "/api/search?{\"lat\": -33.914, \"limit\": 10, \"lng\": 151.241, \"q\": \"vet\", \"radius_km\": 5}": {
-  "message": "Here are 10  options for 'vet', ranked by community experience (most reviewed first). I don't pick favorites — you decide! ✨",
+  "message": "Here are 10 options for 'vet': best match first, then most community reviews, then nearest. I don't pick favorites — you decide! ✨",
   "query": "vet",
   "results": [
    {
@@ -1501,10 +1502,11 @@
     "website": null
    }
   ],
-  "total_results": 20
+  "total_results": 20,
+  "widened_to_km": null
  },
  "/api/search?{\"limit\": 20, \"q\": \"dentist randwick\"}": {
-  "message": "Here are 20  options for 'dentist randwick', ranked by community experience (most reviewed first). I don't pick favorites — you decide! ✨",
+  "message": "Here are 20 options for 'dentist randwick': best match first, then most community reviews, then nearest. I don't pick favorites — you decide! ✨",
   "query": "dentist randwick",
   "results": [
    {
@@ -1788,10 +1790,11 @@
     "website": null
    }
   ],
-  "total_results": 44
+  "total_results": 44,
+  "widened_to_km": null
  },
  "/api/search?{\"q\": \"cafe\"}": {
-  "message": "Here are 5  options for 'cafe', ranked by community experience (most reviewed first). I don't pick favorites — you decide! ✨",
+  "message": "Here are 5 options for 'cafe': best match first, then most community reviews, then nearest. I don't pick favorites — you decide! ✨",
   "query": "cafe",
   "results": [
    {
@@ -1865,10 +1868,11 @@
     "website": null
    }
   ],
-  "total_results": 27
+  "total_results": 27,
+  "widened_to_km": null
  },
  "/api/search?{\"q\": \"find me a good plumber in Coogee\"}": {
-  "message": "Here are 5  options for 'find me a good plumber in Coogee', ranked by community experience (most reviewed first). I don't pick favorites — you decide! ✨",
+  "message": "Here are 5 options for 'find me a good plumber in Coogee': best match first, then most community reviews, then nearest. I don't pick favorites — you decide! ✨",
   "query": "find me a good plumber in Coogee",
   "results": [
    {
@@ -1942,10 +1946,11 @@
     "website": null
    }
   ],
-  "total_results": 47
+  "total_results": 47,
+  "widened_to_km": null
  },
  "/api/search?{\"q\": \"where can I get pizza in surry hills\"}": {
-  "message": "Here are 5  options for 'where can I get pizza in surry hills', ranked by community experience (most reviewed first). I don't pick favorites — you decide! ✨",
+  "message": "Here are 5 options for 'where can I get pizza in surry hills': best match first, then most community reviews, then nearest. I don't pick favorites — you decide! ✨",
   "query": "where can I get pizza in surry hills",
   "results": [
    {
@@ -2019,6 +2024,7 @@
     "website": null
    }
   ],
-  "total_results": 38
+  "total_results": 38,
+  "widened_to_km": null
  }
 }

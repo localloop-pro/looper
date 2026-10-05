@@ -2,6 +2,38 @@
 
 Standalone scripts run as Coolify Scheduled Tasks.
 
+## `jarvis-sync-check.js` (looper#39)
+
+Read-only drift check for the Jarvis voice router. The live map
+(localloop.pro-main) ships its own copy at
+`assets/js/jarvis/voice-command-router.js`; router changes land here first.
+
+```bash
+node tools/jarvis-sync-check.js                              # Looper's copy vs /api/discover
+node tools/jarvis-sync-check.js --map ../localloop.pro-main  # also check the map's copy
+```
+
+Checks: `SUBURBS` keys + lat/lng equal `SUBURB_COORDS` in
+`backend/routes/discover.py`; the router exports `WAKE_RE` / `WAKE_STRICT_RE`;
+the map's `looper-jarvis.js` reads them; a fixed phrase list (wake mishears,
+barge-in, suburbs) routes the same as Looper. Exit 0 = in sync, 1 = drift,
+2 = bad path. Tests: `node web/tests/jarvis-sync.test.js`.
+
+## `check_skill_citations.py` (looper#89)
+
+Read-only check that every file:line citation in a skills registry entry
+(`.SEED/skills/<archetype>/*.md`) resolves at the commit the entry pins.
+Needs local clones of the other two repos; never fetches or writes.
+
+```bash
+python3 tools/check_skill_citations.py \
+  --repo map=../localloop.pro-main --repo cards=../hybridcard-v2
+```
+
+Exit 0 = all resolve, 1 = a citation is missing or blank, 2 = a cited repo
+or pinned commit isn't available locally. Tests:
+`backend/tests/test_skill_citations.py`.
+
 ## `news_audio_worker.py` (F6.1)
 
 Converts news posts (Supabase `news_post` table) to spoken MP3 using
@@ -13,8 +45,10 @@ over browser TTS — no client changes needed.
 ### Install
 
 ```bash
-pip install supabase openai
+pip install -r tools/requirements.txt
 ```
+
+The API (`backend/requirements.txt`) does not include openai or supabase.
 
 ### Env vars
 

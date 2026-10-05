@@ -1,5 +1,7 @@
 # SEED.md — looper Knowledge Index
 
+Current status: STATUS.md
+
 Last updated: 2026-09-08
 
 ## What this project is
@@ -35,7 +37,10 @@ bot + FastAPI search backend). Owner: Bill / QikFlo Pty Ltd. This repo is the
   ↔ HybridCard, voice map control, TypeDB brain, multi-district onboarding
   bot, geo-locked news/podcast, Coolify deploy.
 - `AGENTS.md` / `CLAUDE.md` — repo rules for coding agents.
-- `.SEED/decisions.md` — decisions log. `.SEED/gotchas.md` — never repeat.
+- `.SEED/decisions.md` + `.SEED/decisions/` — decisions log (new entries:
+  one file per PR in the folder). `.SEED/gotchas.md` — never repeat.
+- `docs/LEARNINGS.md` + `docs/learnings/` — one lesson per merged PR (new
+  entries: one file per PR in the folder, `<issue>-<short-slug>.md`).
 - Frozen upstream contracts (live in new-card repo, copies referenced):
   `planning/BRIDGE-CONTRACT-v1.md`, `planning/LOCALLOOP-BOT-GATEWAY-CONTRACT-v1.md`,
   `planning/TYPEDB-GEO-HIERARCHY-SPEC.md`.

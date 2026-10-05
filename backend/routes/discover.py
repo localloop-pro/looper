@@ -18,6 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models import Business, fold_accents, get_db
+from routes.params import OptionalLatitude, OptionalLongitude
 from routes.search import (_NO_REVIEWS, get_top_review, haversine_km,
                            resolve_card_url, review_stats)
 from schemas import SearchResult
@@ -32,7 +33,8 @@ _SUBURB_BUFFER_KM = 2.0
 
 # Seed geography: Eastern Suburbs + Byron (mirrors the voice router's
 # SUBURBS table in web/jarvis/voice-command-router.js — keep in sync until
-# the TypeDB geo hierarchy replaces both, F2.1).
+# the TypeDB geo hierarchy replaces both, F2.1). The live map carries its own
+# router copy; `node tools/jarvis-sync-check.js --map <dir>` reports drift.
 SUBURB_COORDS = {
     "bondi beach": (-33.8908, 151.2743),
     "north bondi": (-33.8850, 151.2790),
@@ -169,6 +171,7 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
             if b.category and cat_pat in fold_accents(b.category).lower()
         ]
 
+    # Radius filter first, then one batched review-stats query (issue #30).
     candidates = []
     for biz in businesses:
         distance = None
@@ -177,6 +180,7 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
             if distance > radius_km:
                 continue
         # no coords: include without distance (sorts last); matches SQLite-path behaviour
+
         candidates.append((biz, distance))
     stats = review_stats(db, [biz.id for biz, _ in candidates])
 
@@ -247,8 +251,8 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
 @router.get("/discover")
 def discover(
     suburb: str | None = Query(None, description="Suburb name, e.g. Bondi"),
-    lat: float | None = Query(None),
-    lng: float | None = Query(None),
+    lat: OptionalLatitude = None,
+    lng: OptionalLongitude = None,
     radius_km: float = Query(5.0, ge=0.1, le=50.0),
     category: str | None = Query(None, description="Business category, e.g. café"),
     limit: int = Query(10, ge=1, le=50),
@@ -295,6 +299,7 @@ def discover(
             distance = haversine_km(center[0], center[1], biz.lat, biz.lng)
             if distance > radius_km:
                 continue
+
         candidates.append((biz, distance))
     stats = review_stats(db, [biz.id for biz, _ in candidates])
 

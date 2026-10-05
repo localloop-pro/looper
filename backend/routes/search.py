@@ -1,11 +1,13 @@
 """LOOPER API — Search Routes — Neutral, review-backed business discovery"""
 import math
+import os
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from models import Business, Deal, Review, fold_accents, get_db
+from routes.params import OptionalLatitude, OptionalLongitude, RadiusKm
 from schemas import SearchResponse, SearchResult
-from services import telemetry
+from services import query_terms, telemetry
 
 router = APIRouter(prefix="/api", tags=["search"])
 
@@ -86,11 +88,37 @@ def resolve_card_url(biz: Business, db: Session) -> str | None:
     return None
 
 
+def _read_fallback_km() -> float:
+    """LOOPER_SEARCH_FALLBACK_KM, read once at startup (default 10 km).
+
+    float() accepts "inf", "nan" and overflows like "1e309" (-> inf); an
+    infinite radius would return every business and serialize
+    widened_to_km as null, so anything not finite and positive is 10."""
+    try:
+        km = float(os.getenv("LOOPER_SEARCH_FALLBACK_KM", "10"))
+    except ValueError:
+        return 10.0
+    return km if math.isfinite(km) and km > 0 else 10.0
+
+
+# Widened radius for one retry when nothing matches inside radius_km
+# (looper#73). Never smaller than the caller's radius_km.
+FALLBACK_KM = _read_fallback_km()
+
+# The order results.sort() below really uses, in words (looper#73, §4.7).
+ORDER_TEXT = "best match first, then most community reviews, then nearest"
+
+
+def _km(value: float) -> str:
+    """1.5 -> "1.5", 10.0 -> "10"."""
+    return f"{round(value, 1):g}"
+
+
 @router.get("/search", response_model=SearchResponse)
 def search_businesses(
     q: str = Query(..., min_length=1, description="Search query"),
-    lat: float | None = Query(None, description="User latitude"),
-    lng: float | None = Query(None, description="User longitude"),
+    lat: OptionalLatitude = None,
+    lng: OptionalLongitude = None,
     radius_km: float = Query(5.0, ge=0.1, le=5000.0),
     category: str | None = Query(None),
     limit: int = Query(5, ge=1, le=20),
@@ -99,10 +127,14 @@ def search_businesses(
     db: Session = Depends(get_db),
 ):
     """Search businesses by name, category, or description. Ranked by verifiable data ONLY:
-    1. Review count (more reviews = more community trust)
-    2. Recency of reviews
+    1. Relevance (category match > name match > suburb match > description)
+    2. Review count (more reviews = more community trust)
     3. Proximity (if location provided)
-    NEVER ranks by sponsorship, payment, or editor preference."""
+    NEVER ranks by sponsorship, payment, or editor preference.
+
+    When lat/lng are given and nothing matches inside radius_km, the same
+    candidates are filtered once more with FALLBACK_KM and the response sets
+    ``widened_to_km`` (looper#73). The sort is identical in both passes."""
 
     # Build query — deactivated businesses (card.removed) never surface.
     # IS NOT false (not != false): NULL-safe, so legacy NULL rows stay visible
@@ -121,13 +153,19 @@ def search_businesses(
     if not search_tokens:
         search_tokens = tokens  # fallback if all words are stopwords
     
-    # Build OR filter: match any token against name, category, suburb,
+    # Expand each word with the explicit synonym / compound table
+    # (services/query_terms.py, looper#29): "hairdresser" also tries "hair"
+    # and "salon". Originals always stay; added words must start a word.
+    groups = query_terms.expand(search_tokens)
+
+    # Build OR filter: match any term against name, category, suburb,
     # description — both sides accent-folded via the registered SQLite
     # fold_accents() function (models.py), so "cafe" finds "café".
+    # SQL LIKE only narrows candidates; group_matches() below is the rule.
     from sqlalchemy import or_
     conditions = []
-    for token in search_tokens:
-        pattern = f"%{token}%"
+    for term in sorted({t.text for group in groups for t in group}):
+        pattern = f"%{term}%"
         conditions.append(func.fold_accents(Business.name).like(pattern))
         conditions.append(func.fold_accents(Business.category).like(pattern))
         conditions.append(func.fold_accents(Business.suburb).like(pattern))
@@ -137,34 +175,58 @@ def search_businesses(
 
     businesses = query.all()
 
-    # Radius filter first, then one batched review-stats query (issue #30).
+    # Text-matching candidates with their distance. The radius filter runs
+    # on this list, so the widened pass needs no second SQL query.
     candidates = []
     for biz in businesses:
+        fields = {
+            "category": fold_accents(biz.category),
+            "name": fold_accents(biz.name),
+            "suburb": fold_accents(biz.suburb),
+            "description": fold_accents(biz.description),
+        }
+        # LIKE is a substring prefilter; drop rows whose only hit is an
+        # added alternative in the middle of a word ("hair" in "chair").
+        if not any(query_terms.group_matches(g, v) for g in groups for v in fields.values()):
+            continue
+
         # Distance if coords available
         distance = None
         if lat is not None and lng is not None and biz.lat and biz.lng:
             distance = haversine_km(lat, lng, biz.lat, biz.lng)
-            if distance > radius_km:
-                continue  # outside search radius
-        candidates.append((biz, distance))
-    stats = review_stats(db, [biz.id for biz, _ in candidates])
+        candidates.append((biz, fields, distance))
+
+    def within(km: float):
+        return [c for c in candidates if c[2] is None or c[2] <= km]
+
+    in_range = within(radius_km)
+    widened_to_km = None
+    # One widened pass at most: only with a location, only when the first
+    # pass is empty, and only if it actually widens.
+    if not in_range and lat is not None and lng is not None and FALLBACK_KM > radius_km:
+        widened_to_km = FALLBACK_KM
+        in_range = within(widened_to_km)
 
     # Score and rank by review count + recency (verifiable data only)
+    # One batched review-stats query for every candidate (issue #30).
+    stats = review_stats(db, [biz.id for biz, _, _ in in_range])
     results = []
-    for biz, distance in candidates:
+    for biz, fields, distance in in_range:
         review_count, avg_rating, _latest = stats.get(biz.id, _NO_REVIEWS)
 
         # Relevance score: boost category/name matches over generic suburb
         # matches (accent-folded on both sides, same as the SQL filter)
+        # One score per query word: an expanded word counts once, no matter
+        # how many of its alternatives hit.
         relevance = 0
-        for token in search_tokens:
-            if token in (fold_accents(biz.category) or ""):
+        for group in groups:
+            if query_terms.group_matches(group, fields["category"]):
                 relevance += 5  # category match = highest relevance
-            if token in (fold_accents(biz.name) or ""):
+            if query_terms.group_matches(group, fields["name"]):
                 relevance += 3  # name match
-            if biz.suburb and token in fold_accents(biz.suburb):
+            if query_terms.group_matches(group, fields["suburb"]):
                 relevance += 2  # suburb match
-            if biz.description and token in fold_accents(biz.description):
+            if query_terms.group_matches(group, fields["description"]):
                 relevance += 1
 
         results.append({
@@ -203,23 +265,7 @@ def search_businesses(
             card_url=resolve_card_url(biz, db),
         ))
 
-    # Contextual message from LOOPER (neutral, informative)
-    if not ranked:
-        message = (
-            f"I couldn't find any {category or ''} businesses matching '{q}' "
-            f"in this area yet. Want to be the first to add one? 🌱"
-        )
-    elif len(ranked) == 1:
-        message = (
-            f"Here's the only {category or ''} match for '{q}' in your area. "
-            f"It has {ranked[0].review_count} community review{'s' if ranked[0].review_count != 1 else ''}."
-        )
-    else:
-        message = (
-            f"Here are {len(ranked)} {category or ''} options for '{q}', "
-            f"ranked by community experience (most reviewed first). "
-            f"I don't pick favorites — you decide! ✨"
-        )
+    message = _message(q, category, ranked, radius_km, widened_to_km)
 
     # F2.5 telemetry: query + summary into training_log (PII-scrubbed,
     # best-effort — see services/telemetry.py). Feeds training/export.py.
@@ -233,16 +279,42 @@ def search_businesses(
         results=ranked,
         message=message,
         total_results=len(results),
+        widened_to_km=widened_to_km,
     )
+
+
+def _message(q: str, category: str | None, ranked: list, radius_km: float,
+             widened_to_km: float | None) -> str:
+    """Neutral, plain-text answer (the #37 contract: renderers may insert it
+    as text). Describes the real sort order and never invites an action
+    that needs LOOPER_PUBLIC_WRITES (POST onboard/reviews/pins 403 by default)."""
+    kind = f"{category} " if category else ""
+    if not ranked:
+        where = f"within {_km(widened_to_km)} km" if widened_to_km else "near here"
+        return f"No one's listed for '{q}' {where} yet."
+
+    lead = ""
+    if widened_to_km:
+        nearest = min((r.distance_km for r in ranked if r.distance_km is not None), default=None)
+        lead = f"Nothing within {_km(radius_km)} km for '{q}'. "
+        if nearest is not None:
+            lead += f"The nearest match is {_km(nearest)} km away. "
+
+    if len(ranked) == 1:
+        n = ranked[0].review_count
+        return (f"{lead}Here's the only {kind}match for '{q}'. "
+                f"It has {n} community review{'s' if n != 1 else ''}.")
+    return (f"{lead}Here are {len(ranked)} {kind}options for '{q}': "
+            f"{ORDER_TEXT}. I don't pick favorites — you decide! ✨")
 
 
 @router.get("/businesses")
 def list_businesses(
     category: str | None = Query(None),
-    lat: float | None = Query(None),
-    lng: float | None = Query(None),
-    radius_km: float = Query(5.0),
-    limit: int = Query(20, le=50),
+    lat: OptionalLatitude = None,
+    lng: OptionalLongitude = None,
+    radius_km: RadiusKm = 5.0,
+    limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
     """List businesses, optionally filtered by category and location."""
