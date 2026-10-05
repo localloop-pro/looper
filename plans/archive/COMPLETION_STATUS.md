@@ -8,6 +8,21 @@ This is the short operational tracker. The authoritative feature definitions
 and checkboxes remain in `plans/features/` and `plans/IMPLEMENTATION_PLAN.md`.
 Do not start untouched scope while an item below is waiting on its named gate.
 
+## Kaspa identity branch review — 2026-09-06
+
+- Reviewed `main...9a89b3b`; **changes requested** for one confirmed P2 issue:
+  the browser badge retains `fresh` past expiry when its refresh request stalls.
+- Backend validation: 107 passed, 1 optional TypeDB test skipped. Playwright
+  confirmed the expiry defect and checked all four badge states.
+- **Resolved 2026-09-27 in `dc680f1`** (PR #15): 8 s abort timeout per refresh
+  with retry re-armed after every settle, an independent expiry timer that
+  downgrades `fresh` to `stale` at `expiresAt`, and mount-generation
+  invalidation on remount. Regression: `node web/tests/kaspa-identity.test.js`
+  (12 checks, deterministic clock).
+- Evidence and limits: [Kaspa identity review](evidence/kaspa-identity-review/README.md).
+  Still unverified: live KNS provider behaviour and production deployment
+  (`https://api.localloop.ai/api/identity/health`); no deployment acceptance is claimed.
+
 ## Verified green
 
 - Backend: `80 passed, 1 skipped` (normal suite; TypeDB real-service test is opt-in).
