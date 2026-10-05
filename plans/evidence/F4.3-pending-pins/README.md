@@ -135,7 +135,7 @@ untouched).
   `id 12957da6-dc5e-4ffb-9040-fe69a0a9bcaf`,
   `created_at 2026-08-22 16:38:20 UTC`,
   `target_id source=hybridcard;status=pending_review;page=1;limit=20`.
-  This is the specific event `plans/COMPLETION_STATUS.md` matches to the 200.
+  This is the specific event the archived completion tracker (current status: `STATUS.md`) matches to the 200.
 - Next: restart Looper Bot (`cd looper-bot && npm run dev` — the script lives in
   `looper-bot/`, not the repo root) before the item-4 voice test so Electron
   loads the token, then invoke `localloop_pending_pins` through the app (this is

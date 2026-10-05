@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from models import MapPin, get_db
+from routes.params import Latitude, Longitude, OptionalLatitude, OptionalLongitude, RadiusKm
 from schemas import MapPinRequest, MapPinResponse
 from services.write_guard import require_public_writes
 
@@ -42,9 +43,9 @@ def add_pin(req: MapPinRequest, db: Session = Depends(get_db)):
 
 @router.get("/pins")
 def get_pins(
-    lat: float | None = Query(None),
-    lng: float | None = Query(None),
-    radius_km: float = Query(10.0),
+    lat: OptionalLatitude = None,
+    lng: OptionalLongitude = None,
+    radius_km: RadiusKm = 10.0,
     pin_type: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
@@ -92,8 +93,8 @@ def get_pins(
 
 @router.get("/tourist-info")
 def tourist_info(
-    lat: float = Query(...),
-    lng: float = Query(...),
+    lat: Latitude,
+    lng: Longitude,
     db: Session = Depends(get_db),
 ):
     """Get tourist-specific information: attractions, transport, emergency info."""

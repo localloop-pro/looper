@@ -1,5 +1,7 @@
 # LOOPER — Local Connection Agent
 
+Current status: STATUS.md
+
 Community connection agent for LocalLoop. Connects people with businesses and services in their local area via Telegram and web search bar. Powered by genuine community reviews.
 
 ## Architecture
@@ -170,7 +172,7 @@ Deep links work out of the box: `/?cat=Food&q=coffee&fly=151.2743,-33.8908,16`.
 | GET  | `/api/discover?suburb=&category=&radius_km=` | Suburb discovery (graph-ready, `engine: fallback` today) |
 | GET  | `/api/businesses?category=&lat=&lng=` | List businesses by category |
 | POST | `/api/reviews` | Submit a review (`verified_visit` always false). 403 unless `LOOPER_PUBLIC_WRITES=true` |
-| GET  | `/api/reviews/{business_id}` | Get reviews for a business |
+| GET  | `/api/reviews/{business_id}?limit=` | Get reviews for a business. 404 for an unknown business; `limit` 1–50 (default 10) |
 | POST | `/api/pins` | Add a map pin. 403 unless `LOOPER_PUBLIC_WRITES=true` |
 | GET  | `/api/pins?lat=&lng=&radius=` | Get pins in area |
 | GET  | `/api/tourist-info` | Tourist-specific info |

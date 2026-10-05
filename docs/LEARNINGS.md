@@ -1,5 +1,8 @@
 # LEARNINGS.md — one short lesson per merged PR
 
+> New entries: one file per PR in `docs/learnings/` (or `.SEED/decisions/`).
+> Read both. Name it `<issue>-<short-slug>.md`. Do not append here (looper#53).
+
 - looper#27: guard unauthenticated writes with a per-route FastAPI dependency
   (`dependencies=[Depends(...)]`) so an empty body gets 403 instead of 422, and
   delete leaky reads outright rather than putting them behind the same flag.
@@ -11,6 +14,10 @@
   The voice router must send the user's own word, not a padded list of
   synonyms: a padded bare "hair" made a spoken query looser than the same
   typed one. Test what the router sends against /api/search too.
+- looper#31: a cross-repo contract test is only honest if it signs the bytes
+  the sender really sends. HybridCard signs `JSON.stringify` output (compact,
+  raw UTF-8, `undefined` keys dropped), not Python's `json.dumps` default.
+  Pin the caller's commit SHA in the test so a later failure points at a real diff.
 - looper#32: CI uses one final `ci` job with `if: always()` that fails unless
   every needed job reports `success`, so branch protection needs only one
   required check and a skipped or cancelled job can't pass as green. Check
@@ -20,3 +27,7 @@
   JSON. Escaping is the renderer's job: escaping in the API would show `&amp;`
   in Jarvis and speak it aloud. Pin it with a test that fails on `&amp;`, and
   when a sink lives in another repo, file an issue for every copy of it.
+- looper#38: Looper sends card_url (the sender's public_card_url, any host,
+  as sent) as the only card link and never a slug. When a consumer reads a
+  field we don't send, fix the consumer (localloop.pro-main#333) instead of
+  adding a column to live data without the owner's OK.

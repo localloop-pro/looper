@@ -25,9 +25,21 @@
   var realFetch = window.fetch;
   window.fetch = function (url) {
     window.__calls.push(["fetch", String(url)]);
+    // tests may set __searchFor(url) -> { body, delayMs } to answer per URL
+    // and out of order (latest-request race checks, looper#70)
+    var per = window.__searchFor && window.__searchFor(String(url));
+    if (per) {
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          resolve({ ok: true, json: function () { return Promise.resolve(per.body); } });
+        }, per.delayMs || 0);
+      });
+    }
     return Promise.resolve({
       ok: true,
       json: function () {
+        // tests may set __searchResponse to stub one specific API answer
+        if (window.__searchResponse) return Promise.resolve(window.__searchResponse);
         return Promise.resolve({
           query: "café",
           message: "Here are 2 options for 'café', ranked by community experience.",
@@ -51,7 +63,12 @@
     });
   };
 
-  LooperJarvis.init({ map: fakeMap, district: "Bondi", apiBase: "http://stub" });
+  // ?defer=1 leaves init to the test (window.__initJarvis) so it can drive
+  // ask() BEFORE the dock is mounted, like a chip clicked before map load
+  window.__initJarvis = function () {
+    LooperJarvis.init({ map: fakeMap, district: "Bondi", apiBase: "http://stub" });
+  };
+  if (!/[?&]defer=1/.test(location.search)) window.__initJarvis();
 </script>
 </body>
 </html>

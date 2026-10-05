@@ -1,0 +1,5 @@
+# Tools (news_audio_worker.py) — NOT needed by the API (looper#55).
+# The backend image installs this only while WITH_TOOLS=1 (the default),
+# because the Coolify scheduled task runs the worker from that image.
+openai==1.51.0
+supabase>=2.0.0

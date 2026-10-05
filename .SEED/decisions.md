@@ -1,5 +1,8 @@
 # .SEED/decisions.md — looper decisions log
 
+> New entries: one file per PR in `.SEED/decisions/` (or `docs/learnings/`).
+> Read both. Name it `<issue>-<short-slug>.md`. Do not append here (looper#53).
+
 - 2026-10-02 (issue #8, E4): public read boundary ships DARK in FastAPI
   (`backend/services/edge_boundary.py`), not in a Worker. Cache for
   search/discover/businesses (`LOOPER_READ_CACHE_TTL_S`, default 0 = off) and
@@ -224,7 +227,7 @@
   machine endpoint for pending HybridCard pins and defines no bot auth,
   response/pagination schema, or read-audit semantics. The existing admin
   browser direct-Supabase query is not a machine contract and must not be
-  copied. Exact restart state is in `plans/COMPLETION_STATUS.md`.
+  copied. Current restart state is in `STATUS.md` (historical tracker archived).
 - 2026-08-12: Coordinator sanctioned the F4.3 Looper client against LocalLoop
   SPEC-055. Added Electron-main-only `localloop_pending_pins` bearer client and
   `localloop_gateway_health`. The pending client fixes HybridCard/pending filters,
@@ -409,6 +412,19 @@
 - Code only. The Coolify redeploy of looper-api and the Aesthete category
   change on hybridcard.ai stay with the owner.
 
+### Identity reads are outside the per-IP read limit (2026-10-02, looper#40)
+
+- `services/edge_boundary.py` `RATE_LIMIT_EXEMPT_PREFIXES = ("/api/identity/",)`.
+  HybridCard's badge proxy calls `/api/identity/domains/{domain}` server-side,
+  one IP for all hybridcard.ai visitors; a per-IP bucket would hide the badge
+  for everyone once `LOOPER_READ_RATE_LIMIT_PER_MIN` is turned on.
+- Looper adapts (receivers adapt); it does not rely on HybridCard changing
+  `cache: 'no-store'` to `revalidate: 60`, though that would still help.
+- Safe because the verifier only resolves the fixed `.kas` allowlist from its
+  own TTL cache with single-flight and failure back-off. If identity ever
+  accepts arbitrary domains, revisit: give it its own (higher) limit instead.
+- Exempt is a strict prefix with trailing slash: `/api/identityx` stays limited.
+
 ### Jarvis router drift check; the map re-sync is the map repo's job (2026-10-02, looper#39)
 
 - The live map ships its own copies of `web/jarvis/*.js`, and they had drifted.
@@ -427,6 +443,28 @@
   text. Map-only changes (card-link canonicalizer, SPEC-067 panel) are
   allowed to differ. Which repo owns these files stays ADR
   localloop.pro-main#100's call.
+
+### Cross-repo contract table + pinned caller tests (2026-10-02, looper#31)
+
+- `docs/CROSS-REPO-CONTRACTS.md` lists every call between Looper, HybridCard
+  and the map with file:line at pinned commits (HC `55b7ced`, MAP `761d3a1`).
+  `backend/tests/test_cross_repo_contracts.py` has one test per inbound row. Each
+  sends the caller's real shape and asserts only the fields that caller reads.
+  Known mismatches are pinned as today's behaviour (like #23), not xfailed, so
+  the fix changes the test on purpose.
+- The backend makes no outbound calls to the other two repos (only KNS).
+  looper-bot does: it reads the LocalLoop gateway's pending-pin queue
+  (`GET /api/bot/map/pins`, Bearer `LOOPER_BOT_READ_TOKEN`), calls its `/health`,
+  and opens map deep links (`?cat=&q=&fly=`). `looper.localloop.ai` is that
+  gateway (MAP), not this API. Those shapes match today and are pinned in
+  `looper-bot/electron/tests/gateway-contract.test.cjs`. The gateway's
+  `PLATFORM_ENV=live` mode would 503 them (#50).
+- Mismatches filed: #36 (HC card URL falls back to the deal receiver), #37 (map
+  renders `message` as HTML; upstream MAP#324), #38 (Jarvis reads `slug`),
+  #39 (map Jarvis copies drifted), #40 (read limiter vs HC server-side identity
+  proxy). No Looper behaviour changed in this PR; BRIDGE-CONTRACT-v1 untouched.
+- No "hybridcard.ai search widget" exists in hybridcard-v2 at `55b7ced`. The
+  CORS entries stay (harmless).
 
 ### GitHub Actions CI (2026-10-02, looper#32)
 
@@ -454,3 +492,62 @@
   to the `index.html` panel). Both fixes belong in localloop.pro-main.
 - `tests/test_search_message_plain_text.py` pins the echo on both the
   results and no-results paths, and fails if anyone adds escaping here.
+### Search card link: `card_url` only, no `slug` (2026-10-02, looper#38)
+
+- `/api/search` results carry `card_url` as the only card link. It is the
+  sender's `public_card_url`, returned as sent for any host (tunnel hosts
+  too), never rebuilt from a slug, never a ranking input.
+- No `slug` field in `SearchResult`. Adding it needs a new `businesses`
+  column filled from the card payload's `slug`. That is a schema change to
+  live data (hot zone) with no owner OK, so the consumer adapts instead:
+  the map's Jarvis dock should drop its `r.slug` read
+  (localloop-pro/localloop.pro-main#333).
+- Pinned by `backend/tests/test_search_card_link_contract.py`: no `slug`
+  even when the card event sent one, tunnel URLs returned as sent, and a
+  carded 90%/rank_boost deal still ranks below a reviewed business.
+- Revisit only if the owner approves the column. Then add it as nullable,
+  fill it from card events going forward, and never derive `card_url` from it.
+
+### Card events at the deal receiver: named 422, never re-dispatched (2026-10-02, looper#36)
+
+- HybridCard falls back to `LOOPER_INGEST_URL` (the deal receiver) when
+  `LOOPER_CARD_INGEST_URL` is unset. The fix belongs to the sender (drop the
+  fallback, make readiness require the card URL). It is filed on hybridcard-v2.
+- Looper does NOT route `event_kind: card|partnership` from the deal receiver to
+  the card handler. That would hide a sender misconfiguration and give the deal
+  URL two contracts.
+- What Looper does instead: the deal receiver still answers 422 and writes
+  nothing (the eventId is not burned, so the same event lands once it is
+  re-sent to `/api/ingest/hybridcard-card`). The 422 detail now names the
+  cause, and the bridge trace records `outcome: "misrouted"` with the
+  `event_type` (no eventId, no payload fields).
+
+### Leaked bridge secret: rotate in place; per-key-id secrets wait for the owner (2026-10-02, looper#48)
+
+- Rotation = swap `HYBRIDCARD_INGEST_SECRET` on looper-api and hybridcard.ai
+  and restart both. The sender's outbox retries 401s for about 30 minutes,
+  so a short mismatch window loses nothing. The owner does this
+  (`docs/SECRET-ROTATION.md`). Agents never touch Coolify or secrets.
+- The live check signs an empty `{}`. Auth runs before body validation, so
+  a matching secret gets 422 and a wrong one 401, with no write either way
+  (pinned by `test_empty_body_probe_writes_nothing`). No fake deal goes
+  into production.
+- Not done here: real per-key-id secrets (for example
+  `HYBRIDCARD_INGEST_SECRET_HC_2`) for zero-downtime overlap. That changes
+  auth code (a hot zone) and needs the sender to send a non-`hc-1` id, so it
+  needs the owner's OK on an issue first. `load_keys()`'s dict shape is the
+  seam for it.
+- No history rewrite and no gitleaks allowlist for `eaa1fbd`.
+
+### Gateway live-mode cutover is named, not hidden (2026-10-02, looper#50)
+
+- localloop.pro-main's looper-gateway returns 503
+  `{"error":"migration_endpoint_pending"}` for every path its platform proxy
+  hasn't migrated once `PLATFORM_ENV=live` is set. Today that includes
+  `/api/bot/map/pins` and `/health`, which looper-bot reads.
+- The fix belongs in localloop.pro-main: keep those routes in live mode, or
+  publish the successor endpoint (localloop.pro-main#239) with the same shape.
+- Looper's side: `localloop-gateway-tools.cjs` treats
+  `migration_endpoint_pending` as a known code for both the pin reader and
+  health. Bill hears that the gateway changed mode instead of a generic
+  "request failed". It still fails closed: no queue data, no body echoed.

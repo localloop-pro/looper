@@ -11,6 +11,7 @@ Contract rules this file lives by:
 - active:false means DEACTIVATE, never delete.
 - discount_size / rank_boost are stored/ignored — never ranking inputs.
 """
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -121,6 +122,25 @@ def _parse_sender_ts(value: str | None) -> datetime | None:
     return dt
 
 
+# Card-URL events (card.* / partnership.*) that can land on the DEAL receiver
+# when the sender has LOOPER_CARD_INGEST_URL unset and falls back to
+# LOOPER_INGEST_URL (looper#36). They stay 422 — we never re-dispatch, which
+# would hide the misconfiguration — but the answer and trace name the cause.
+_CARD_URL_KINDS = ("card", "partnership")
+
+
+def _misrouted_event_type(raw: bytes) -> str | None:
+    """'card.upserted' / 'partnership.removed' etc. when a signed body that
+    failed deal validation is really a card-URL event, else None."""
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(body, dict) or body.get("event_kind") not in _CARD_URL_KINDS:
+        return None
+    return f"{body['event_kind']}.{'upserted' if body.get('active') else 'removed'}"
+
+
 def _record_event_and_commit(db: Session, event_id: str, event_type: str, raw: bytes,
                              *, stale: bool = False) -> dict:
     """Append the idempotency ledger row and commit. 200 ONLY after the
@@ -184,6 +204,16 @@ async def ingest_hybridcard_deal(
     try:
         payload = HybridCardDealPayload.model_validate_json(raw)
     except ValidationError:
+        misrouted = _misrouted_event_type(raw)
+        if misrouted:
+            # Nothing written and the eventId is not burned, so the same event
+            # still lands once the sender points it at /hybridcard-card.
+            emit_bridge(receiver="hybridcard-deal", outcome="misrouted",
+                        event_type=misrouted)
+            raise HTTPException(
+                status_code=422,
+                detail=("misrouted: card event sent to the deal receiver; set "
+                        "LOOPER_CARD_INGEST_URL to /api/ingest/hybridcard-card"))
         emit_bridge(receiver="hybridcard-deal", outcome="invalid_payload")
         # non-2xx → sender retries then dead-letters; the designed outcome
         # for permanently malformed payloads.

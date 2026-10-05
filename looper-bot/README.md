@@ -58,6 +58,36 @@ Looper Bot runs locally. Depending on the features you use, macOS may ask for:
 
 Computer-control tools are blocked until the app is in computer-use mode.
 
+### Confirmation dialog for risky tools (looper#64)
+
+Looper reads untrusted text (web search results, map pins, records). A crafted
+page could try to tell it to type, click or delete. So these tools always show
+a native **Allow once / Deny** dialog before they run:
+
+`computer_open_app`, `computer_type_text`, `computer_press_key`,
+`computer_click`, `computer_scroll`, `screen_snapshot`, `ui_inspect`,
+`records_delete`.
+
+The dialog names the tool and shows a short summary of what it will do (for
+typing, the text itself; a new line shows as `\n`). **Deny** is the default
+button, so Enter or Esc denies. On Deny nothing runs, the tool returns
+`{ ok: false, error: "denied_by_user" }` and Looper says it was declined. Read-only
+tools (LocalLoop search, web search, artifacts, Mermaid) never ask.
+
+To turn the dialog off, put this in `.env.local` and restart Looper:
+
+```bash
+LOOPER_CONFIRM_RISKY_TOOLS=off
+```
+
+Only the exact value `off` works. On startup the terminal then prints:
+
+```text
+[tool-policy] LOOPER_CONFIRM_RISKY_TOOLS=off: computer-control and delete tools run WITHOUT a confirmation dialog.
+```
+
+Delete the line (or set it to anything else) to turn the dialog back on.
+
 ## Development
 
 ```bash
@@ -93,8 +123,9 @@ Do not commit:
   never exposed through the preload bridge or renderer.
 - `.env.local` and all `.env.*` files are ignored except `.env.example`.
 - Generated images and local database files are ignored.
-- Risky computer-control actions should require explicit confirmation.
-- Typing and pressing Enter in computer-use mode are intentionally allowed without extra confirmation because they are core voice-control actions.
+- Computer-control, screenshot, UI-inspect and record-delete tools need a click
+  on **Allow once** in a native dialog (see above), including typing and
+  pressing Enter. The policy lives in `electron/tool-policy.cjs`.
 
 Before publishing a fork, run:
 

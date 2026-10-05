@@ -89,3 +89,13 @@
   loop like `for path in reviews onboard pins; do curl ...` wipes PATH after the
   first iteration ("command not found: curl"). Use another name (`p`) in
   runbooks — the BLIND-SPOTS step 7 snippet has this bug.
+- Never paste a real secret value into evidence, runbooks or deploy notes.
+  Name the variable and say where the value lives (password manager,
+  Coolify). Commit `eaa1fbd` leaked `HYBRIDCARD_INGEST_SECRET` into
+  `plans/evidence/F9.1/README.md` in this public repo (looper#48). A later
+  edit doesn't help: history keeps the value, so the only fix is rotation
+  (`docs/SECRET-ROTATION.md`). `test_secret_rotation.py` now fails on a
+  committed hex or base64 bridge secret.
+- Bridge key ids are not separate keys: `load_keys()` maps every id in
+  `HYBRIDCARD_KEY_IDS` to the one `HYBRIDCARD_INGEST_SECRET`, and the sender
+  always signs as `hc-1`. Adding `hc-2` rotates nothing.
