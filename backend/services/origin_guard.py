@@ -22,7 +22,6 @@ import hmac
 import os
 
 ORIGIN_KEY_HEADER = "x-looper-origin-key"
-EXEMPT_PATHS = frozenset({"/health"})
 
 _HEADER_BYTES = ORIGIN_KEY_HEADER.encode("latin-1")
 _BODY = b'{"detail":"forbidden"}'
@@ -44,7 +43,8 @@ class OriginKeyGuard:
             await self.app(scope, receive, send)
             return
         expected = expected_key()
-        if not expected or scope.get("path") in EXEMPT_PATHS:
+        health_check = scope.get("method") == "GET" and scope.get("path") == "/health"
+        if not expected or health_check:
             await self.app(scope, receive, send)
             return
 

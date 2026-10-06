@@ -58,6 +58,13 @@ def test_health_is_exempt(client, key_set):
     assert resp.json()["status"] == "healthy"
 
 
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+def test_only_get_health_is_exempt(client, key_set, method):
+    resp = client.request(method, "/health")
+    assert resp.status_code == 403
+    assert resp.json() == {"detail": "forbidden"}
+
+
 def test_403_keeps_request_id_and_cors(client, key_set):
     resp = client.get("/api/search", params={"q": "cafe"},
                       headers={"Origin": "https://localloop.ai", "X-Request-ID": "turn-abc12345"})
