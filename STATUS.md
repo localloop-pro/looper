@@ -56,7 +56,7 @@ Bill runs these; agents never run them against production. From the repo root on
 CI recovery is merged (#96 / PR #100): an open `main is red` issue means the latest completed main-push CI run failed; its body/comments identify jobs, commit, merged PR and run. Fix the failure with a normal small PR and keep every gate intact. A fully green main run comments “green again at <sha>” and closes it automatically; cancelled/skipped runs cannot close it. [Run/verify steps](docs/MAIN-RED-RUNBOOK.md).
 
 ## One thing being built
-- Open PRs checked on 2026-10-03: origin lock (#28 / PR #47), read performance (#30 / PR #35), plain-text search contract (#37 / PR #43), skills registry (#71 / PR #80), demo chip/deep-link fix (#70 / PR #81), read-only identity (PR #15), and partnership receiver (draft PR #25, blocked on #23).
+- Open PRs checked on 2026-10-03: origin lock (#28 / PR #47), read performance (#30 / PR #35), plain-text search contract (#37 / PR #43), skills registry (#71 / PR #80), demo chip/deep-link fix (#70 / PR #81), read-only identity (PR #15), and Option A record + existing 422/no-write partnership guard (draft PR #25; HybridCard sender-side work remains in hybridcard-v2#104).
 - Other open work: owner-verified CSV import (#74), skills layout owner answers (#79), and first five skills candidates (#89).
 
 ## Blocked and on whom
