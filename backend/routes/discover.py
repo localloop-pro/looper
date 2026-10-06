@@ -17,9 +17,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from models import Business, Review, fold_accents, get_db
+from models import Business, fold_accents, get_db
 from routes.params import OptionalLatitude, OptionalLongitude
-from routes.search import get_top_review, haversine_km, resolve_card_url
+from routes.search import (_NO_REVIEWS, get_top_review, haversine_km,
+                           resolve_card_url, review_stats)
 from schemas import SearchResult
 from services import telemetry
 
@@ -170,7 +171,8 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
             if b.category and cat_pat in fold_accents(b.category).lower()
         ]
 
-    scored = []
+    # Radius filter first, then one batched review-stats query (issue #30).
+    candidates = []
     for biz in businesses:
         distance = None
         if biz.lat is not None and biz.lng is not None:
@@ -179,15 +181,12 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
                 continue
         # no coords: include without distance (sorts last); matches SQLite-path behaviour
 
-        review_count = db.query(func.count(Review.id)).filter(
-            Review.business_id == biz.id, Review.is_public == True
-        ).scalar()
-        avg_rating = db.query(func.avg(Review.rating)).filter(
-            Review.business_id == biz.id, Review.is_public == True
-        ).scalar()
-        latest_review_at = db.query(func.max(Review.created_at)).filter(
-            Review.business_id == biz.id, Review.is_public == True
-        ).scalar()
+        candidates.append((biz, distance))
+    stats = review_stats(db, [biz.id for biz, _ in candidates])
+
+    scored = []
+    for biz, distance in candidates:
+        review_count, avg_rating, latest_review_at = stats.get(biz.id, _NO_REVIEWS)
 
         scored.append({
             "biz": biz,
@@ -292,7 +291,8 @@ def discover(
         # unknown suburb: fall back to name-matching the businesses' suburb
         query = query.filter(func.fold_accents(Business.suburb).like(f"%{fold_accents(suburb)}%"))
 
-    scored = []
+    # Radius filter first, then one batched review-stats query (issue #30).
+    candidates = []
     for biz in query.all():
         distance = None
         if center and biz.lat is not None and biz.lng is not None:
@@ -300,15 +300,12 @@ def discover(
             if distance > radius_km:
                 continue
 
-        review_count = db.query(func.count(Review.id)).filter(
-            Review.business_id == biz.id, Review.is_public == True
-        ).scalar()
-        avg_rating = db.query(func.avg(Review.rating)).filter(
-            Review.business_id == biz.id, Review.is_public == True
-        ).scalar()
-        latest_review_at = db.query(func.max(Review.created_at)).filter(
-            Review.business_id == biz.id, Review.is_public == True
-        ).scalar()
+        candidates.append((biz, distance))
+    stats = review_stats(db, [biz.id for biz, _ in candidates])
+
+    scored = []
+    for biz, distance in candidates:
+        review_count, avg_rating, latest_review_at = stats.get(biz.id, _NO_REVIEWS)
 
         scored.append({
             "biz": biz,

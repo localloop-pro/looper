@@ -23,6 +23,35 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+_STATS_CHUNK = 500  # stay well under SQLite's bound-parameter limit
+
+
+def review_stats(db: Session, business_ids) -> dict[int, tuple[int, float | None, object]]:
+    """Public-review count, average rating and latest review time for many
+    businesses in one GROUP BY per 500 ids (issue #30: replaces three
+    queries per business). Businesses without public reviews are absent;
+    callers default them to (0, None, None) — what the old per-business
+    count/avg/max queries returned.
+    """
+    ids = list(dict.fromkeys(business_ids))
+    stats = {}
+    for start in range(0, len(ids), _STATS_CHUNK):
+        rows = (db.query(Review.business_id,
+                         func.count(Review.id),
+                         func.avg(Review.rating),
+                         func.max(Review.created_at))
+                .filter(Review.business_id.in_(ids[start:start + _STATS_CHUNK]),
+                        Review.is_public == True)
+                .group_by(Review.business_id)
+                .all())
+        for business_id, count, avg, latest in rows:
+            stats[business_id] = (count, avg, latest)
+    return stats
+
+
+_NO_REVIEWS = (0, None, None)
+
+
 def get_top_review(business_id: int, db: Session) -> str | None:
     """Get the most recent public review for a business."""
     review = (db.query(Review)
@@ -179,17 +208,11 @@ def search_businesses(
         in_range = within(widened_to_km)
 
     # Score and rank by review count + recency (verifiable data only)
+    # One batched review-stats query for every candidate (issue #30).
+    stats = review_stats(db, [biz.id for biz, _, _ in in_range])
     results = []
     for biz, fields, distance in in_range:
-        review_count = db.query(func.count(Review.id)).filter(
-            Review.business_id == biz.id, Review.is_public == True
-        ).scalar()
-
-        avg_rating = db.query(func.avg(Review.rating)).filter(
-            Review.business_id == biz.id, Review.is_public == True
-        ).scalar()
-
-        top_review = get_top_review(biz.id, db)
+        review_count, avg_rating, _latest = stats.get(biz.id, _NO_REVIEWS)
 
         # Relevance score: boost category/name matches over generic suburb
         # matches (accent-folded on both sides, same as the SQL filter)
@@ -210,7 +233,6 @@ def search_businesses(
             "business": biz,
             "review_count": review_count,
             "avg_rating": round(avg_rating, 1) if avg_rating else None,
-            "top_review": top_review,
             "distance_km": round(distance, 1) if distance else None,
             "relevance": relevance,
         })
@@ -236,7 +258,8 @@ def search_businesses(
             lng=biz.lng,
             review_count=r["review_count"],
             avg_rating=r["avg_rating"],
-            top_review=r["top_review"],
+            # only for the returned page (<= limit), not every match
+            top_review=get_top_review(biz.id, db),
             distance_km=r["distance_km"],
             website=biz.website,
             card_url=resolve_card_url(biz, db),
@@ -300,10 +323,10 @@ def list_businesses(
         query = query.filter(Business.category == category)
 
     results = []
-    for biz in query.limit(limit).all():
-        review_count = db.query(func.count(Review.id)).filter(
-            Review.business_id == biz.id, Review.is_public == True
-        ).scalar()
+    page = query.limit(limit).all()
+    stats = review_stats(db, [biz.id for biz in page])
+    for biz in page:
+        review_count = stats.get(biz.id, _NO_REVIEWS)[0]
 
         distance = None
         if lat and lng and biz.lat and biz.lng:
