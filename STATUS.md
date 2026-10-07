@@ -56,12 +56,12 @@ Bill runs these; agents never run them against production. From the repo root on
 CI recovery is merged (#96 / PR #100): an open `main is red` issue means the latest completed main-push CI run failed; its body/comments identify jobs, commit, merged PR and run. Fix the failure with a normal small PR and keep every gate intact. A fully green main run comments “green again at <sha>” and closes it automatically; cancelled/skipped runs cannot close it. [Run/verify steps](docs/MAIN-RED-RUNBOOK.md).
 
 ## One thing being built
-- Open PRs checked on 2026-10-03: origin lock (#28 / PR #47), read performance (#30 / PR #35), plain-text search contract (#37 / PR #43), skills registry (#71 / PR #80), demo chip/deep-link fix (#70 / PR #81), read-only identity (PR #15), and partnership receiver (draft PR #25, blocked on #23).
+- Open PRs checked on 2026-10-03: origin lock (#28 / PR #47), read performance (#30 / PR #35), plain-text search contract (#37 / PR #43), skills registry (#71 / PR #80), demo chip/deep-link fix (#70 / PR #81), read-only identity (PR #15), and Option A record + existing 422/no-write partnership guard (PR #25; HybridCard sender side done in hybridcard-v2 PR #257).
 - Other open work: owner-verified CSV import (#74), skills layout owner answers (#79), and first five skills candidates (#89).
 
 ## Blocked and on whom
 - E6 follow-up #20 is closed, but its documented gates remain waiting: open LocalLoop E1 ADR (localloop.pro-main#100) and correlation (localloop.pro-main#101/#102), open HybridCard outbox tracing (hybridcard-v2#62), and Bill/devops naming staging, deploying the Worker and signing off ([E6 blockers](docs/E6-RELEASE-GATE.md)).
-- #23: Bill's partnership-contract decision and HybridCard routing; existing receiver returns 422 (merged PR #24; [contract inventory](docs/CROSS-REPO-CONTRACTS.md)). No dead-letter replay before a decision.
+- #23: resolved. Bill chose Option A on 2026-10-04; HybridCard stopped sending partnership events (hybridcard-v2 PR #257, merged 2026-10-06); Looper keeps the 422 guard (merged PR #24) and builds no receiver; never replay the dead letters ([contract inventory](docs/CROSS-REPO-CONTRACTS.md), PR #25).
 - Owner deploys and real-user loop acceptance: Bill; freeze expansion until ten strangers complete the loop ([audit](plans/BLIND-SPOTS-2026-09-08.md) §§5–6; [go-live gates](plans/features/10-deploy.md)).
 
 ## Not now
