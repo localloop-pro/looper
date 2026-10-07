@@ -7,7 +7,8 @@ guard; do not replay the dead letters."
 
 - HybridCard stops sending `partnership.upserted` / `partnership.removed` to
   Looper (`outbox.ts:209-230` `enqueuePartnershipEvents`). That change is in
-  hybridcard-v2 (#104 there), not in this repo.
+  hybridcard-v2 (#104 there), not in this repo. **Done:** hybridcard-v2 PR #257
+  "stop unsupported partnership deliveries" merged 2026-10-06 and #104 is closed.
 - Looper builds no partnership receiver, adds no `card_partnerships` table and
   does not loosen `HybridCardCardPayload`. BRIDGE-CONTRACT-v1 is unchanged.
 - The guard stays: `POST /api/ingest/hybridcard-card` answers 422 to a
