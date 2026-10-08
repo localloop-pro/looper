@@ -35,6 +35,15 @@ The default API is `http://localhost:8000`. If TypeDB or another service already
 LOOPER_PORT=8010 python main.py
 ```
 
+When a separate local page calls the API, list its exact origin explicitly:
+
+```bash
+LOOPER_DEV_ORIGINS=http://localhost:3000,http://localhost:5173 python main.py
+```
+
+Localhost origins are not allowed by default. The same-origin `/demo` page
+does not need this setting.
+
 Check the service with:
 
 ```bash

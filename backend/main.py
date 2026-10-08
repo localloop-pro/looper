@@ -8,7 +8,9 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from models import init_db
 from services.correlation import CorrelationMiddleware
+from services.cors_policy import cors_options
 from services.edge_boundary import PublicReadBoundary
+from services.origin_guard import OriginKeyGuard
 from routes import users, search, map, reviews, ingest, discover, identity
 
 # Initialize DB tables
@@ -25,27 +27,17 @@ app = FastAPI(
 # CORS so CORS stays outermost and HIT/429/STALE answers keep CORS headers.
 app.add_middleware(PublicReadBoundary)
 
-# CORS — every live host that embeds the Jarvis dock or Looper widget.
-# localloop.ai serves the map (Jarvis dock calls api.localloop.ai from the
-# browser); hybridcard.ai embeds the read-only search widget.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://localloop.ai",
-        "https://www.localloop.ai",
-        "https://localloop.pro",
-        "https://www.localloop.pro",
-        "https://explorer.localloop.ai",
-        "https://hybridcard.ai",
-        "https://www.hybridcard.ai",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["X-Request-ID", "X-Looper-Cache", "Retry-After"],
-)
+# Origin lock (issue #28): when LOOPER_ORIGIN_KEY is set, only requests that
+# carry the Worker's x-looper-origin-key pass (GET /health exempt). Added
+# after the read boundary so it sits OUTSIDE it (a rejected caller never
+# spends a rate-limit bucket or gets a cached answer) and before CORS and
+# correlation so the 403 still gets CORS headers and a request id.
+app.add_middleware(OriginKeyGuard)
+
+# CORS — the https hosts that embed the Jarvis dock or Looper widget
+# (services/cors_policy.py). localhost only via LOOPER_DEV_ORIGINS; no
+# credentials (issue #28).
+app.add_middleware(CORSMiddleware, **cors_options())
 
 # E6 correlation (issue #9): canonical X-Request-ID + one PII-free JSON trace
 # line per request. Added LAST so it is the outermost layer and also covers
