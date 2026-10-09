@@ -21,3 +21,9 @@ is deterministic.
 A queued ask and a deep-link `q` both search on init. The `reqSeq` guard
 already drops the older answer; the smoke test proves it by making the deep
 link's stub answer slower than the queued one.
+
+`parse_qsl` drops blank pairs by default, so `?q=&q=coffee` looked like
+`?q=coffee` and the second value won. Parse with `keep_blank_values=True`,
+claim the key on its first sighting, then skip it if blank (QA round 2).
+Owner checks use GET (`curl -sS -D - -o /dev/null`): `curl -I` sends HEAD,
+and a GET-only route answers 405.
