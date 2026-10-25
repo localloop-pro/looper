@@ -1,5 +1,6 @@
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import mermaid from "mermaid";
+import { renderInline } from "./markdown-inline";
 import type { LooperArtifact } from "../vite-env";
 
 type ArtifactPanelProps = {
@@ -313,25 +314,6 @@ function renderMarkdown(content: string) {
   });
 }
 
-function renderInline(text: string) {
-  const parts: ReactNode[] = [];
-  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = linkRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
-    parts.push(
-      <a href={match[2]} key={`${match[2]}-${match.index}`} target="_blank" rel="noreferrer">
-        {match[1]}
-      </a>,
-    );
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
-  return parts.length > 0 ? parts : text;
-}
 
 function NotesGrid({ content }: { content: string }) {
   const notes = parseNotes(content);

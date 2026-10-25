@@ -37,3 +37,23 @@ Featured spec/todo/done stores are absent; issue #112, this file, and its PR
 track this cycle. F4.1 remains unchecked pending owner voice acceptance.
 Next: independent QA and hosted CI; no further feature work in this PR.
 Rollback: revert this PR's commit and restart Electron; no data/config change.
+
+## QA round 1 correction
+
+Ken found that ArtifactPanel's link regex ignored the client's backslash
+escapes, allowing a forged link in a business name/category to become an
+anchor. String-only escaping assertions were insufficient. Extracted the
+actual inline React renderer and made it consume escaped delimiters before
+recognizing links, preserving literal cell text and generated View card and
+Website links. Existing Electron host restrictions are unchanged.
+
+Regression executes that same TSX renderer with actual businessesTable output
+and asserts rendered HTML has only the two legitimate anchors, including when
+the attacker prefixes backslashes. Typecheck/build and all 56 tests pass.
+Playwright rendered the actual ArtifactPanel on port 5369 with forged name and
+category: both remain text; only cafe.hybridcard.ai and localloop.ai anchors
+exist. Screenshot captured after full streaming completed. Initial probe ran
+before streaming finished and was repeated after completion. Preview stopped.
+`git fetch origin && git merge origin/main` reported already up to date.
+Owner API-on/API-off paid voice and face-state acceptance remains unverified;
+no owner secrets were accessed. Next: QA round 2 and hosted checks.
