@@ -5,6 +5,7 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
 const dotenv = require("dotenv");
+const { createLocalLoopApi } = require("./localloop-api.cjs");
 const { createLocalLoopGatewayTools } = require("./localloop-gateway-tools.cjs");
 const {
   DENIED_RESULT,
@@ -45,6 +46,7 @@ const appTarget = createAppTarget({
 
 // LocalLoop ecosystem endpoints (F4.1/F4.2)
 const LOOPER_API_BASE = (process.env.LOOPER_API_BASE || "http://localhost:8000").replace(/\/$/, "");
+const looperApi = createLocalLoopApi({ baseUrl: LOOPER_API_BASE });
 const LOCALLOOP_MAP_URL = (process.env.LOCALLOOP_MAP_URL || "https://localloop.ai").replace(/\/$/, "");
 const LOCALLOOP_GATEWAY_URL = (process.env.LOCALLOOP_GATEWAY_URL || "https://looper.localloop.ai").replace(/\/$/, "");
 const localLoopGatewayTools = createLocalLoopGatewayTools({
@@ -1135,102 +1137,9 @@ end tell`;
   }
 });
 
-async function localloopApi(path, params) {
-  const qs = new URLSearchParams();
-  for (const [key, value] of Object.entries(params || {})) {
-    if (value !== undefined && value !== null && value !== "") qs.set(key, String(value));
-  }
-  const url = `${LOOPER_API_BASE}${path}${qs.size ? `?${qs}` : ""}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`LOOPER API ${response.status}: ${await response.text()}`);
-  }
-  return response.json();
-}
-
-function businessesTable(results) {
-  const rows = results.map((r, i) => {
-    const stars = r.avg_rating ? `⭐ ${r.avg_rating}` : "no ratings yet";
-    const dist = r.distance_km != null ? ` · ${r.distance_km} km` : "";
-    const link = r.card_url ? ` · [View card](${r.card_url})` : r.website ? ` · [Website](${r.website})` : "";
-    return `| ${i + 1} | ${r.name} | ${r.category || ""} | ${stars} · ${r.review_count || 0} reviews${dist}${link} |`;
-  });
-  return ["| # | Business | Category | Community |", "|---|---|---|---|", ...rows].join("\n");
-}
-
-async function localloopSearch(args) {
-  try {
-    const data = await localloopApi("/api/search", {
-      q: String(args.query || ""),
-      lat: args.lat,
-      lng: args.lng,
-      radius_km: args.radius_km,
-      limit: Math.max(1, Math.min(20, Number(args.limit || 5))),
-    });
-    const results = Array.isArray(data.results) ? data.results : [];
-    return {
-      ok: true,
-      message: data.message,
-      results,
-      artifact: {
-        title: `Local Loop: ${args.query}`,
-        kind: "markdown",
-        content: `${data.message || ""}\n\n${businessesTable(results)}\n\n_Ranked by community reviews, recency and distance only — never by payment._`,
-      },
-    };
-  } catch (error) {
-    return { ok: false, error: String(error?.message || error), message: "The LOOPER API is offline. Is the backend running?" };
-  }
-}
-
-async function localloopDiscover(args) {
-  try {
-    const data = await localloopApi("/api/discover", {
-      suburb: String(args.suburb || ""),
-      category: args.category,
-      radius_km: args.radius_km,
-      limit: Math.max(1, Math.min(50, Number(args.limit || 10))),
-      intent: "discover",
-      session: "looper-desktop",
-    });
-    const results = Array.isArray(data.results) ? data.results : [];
-    return {
-      ok: true,
-      engine: data.engine,
-      message: data.message,
-      results,
-      artifact: {
-        title: `Local Loop: ${args.suburb}${args.category ? ` · ${args.category}` : ""}`,
-        kind: "markdown",
-        content: `${data.message || ""}\n\n${businessesTable(results)}\n\n_Engine: ${data.engine} · ranked by community reviews, recency and distance only._`,
-      },
-    };
-  } catch (error) {
-    return { ok: false, error: String(error?.message || error), message: "The LOOPER API is offline. Is the backend running?" };
-  }
-}
-
-async function localloopBusinesses(args) {
-  try {
-    const data = await localloopApi("/api/businesses", {
-      category: args.category,
-      limit: Math.max(1, Math.min(50, Number(args.limit || 20))),
-    });
-    const results = Array.isArray(data.results) ? data.results : [];
-    return {
-      ok: true,
-      count: data.count,
-      results,
-      artifact: {
-        title: `Local Loop businesses${args.category ? `: ${args.category}` : ""}`,
-        kind: "markdown",
-        content: businessesTable(results),
-      },
-    };
-  } catch (error) {
-    return { ok: false, error: String(error?.message || error), message: "The LOOPER API is offline. Is the backend running?" };
-  }
-}
+const localloopSearch = (args) => looperApi.search(args);
+const localloopDiscover = (args) => looperApi.discover(args);
+const localloopBusinesses = (args) => looperApi.businesses(args);
 
 // F4.2 deep-link contract — the map side parses ?cat=&q=&fly=lng,lat,zoom
 // (web/jarvis/looper-jarvis.js applyDeepLinks + llx11 once integrated).
@@ -1252,28 +1161,7 @@ async function localloopOpenMap(args) {
   };
 }
 
-async function localloopBridgeStatus() {
-  try {
-    const data = await localloopApi("/api/ingest/status");
-    const counts = data.counts || {};
-    const recent = Array.isArray(data.recent_events) ? data.recent_events : [];
-    const rows = recent.map((e) => `| ${e.received_at || ""} | ${e.event_type || ""} | ${e.status || ""} |`);
-    const content = [
-      `**Total events:** ${counts.total_events ?? 0} · **Active deals:** ${counts.active_deals ?? 0} · **Card businesses:** ${counts.card_businesses ?? 0}`,
-      "",
-      "| Received | Event | Status |",
-      "|---|---|---|",
-      ...rows,
-    ].join("\n");
-    return {
-      ok: true,
-      counts,
-      artifact: { title: "HybridCard bridge status", kind: "markdown", content },
-    };
-  } catch (error) {
-    return { ok: false, error: String(error?.message || error), message: "The LOOPER API is offline. Is the backend running?" };
-  }
-}
+const localloopBridgeStatus = () => looperApi.bridgeStatus();
 
 async function webSearch(args) {
   const exaKey = process.env.EXA_API_KEY;
