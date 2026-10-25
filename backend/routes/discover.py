@@ -19,8 +19,8 @@ from sqlalchemy.orm import Session
 
 from models import Business, fold_accents, get_db
 from routes.params import OptionalLatitude, OptionalLongitude
-from routes.search import (_NO_REVIEWS, get_top_review, haversine_km,
-                           resolve_card_url, review_stats)
+from routes.search import (_NO_REVIEWS, card_urls, haversine_km,
+                           review_stats, top_reviews)
 from schemas import SearchResult
 from services import telemetry
 
@@ -203,8 +203,12 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
         r["distance_km"] if r["distance_km"] is not None else 999,
     ))
 
+    page = scored[:limit]
+    page_businesses = [r["biz"] for r in page]
+    tops = top_reviews(db, [biz.id for biz in page_businesses])
+    urls = card_urls(db, page_businesses)
     results = []
-    for r in scored[:limit]:
+    for r in page:
         biz = r["biz"]
         results.append(SearchResult(
             business_id=biz.id,
@@ -215,10 +219,10 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
             lng=biz.lng,
             review_count=r["review_count"],
             avg_rating=r["avg_rating"],
-            top_review=get_top_review(biz.id, db),
+            top_review=tops.get(biz.id),
             distance_km=r["distance_km"],
             website=biz.website,
-            card_url=resolve_card_url(biz, db),
+            card_url=urls.get(biz.id),
         ))
 
     where = suburb_key or suburb or "this area"
@@ -322,8 +326,12 @@ def discover(
         r["distance_km"] if r["distance_km"] is not None else 999,
     ))
 
+    page = scored[:limit]
+    page_businesses = [r["biz"] for r in page]
+    tops = top_reviews(db, [biz.id for biz in page_businesses])
+    urls = card_urls(db, page_businesses)
     results = []
-    for r in scored[:limit]:
+    for r in page:
         biz = r["biz"]
         results.append(SearchResult(
             business_id=biz.id,
@@ -334,11 +342,11 @@ def discover(
             lng=biz.lng,
             review_count=r["review_count"],
             avg_rating=r["avg_rating"],
-            top_review=get_top_review(biz.id, db),
+            top_review=tops.get(biz.id),
             distance_km=r["distance_km"],
             website=biz.website,
             # Pass-through stored URL (localhost /c/{slug} or *.hybridcard.ai) — never rewrite.
-            card_url=resolve_card_url(biz, db),
+            card_url=urls.get(biz.id),
         ))
 
     where = suburb_key or suburb or "this area"

@@ -105,6 +105,19 @@ def test_key_ignores_telemetry_and_unknown_params(client, db, cache_on):
     assert _search(client, utm_source="fb").headers["x-looper-cache"] == "HIT"
 
 
+def test_param_order_does_not_split_the_cache(client, db, cache_on):
+    _seed(db)
+    first = client.get(
+        "/api/search?q=caf%C3%A9&lat=-33.89&lng=151.27"
+    )
+    second = client.get(
+        "/api/search?lng=151.27&lat=-33.89&q=caf%C3%A9"
+    )
+    assert first.headers["x-looper-cache"] == "MISS"
+    assert second.headers["x-looper-cache"] == "HIT"
+    assert second.content == first.content
+
+
 def test_key_includes_every_ranking_param(client, db, cache_on):
     _seed(db)
     _search(client)
@@ -179,7 +192,7 @@ def test_stale_served_when_route_errors(db, cache_on, clock, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("db down")
 
-    monkeypatch.setattr(routes.search, "get_top_review", boom)
+    monkeypatch.setattr(routes.search, "top_reviews", boom)
     stale = _search(client)
     assert stale.status_code == 200
     assert stale.headers["x-looper-cache"] == "STALE"

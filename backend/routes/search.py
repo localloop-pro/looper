@@ -54,16 +54,35 @@ _NO_REVIEWS = (0, None, None)
 
 def get_top_review(business_id: int, db: Session) -> str | None:
     """Get the most recent public review for a business."""
-    review = (db.query(Review)
-              .filter(Review.business_id == business_id, Review.is_public == True)
-              .order_by(Review.created_at.desc())
-              .first())
-    if review and review.review_text:
-        excerpt = review.review_text[:150]
-        if len(review.review_text) > 150:
-            excerpt += "..."
-        return f'"{excerpt}"'
-    return None
+    return top_reviews(db, [business_id]).get(business_id)
+
+
+def top_reviews(db: Session, business_ids) -> dict[int, str | None]:
+    """Most recent public-review excerpt for many businesses.
+
+    Rows are ordered once per bounded id chunk, then the first row for each
+    business is selected in Python. The id tie-break makes the old SQLite
+    insertion-order behaviour explicit for equal ``created_at`` values.
+    """
+    ids = list(dict.fromkeys(business_ids))
+    tops: dict[int, str | None] = {business_id: None for business_id in ids}
+    for start in range(0, len(ids), _STATS_CHUNK):
+        rows = (db.query(Review)
+                .filter(Review.business_id.in_(ids[start:start + _STATS_CHUNK]),
+                        Review.is_public == True)
+                .order_by(Review.created_at.desc(), Review.id.asc())
+                .all())
+        seen = set()
+        for review in rows:
+            if review.business_id in seen:
+                continue
+            seen.add(review.business_id)
+            if review.review_text:
+                excerpt = review.review_text[:150]
+                if len(review.review_text) > 150:
+                    excerpt += "..."
+                tops[review.business_id] = f'"{excerpt}"'
+    return tops
 
 
 def resolve_card_url(biz: Business, db: Session) -> str | None:
@@ -74,18 +93,41 @@ def resolve_card_url(biz: Business, db: Session) -> str | None:
     ``*.hybridcard.ai`` and local/dev ``http://localhost:3000/c/{slug}`` alike.
     Never rebuild from slug and never rewrite the stored URL.
     """
-    if not biz.hybrid_card_id:
-        return None
-    deal = (db.query(Deal)
-            .filter(Deal.business_id == biz.id,
-                    Deal.active == True,
-                    Deal.public_card_url.is_not(None))
-            .first())
-    if deal and deal.public_card_url:
-        return deal.public_card_url
-    if biz.website:
-        return biz.website
-    return None
+    return card_urls(db, [biz]).get(biz.id)
+
+
+def card_urls(db: Session, businesses) -> dict[int, str | None]:
+    """Resolve public card URLs for a page with bounded batched deal reads."""
+    businesses = list(businesses)
+    carded_ids = list(dict.fromkeys(
+        biz.id for biz in businesses if biz.hybrid_card_id
+    ))
+    deal_urls: dict[int, str | None] = {}
+    chunks = [
+        carded_ids[start:start + _STATS_CHUNK]
+        for start in range(0, len(carded_ids), _STATS_CHUNK)
+    ]
+    # A non-empty result page always spends the same one deal statement even
+    # when that particular page has no carded business (issue #113 budget).
+    if businesses and not chunks:
+        chunks = [[]]
+    for chunk in chunks:
+        rows = (db.query(Deal.business_id, Deal.public_card_url)
+                .filter(Deal.business_id.in_(chunk),
+                        Deal.active == True,
+                        Deal.public_card_url.is_not(None))
+                .order_by(Deal.id.asc())
+                .all())
+        for business_id, public_card_url in rows:
+            deal_urls.setdefault(business_id, public_card_url)
+
+    return {
+        biz.id: (
+            (deal_urls.get(biz.id) or biz.website)
+            if biz.hybrid_card_id else None
+        )
+        for biz in businesses
+    }
 
 
 def _read_fallback_km() -> float:
@@ -245,8 +287,12 @@ def search_businesses(
     results.sort(key=lambda r: (-r["relevance"], -r["review_count"], r["distance_km"] or 999))
 
     # Build response
+    page = results[:limit]
+    page_businesses = [r["business"] for r in page]
+    tops = top_reviews(db, [biz.id for biz in page_businesses])
+    urls = card_urls(db, page_businesses)
     ranked = []
-    for r in results[:limit]:
+    for r in page:
         biz = r["business"]
         # HybridCard connection: informational link only — NEVER a ranking input (§7).
         ranked.append(SearchResult(
@@ -259,10 +305,10 @@ def search_businesses(
             review_count=r["review_count"],
             avg_rating=r["avg_rating"],
             # only for the returned page (<= limit), not every match
-            top_review=get_top_review(biz.id, db),
+            top_review=tops.get(biz.id),
             distance_km=r["distance_km"],
             website=biz.website,
-            card_url=resolve_card_url(biz, db),
+            card_url=urls.get(biz.id),
         ))
 
     message = _message(q, category, ranked, radius_km, widened_to_km)

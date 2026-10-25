@@ -27,8 +27,8 @@ Policy table (docs/EDGE-READ-BOUNDARY.md explains each row):
   rate limit every GET/HEAD under /api/ (writes and bridge receivers untouched)
              EXCEPT /api/identity/* (looper#40, see RATE_LIMIT_EXEMPT_PREFIXES)
 
-Cache key = path + the route's ranking-relevant query params, in request
-order, + the TypeDB engine switch + a write generation. `session` and
+Cache key = path + the route's ranking-relevant query params, sorted by
+name, + the TypeDB engine switch + a write generation. `session` and
 `intent` (telemetry only) and unknown params are deliberately NOT in the key;
 no identity, cookie, discount, source or paid status ever is.
 """
@@ -44,8 +44,9 @@ from urllib.parse import parse_qsl
 
 from starlette.datastructures import Headers, MutableHeaders
 
-# Ranking-relevant params per cacheable route. Anything else a caller sends is
-# ignored by FastAPI too, so leaving it out of the key cannot mix answers.
+# Ranking-relevant params per cacheable route, sorted by name in the key.
+# Anything else a caller sends is ignored by FastAPI too, so leaving it out of
+# the key cannot mix answers.
 CACHEABLE_PARAMS: dict[str, tuple[str, ...]] = {
     "/api/search": ("q", "lat", "lng", "radius_km", "category", "limit"),
     "/api/discover": ("suburb", "lat", "lng", "radius_km", "category", "limit"),
@@ -153,8 +154,11 @@ rate_limiter = RateLimiter()
 
 def cache_key(path: str, query_string: bytes) -> tuple:
     allowed = CACHEABLE_PARAMS[path]
-    params = tuple((k, v) for k, v in parse_qsl(query_string.decode("latin-1"), keep_blank_values=True)
-                   if k in allowed)
+    params = tuple(sorted(
+        (k, v)
+        for k, v in parse_qsl(query_string.decode("latin-1"), keep_blank_values=True)
+        if k in allowed
+    ))
     engine = os.getenv("TYPEDB_ENABLED", "false").lower() == "true"
     return (path, params, engine, read_cache.generation)
 

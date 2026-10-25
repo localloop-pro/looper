@@ -31,7 +31,7 @@ The read **rate limit** covers every `GET`/`HEAD` under `/api/` except
 | Rule | Behaviour |
 |---|---|
 | Eligibility | `GET` on a cacheable path, status **200** only. 4xx (invalid input, 422) and 5xx are never stored. |
-| Key | path + the route's ranking params in request order + `TYPEDB_ENABLED` + write generation. search: `q lat lng radius_km category limit`; discover: `suburb lat lng radius_km category limit`; businesses: `category lat lng radius_km limit`. |
+| Key | path + the route's ranking params sorted by name + `TYPEDB_ENABLED` + write generation. search: `q lat lng radius_km category limit`; discover: `suburb lat lng radius_km category limit`; businesses: `category lat lng radius_km limit`. |
 | Not in key | `session`, `intent` (telemetry only), unknown params, cookies, identity. Discount, source, card_url, payment and `rank_boost` are not request inputs at all; a test fails if anyone adds them. |
 | TTL | `LOOPER_READ_CACHE_TTL_S` seconds (suggested 30). `0` = cache off. |
 | Invalidation | any successful (`< 400`) non-GET request under `/api/` clears the cache (review, pin, onboard, bridge ingest). Rejected writes (401/409/422) do not. |
