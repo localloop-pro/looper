@@ -86,6 +86,7 @@ curl -X POST http://localhost:8000/api/onboard \
 
 # Seed DB
 python seed.py
+# seed.py refuses production-shaped databases; it only ever targets your local file.
 
 # Smoke test agent
 looper -z "reply with only the text: LOOPER_ONLINE"
