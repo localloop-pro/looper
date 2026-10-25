@@ -118,6 +118,8 @@ Do not commit:
 
 ## Security Notes
 
+LocalLoop API calls have a 10-second timeout, a random `X-Request-ID`, and refuse redirects (`redirect: "error"`).
+
 - API keys are loaded only from local environment files.
 - The LocalLoop gateway bearer token stays in the Electron main process and is
   never exposed through the preload bridge or renderer.
