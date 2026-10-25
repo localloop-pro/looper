@@ -26,6 +26,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python seed.py
+# seed.py refuses production-shaped databases; it only ever targets your local file.
 python main.py
 ```
 
@@ -94,6 +95,7 @@ With the backend running, open `/demo` to exercise the animated map agent, categ
 ```bash
 cd backend
 python seed.py
+# seed.py refuses production-shaped databases; it only ever targets your local file.
 python main.py
 # open http://localhost:8000/demo
 ```
