@@ -12,6 +12,7 @@
 <script src="../jarvis/looper-jarvis.js"></script>
 <script>
   window.__calls = [];
+  window.__timingHook = [];
   var fakeMap = {
     _zoom: 14.5,
     getZoom: function () { return this._zoom; },
@@ -25,21 +26,25 @@
   var realFetch = window.fetch;
   window.fetch = function (url) {
     window.__calls.push(["fetch", String(url)]);
-    // tests may set __searchFor(url) -> { body, delayMs } to answer per URL
+    // tests may set __searchFor(url) -> { body, delayMs, ok, status } to answer per URL
     // and out of order (latest-request race checks, looper#70)
-    var per = window.__searchFor && window.__searchFor(String(url));
+    var per = (window.__searchFor && window.__searchFor(String(url))) || window.__searchResponse;
     if (per) {
       return new Promise(function (resolve) {
         setTimeout(function () {
-          resolve({ ok: true, json: function () { return Promise.resolve(per.body); } });
+          resolve({
+            ok: per.ok !== false,
+            status: per.status || 200,
+            headers: { get: function (k) { return ({ "x-request-id": "rid-test-1", "x-looper-cache": "MISS" })[k] || null; } },
+            json: function () { return Promise.resolve(per.body === undefined ? per : per.body); },
+          });
         }, per.delayMs || 0);
       });
     }
     return Promise.resolve({
       ok: true,
+      status: 200,
       json: function () {
-        // tests may set __searchResponse to stub one specific API answer
-        if (window.__searchResponse) return Promise.resolve(window.__searchResponse);
         return Promise.resolve({
           query: "café",
           message: "Here are 2 options for 'café', ranked by community experience.",
@@ -66,7 +71,12 @@
   // ?defer=1 leaves init to the test (window.__initJarvis) so it can drive
   // ask() BEFORE the dock is mounted, like a chip clicked before map load
   window.__initJarvis = function () {
-    LooperJarvis.init({ map: fakeMap, district: "Bondi", apiBase: "http://stub" });
+    LooperJarvis.init({
+      map: fakeMap,
+      district: "Bondi",
+      apiBase: "http://stub",
+      onTiming: function (record) { window.__timingHook.push(record); },
+    });
   };
   if (!/[?&]defer=1/.test(location.search)) window.__initJarvis();
 </script>
