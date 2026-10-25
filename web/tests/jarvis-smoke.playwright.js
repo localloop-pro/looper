@@ -67,6 +67,45 @@ const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10
     console.log("options rendered:", JSON.stringify(options));
     const cardLink = await page.$eval("#looper-jarvis .lj-option a", (a) => a.href + " | " + a.textContent);
     console.log("first link:", cardLink);
+    const t = await page.evaluate(() => LooperJarvis.timings());
+    const lastTiming = t[t.length - 1];
+    const timingKeys = ["intent", "rid", "cache", "status", "route_ms", "fetch_ms", "parse_ms", "render_ms", "to_speech_ms", "results"].sort();
+    console.log("turn timing:", JSON.stringify(lastTiming));
+    if (t.length < 1) errors.push("search turn did not record timing");
+    if (!lastTiming || Object.keys(lastTiming).sort().join(",") !== timingKeys.join(",")) {
+      errors.push("search timing does not have exactly ten public keys: " + JSON.stringify(lastTiming));
+    }
+    if (!lastTiming || lastTiming.intent !== "search" || lastTiming.results !== 4) {
+      errors.push("search timing has wrong intent/results: " + JSON.stringify(lastTiming));
+    }
+    for (const key of ["route_ms", "fetch_ms", "parse_ms", "render_ms", "to_speech_ms"]) {
+      if (!lastTiming || typeof lastTiming[key] !== "number" || lastTiming[key] < 0) {
+        errors.push("search timing has invalid " + key + ": " + JSON.stringify(lastTiming));
+      }
+    }
+    const timingJson = JSON.stringify(t);
+    for (const forbidden of ['"q"', "cafe", '"lat"']) {
+      if (timingJson.includes(forbidden)) errors.push("timing leaked " + forbidden + ": " + timingJson);
+    }
+    const hookedTiming = await page.evaluate(() => window.__timingHook.slice(-1)[0]);
+    if (JSON.stringify(hookedTiming) !== JSON.stringify(lastTiming)) {
+      errors.push("onTiming hook missed or changed the search record: " + JSON.stringify(hookedTiming));
+    }
+
+    // A non-2xx response records the same PII-free shape as an error and
+    // keeps the existing offline panel/speech behavior.
+    await page.evaluate(() => {
+      window.__searchFor = () => ({ ok: false, status: 500, body: {} });
+      LooperJarvis.ask("find me a cafe");
+    });
+    await page.waitForFunction(() => LooperJarvis.timings().some((row) => row.status === "error"));
+    const errorTiming = await page.evaluate(() => LooperJarvis.timings().slice(-1)[0]);
+    console.log("error timing:", JSON.stringify(errorTiming));
+    if (!errorTiming || errorTiming.status !== "error") errors.push("500 did not record an error timing");
+    if (!errorTiming || Object.keys(errorTiming).sort().join(",") !== timingKeys.join(",")) {
+      errors.push("error timing does not have exactly ten public keys: " + JSON.stringify(errorTiming));
+    }
+    await page.evaluate(() => { window.__searchFor = null; });
 
     // XSS guard: owner-supplied javascript:/data: URLs must never render
     const badLinks = await page.$$eval("#looper-jarvis a", (as) =>

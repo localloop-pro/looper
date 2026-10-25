@@ -101,6 +101,8 @@ Command: `python /app/looper/tools/news_audio_worker.py`
 Local p50/p95 + error-rate harness for `/api/search` and `/api/discover`
 (E1 method: 20 warmup, 100 sequential, 200 at 10 workers). Stdlib only.
 Point it at a local server on a throwaway DB — never at production.
+The API and Jarvis browser reproduction steps, plus the first local timing
+snapshot, are recorded in [`docs/SPEED-BASELINE.md`](../docs/SPEED-BASELINE.md).
 
 ```bash
 python3 tools/bench_read_paths.py http://127.0.0.1:8010

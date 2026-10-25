@@ -91,6 +91,9 @@
     onMicOpen: null, // host hook: pause a coexisting wake-word mic (Porcupine); may return a Promise
     onMicClose: null, // host hook: resume it when Jarvis lets go
     beforeSpeak: null, // host hook: silence competing audio (news podcast) before TTS
+    timings: [], // last 20 PII-free route/fetch/render/speech timing records
+    onTiming: null, // optional host hook; failures never break a turn
+    turnStart: null,
     // anonymous per-page-load session id — telemetry only, never identity
     session: (root.crypto && root.crypto.randomUUID) ? root.crypto.randomUUID() : "s" + String(Math.random()).slice(2),
   };
@@ -551,6 +554,12 @@
   // ------------------------------------------------------------- the brain
   var API_TIMEOUT_MS = 10000;
 
+  function recordTiming(record) {
+    S.timings.push(record);
+    if (S.timings.length > 20) S.timings.shift();
+    if (S.onTiming) { try { S.onTiming(record); } catch (e) { /* measurement must never break a turn */ } }
+  }
+
   function api(path, params) {
     var qs = new URLSearchParams(params).toString();
     var url = S.apiBase + path + (qs ? "?" + qs : "");
@@ -559,10 +568,43 @@
     // offline path as a refused connection.
     var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
     var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, API_TIMEOUT_MS) : null;
+    var t_fetch = performance.now();
     return fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
       .then(function (r) {
-        if (!r.ok) throw new Error("API " + r.status);
-        return r.json();
+        var t_headers = performance.now();
+        var rid = null;
+        var cache = null;
+        if (r.headers && typeof r.headers.get === "function") {
+          rid = r.headers.get("x-request-id");
+          cache = r.headers.get("x-looper-cache");
+        }
+        if (rid != null) rid = String(rid).slice(0, 128);
+        var meta = {
+          rid: rid,
+          cache: cache,
+          fetch_ms: t_headers - t_fetch,
+          parse_ms: 0,
+          status: r.status,
+        };
+        if (!r.ok) {
+          var responseError = new Error("API " + r.status);
+          responseError.meta = meta;
+          throw responseError;
+        }
+        return r.json().then(function (data) {
+          var t_json = performance.now();
+          meta.parse_ms = t_json - t_headers;
+          return { data: data, meta: meta };
+        }).catch(function (error) {
+          meta.parse_ms = performance.now() - t_headers;
+          error.meta = meta;
+          throw error;
+        });
+      }).catch(function (error) {
+        if (!error.meta) {
+          error.meta = { rid: null, cache: null, fetch_ms: performance.now() - t_fetch, parse_ms: 0, status: null };
+        }
+        throw error;
       })
       .finally(function () { if (timer) clearTimeout(timer); });
   }
@@ -654,6 +696,10 @@
   }
 
   function runSearch(cmd) {
+    var turnStart = S.turnStart;
+    S.turnStart = null;
+    var route_ms = turnStart == null ? 0 : performance.now() - turnStart;
+    if (turnStart == null) turnStart = performance.now();
     var center = cmd.coords || mapCenter();
     // Stale-closure fix (gotcha): the radius for THIS command comes from the
     // command object itself, falling back to the last explicitly-set radius.
@@ -679,8 +725,10 @@
       limit: 5,
       intent: cmd.intent, // telemetry only (F2.5) — never a ranking input
       session: S.session,
-    }).then(function (data) {
+    }).then(function (response) {
       if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
+      var data = response.data;
+      var timingMeta = response.meta;
       var results = (data && data.results) || [];
       settleUi();
       if (!results.length) {
@@ -691,7 +739,13 @@
         // speak the API's own answer: it knows whether it widened
         // ("No one's listed for 'vet' within 10 km yet.")
         var none = (data && data.message) || pick(PERSONA.noResults);
+        var renderStart = performance.now();
         showPanel('<p class="lj-msg">' + escapeHtml(none) + "</p>");
+        var render_ms = performance.now() - renderStart;
+        var to_speech_ms = performance.now() - turnStart;
+        recordTiming({ intent: cmd.intent, rid: timingMeta.rid, cache: timingMeta.cache, status: timingMeta.status,
+          route_ms: route_ms, fetch_ms: timingMeta.fetch_ms, parse_ms: timingMeta.parse_ms,
+          render_ms: render_ms, to_speech_ms: to_speech_ms, results: 0 });
         speak(none);
         return;
       }
@@ -703,21 +757,38 @@
       // suburb fly ("cafes in Bronte" with unmappable rows still flies)
       var hasPins = results.some(function (r) { return Bus.hasValidCoords(r); });
       if (cmd.coords && !hasPins) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
+      var renderStart = performance.now();
       showPanel(optionsHtml(results, data.message || "Here's what the loop knows:"));
+      var render_ms = performance.now() - renderStart;
       wireOptionClicks(results);
+      var to_speech_ms = performance.now() - turnStart;
+      recordTiming({ intent: cmd.intent, rid: timingMeta.rid, cache: timingMeta.cache, status: timingMeta.status,
+        route_ms: route_ms, fetch_ms: timingMeta.fetch_ms, parse_ms: timingMeta.parse_ms,
+        render_ms: render_ms, to_speech_ms: to_speech_ms, results: results.length });
       speakResults(results, cmd, radiusKm, data);
-    }).catch(function () {
+    }).catch(function (error) {
       if (seq !== S.reqSeq) return; // superseded — don't clobber the newer UI
+      var timingMeta = error.meta || { rid: null, cache: null, fetch_ms: 0, parse_ms: 0 };
       Bus.clearResults(); // stale pins next to "brain offline" read as results
       S.face.setMood("error");
       setStatus("Looper brain offline");
       S.statusPinned = true; // keep the offline message up until the next turn
+      var renderStart = performance.now();
       showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.apiDown)) + "</p>");
+      var render_ms = performance.now() - renderStart;
+      var to_speech_ms = performance.now() - turnStart;
+      recordTiming({ intent: cmd.intent, rid: timingMeta.rid, cache: timingMeta.cache, status: "error",
+        route_ms: route_ms, fetch_ms: timingMeta.fetch_ms, parse_ms: timingMeta.parse_ms,
+        render_ms: render_ms, to_speech_ms: to_speech_ms, results: 0 });
       speak(pick(PERSONA.apiDown));
     });
   }
 
   function runBusiness(cmd) {
+    var turnStart = S.turnStart;
+    S.turnStart = null;
+    var route_ms = turnStart == null ? 0 : performance.now() - turnStart;
+    if (turnStart == null) turnStart = performance.now();
     // a leftover category filter from a previous search would contradict
     // the named business about to be shown — clear chips/layers (the host
     // skips its camera: the lookup flies to the business itself)
@@ -731,14 +802,22 @@
     var center = mapCenter();
     var params = { q: cmd.businessName, limit: 3, intent: "business", session: S.session };
     if (center) { params.lat = center.lat; params.lng = center.lng; params.radius_km = 5000; }
-    return api("/search", params).then(function (data) {
+    return api("/search", params).then(function (response) {
       if (seq !== S.reqSeq) return; // stale response — a newer query owns the UI
+      var data = response.data;
+      var timingMeta = response.meta;
       var results = (data && data.results) || [];
       settleUi();
       if (!results.length) {
         Bus.clearResults(); // stale pins next to "no match" read as matches
-        speak("I couldn't find " + cmd.businessName + " on the loop yet.");
+        var renderStart = performance.now();
         showPanel('<p class="lj-msg">No match for “' + escapeHtml(cmd.businessName) + '” yet.</p>');
+        var render_ms = performance.now() - renderStart;
+        var to_speech_ms = performance.now() - turnStart;
+        recordTiming({ intent: cmd.intent, rid: timingMeta.rid, cache: timingMeta.cache, status: timingMeta.status,
+          route_ms: route_ms, fetch_ms: timingMeta.fetch_ms, parse_ms: timingMeta.parse_ms,
+          render_ms: render_ms, to_speech_ms: to_speech_ms, results: 0 });
+        speak("I couldn't find " + cmd.businessName + " on the loop yet.");
         return;
       }
       var top = results[0];
@@ -746,21 +825,34 @@
       Bus.showResults(results);
       // both coords or no flight — a null lat coerces to the equator
       if (top.lng != null && top.lat != null) Bus.flyTo(top.lng, top.lat, 17); // old build: zoom 17
+      var renderStart = performance.now();
       showPanel(optionsHtml(results, "Matching options:"));
+      var render_ms = performance.now() - renderStart;
       wireOptionClicks(results);
       var line = top.name;
       if (top.avg_rating) line += " — " + top.avg_rating + " stars from " + top.review_count + " community reviews.";
       else line += " — no reviews yet. Maybe you'll leave the first one?";
       if (top.top_review) line += " One local said: " + top.top_review;
+      var to_speech_ms = performance.now() - turnStart;
+      recordTiming({ intent: cmd.intent, rid: timingMeta.rid, cache: timingMeta.cache, status: timingMeta.status,
+        route_ms: route_ms, fetch_ms: timingMeta.fetch_ms, parse_ms: timingMeta.parse_ms,
+        render_ms: render_ms, to_speech_ms: to_speech_ms, results: results.length });
       speak(line);
-    }).catch(function () {
+    }).catch(function (error) {
       if (seq !== S.reqSeq) return; // superseded — don't clobber the newer UI
+      var timingMeta = error.meta || { rid: null, cache: null, fetch_ms: 0, parse_ms: 0 };
       Bus.clearResults(); // stale marker next to "brain offline" reads as current
       // same offline treatment as runSearch — the dock must not look healthy
       S.face.setMood("error");
       setStatus("Looper brain offline");
       S.statusPinned = true; // keep the offline message up until the next turn
+      var renderStart = performance.now();
       showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.apiDown)) + "</p>");
+      var render_ms = performance.now() - renderStart;
+      var to_speech_ms = performance.now() - turnStart;
+      recordTiming({ intent: cmd.intent, rid: timingMeta.rid, cache: timingMeta.cache, status: "error",
+        route_ms: route_ms, fetch_ms: timingMeta.fetch_ms, parse_ms: timingMeta.parse_ms,
+        render_ms: render_ms, to_speech_ms: to_speech_ms, results: 0 });
       speak(pick(PERSONA.apiDown));
     });
   }
@@ -817,6 +909,7 @@
         S.lastRadiusM = cmd.radiusM;
         if (S.lastSearch) {
           var rerun = Object.assign({}, S.lastSearch, { radiusM: cmd.radiusM });
+          S.turnStart = null;
           runSearch(rerun);
         } else {
           speak("Got it — I'll search within " + (cmd.radiusM / 1000) + " kilometres.");
@@ -851,6 +944,7 @@
     S.reqSeq++; // newer command owns the UI — in-flight responses go stale
     S.statusPinned = false; // a new turn unpins "brain offline"
     setStatus("“" + text + "”");
+    S.turnStart = performance.now();
     var cmd = Router.route(text, { radiusM: S.lastRadiusM });
     execute(cmd);
     return cmd;
@@ -898,6 +992,7 @@
       cmd.searchTerm = Router.clean(q) || q;
     }
     if (flyCoords) cmd.coords = flyCoords; // explicit fly= always owns the camera + search center
+    S.turnStart = null;
     runSearch(cmd);
   }
 
@@ -916,6 +1011,7 @@
     S.onMicOpen = opts.onMicOpen || cfg.onMicOpen || null;
     S.onMicClose = opts.onMicClose || cfg.onMicClose || null;
     S.beforeSpeak = opts.beforeSpeak || cfg.beforeSpeak || null;
+    S.onTiming = opts.onTiming || cfg.onTiming || null;
 
     buildUi(opts.dock || cfg.dock || null);
     setupRecognition();
@@ -945,8 +1041,8 @@
         claimCta: opts.claimCta || cfg.claimCta || null,
         district: S.district,
         resolveBusiness: function (name) {
-          return api("/search", { q: name, limit: 1 }).then(function (d) {
-            return (d.results && d.results[0]) || null;
+          return api("/search", { q: name, limit: 1 }).then(function (response) {
+            return (response.data.results && response.data.results[0]) || null;
           });
         },
       });
@@ -969,6 +1065,7 @@
     stop: function () { stopSpeaking(); stopListening(); },
     startListening: startListening,
     stopListening: stopListening,
+    timings: function () { return S.timings.slice(); },
     get face() { return S.face; },
     bus: Bus,
     router: Router,
