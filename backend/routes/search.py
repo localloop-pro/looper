@@ -13,13 +13,18 @@ router = APIRouter(prefix="/api", tags=["search"])
 
 
 def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    """Calculate distance between two lat/lng points in km."""
+    """Calculate distance between two lat/lng points in km.
+
+    Clamps intermediate value to [0, 1] to avoid ValueError from floating-point
+    rounding at antipodal or near-antipodal coordinates (issue #123).
+    """
     R = 6371
     dlat = math.radians(lat2 - lat1)
     dlng = math.radians(lng2 - lng1)
     a = (math.sin(dlat / 2) ** 2 +
          math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
          math.sin(dlng / 2) ** 2)
+    a = max(0.0, min(1.0, a))
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
