@@ -368,28 +368,34 @@ def list_businesses(
     if category:
         query = query.filter(Business.category == category)
 
-    results = []
-    page = query.limit(limit).all()
-    stats = review_stats(db, [biz.id for biz in page])
-    for biz in page:
-        review_count = stats.get(biz.id, _NO_REVIEWS)[0]
-
+    # Eligibility and ranking must see every candidate before the page limit.
+    # Missing business coordinates retain the existing inclusion policy.
+    candidates = []
+    for biz in query.all():
         distance = None
-        if lat and lng and biz.lat and biz.lng:
+        if (lat is not None and lng is not None
+                and biz.lat is not None and biz.lng is not None):
             distance = haversine_km(lat, lng, biz.lat, biz.lng)
             if distance > radius_km:
                 continue
+        candidates.append((biz, distance))
 
-        results.append({
-            "id": biz.id,
-            "name": biz.name,
-            "category": biz.category,
-            "address": biz.address,
-            "lat": biz.lat,
-            "lng": biz.lng,
-            "review_count": review_count,
-            "distance_km": round(distance, 1) if distance else None,
-        })
-
-    results.sort(key=lambda r: (-r["review_count"], r["distance_km"] or 999))
+    stats = review_stats(db, [biz.id for biz, _ in candidates])
+    # ID makes equal review/distance ties deterministic, matching SQLite's
+    # historical insertion order. Unknown distance follows every known one.
+    candidates.sort(key=lambda item: (
+        -stats.get(item[0].id, _NO_REVIEWS)[0],
+        item[1] if item[1] is not None else math.inf,
+        item[0].id,
+    ))
+    results = [{
+        "id": biz.id,
+        "name": biz.name,
+        "category": biz.category,
+        "address": biz.address,
+        "lat": biz.lat,
+        "lng": biz.lng,
+        "review_count": stats.get(biz.id, _NO_REVIEWS)[0],
+        "distance_km": round(distance, 1) if distance is not None else None,
+    } for biz, distance in candidates[:limit]]
     return {"category": category, "count": len(results), "results": results}

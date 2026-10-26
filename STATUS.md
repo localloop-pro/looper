@@ -55,6 +55,16 @@ Bill runs these; agents never run them against production. From the repo root on
 
 CI recovery is merged (#96 / PR #100): an open `main is red` issue means the latest completed main-push CI run failed; its body/comments identify jobs, commit, merged PR and run. Fix the failure with a normal small PR and keep every gate intact. A fully green main run comments “green again at <sha>” and closes it automatically; cancelled/skipped runs cannot close it. [Run/verify steps](docs/MAIN-RED-RUNBOOK.md).
 
+## Issue #121 selection repair (2026-10-26)
+- Implemented eligible-candidate filtering and review/proximity ranking before
+  limiting `/api/businesses`; zero coordinates/distances and deterministic ID
+  ties covered by disposable SQLite regressions. Response schema unchanged.
+- Local validation: backend 780 passed / 1 skipped; web/Worker tests, Playwright
+  smoke, Electron typecheck/build and 57 tests passed. Independent static
+  adversarial review: PASS, no blockers. Exact commit evidence is in the PR; CI and
+  independent fresh-session QA remain separate gates before manager merge.
+- No production access or deployment. Next: PR QA/CI, then owner deployment.
+
 ## One thing being built
 - Open PRs checked on 2026-10-03: origin lock (#28 / PR #47), read performance (#30 / PR #35), plain-text search contract (#37 / PR #43), skills registry (#71 / PR #80), demo chip/deep-link fix (#70 / PR #81), read-only identity (PR #15), and Option A record + existing 422/no-write partnership guard (PR #25; HybridCard sender side done in hybridcard-v2 PR #257).
 - Other open work: owner-verified CSV import (#74), skills layout owner answers (#79), and first five skills candidates (#89).
