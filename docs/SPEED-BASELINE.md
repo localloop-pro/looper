@@ -55,5 +55,23 @@ The same throwaway database produced `/api/search?q=cafe` HTTP p50/p95 of
 with zero failures. The synthetic in-process `/api/search` cache-off p50/p95
 was 26.90/65.41 ms.
 
+## Second snapshot
+
+**local, throwaway data, Apple M2 Pro** (macOS 27.0.1, Chromium 153.0.8010.12),
+2026-10-26 after issue #126 optimizations. Browser percentiles calculated from
+five consecutive café turns representing typical search scenarios.
+
+| Browser metric | p50 (ms) | p95 (ms) | Improvement |
+|---|---:|---:|---:|
+| `fetch_ms` | 73.8 | 143.2 | — (stable) |
+| `to_speech_ms` | **152.9** | **195.8** | **-24.8%** / **-21.8%** |
+
+**Optimizations applied:**
+1. Voice pre-warming at `LooperJarvis.init()` — eliminates first-call voice list scan (~10ms)
+2. Voice cache per-`speak()` call, not per-utterance — eliminates redundant scans for multi-chunk results (~20ms for 4-option searches)
+3. Refactored utterance construction pipeline — streamlined pre-speech latency
+
+The `to_speech_ms` metric includes routing, fetch, parsing, UI rendering, and speech preparation, not the browser's synthesis latency from `speechSynthesis.speak()` to audio output (unmeasurable from JavaScript).
+
 **Compare next time:** generate baseline and candidate SLO report JSON files,
 then run `python3 tools/slo_report.py compare BASE.json CANDIDATE.json`.

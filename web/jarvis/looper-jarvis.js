@@ -258,6 +258,7 @@
   // and stale callbacks no-op instead of speaking old chunks or flipping
   // S.speaking under the new answer.
   var speakGen = 0;
+  var speechStartTime = null; // track when speak() was called for timing
 
   function speak(text, done) {
     if (!("speechSynthesis" in root)) { if (done) done(); return; }
@@ -268,21 +269,22 @@
     var chunks = chunkText(text);
     if (!chunks.length) { if (done) done(); return; }
     var gen = ++speakGen;
+    speechStartTime = performance.now(); // mark when speech begins
     S.speaking = true;
     S.face.startTalking();
     var i = 0;
-    function next() {
+    var voice = pickVoice();
+    function buildAndSpeak() {
       if (gen !== speakGen) return; // canceled: a newer speak()/stop owns the state
       if (!S.speaking || i >= chunks.length) { finish(); return; }
       var u = new SpeechSynthesisUtterance(chunks[i++]);
       u.lang = "en-AU";
       u.rate = 0.95;
-      var voice = pickVoice();
       // Neural/natural voices sound artifacted when pitch-shifted — only
       // brighten the plain synthesis engines.
       u.pitch = (voice && /natural|neural/i.test(voice.name)) ? 1.0 : 1.05;
       if (voice) u.voice = voice;
-      u.onend = next;
+      u.onend = buildAndSpeak;
       u.onerror = finish;
       root.speechSynthesis.speak(u);
     }
@@ -294,10 +296,11 @@
       settleUi(); // gen guard above means only the CURRENT turn settles the dock
       if (done) done();
     }
-    next();
+    buildAndSpeak();
   }
 
   var cachedVoice = null;
+  var voicePreWarmed = false;
   // Quality-ranked picker: en-AU still beats other English (the persona is
   // local), but within a tier the Natural/Premium/Google engines beat the
   // robotic compact/eSpeak ones — the single biggest audible upgrade on
@@ -330,13 +333,18 @@
     cachedVoice = best;
     return cachedVoice;
   }
+  function preWarmVoice() {
+    if (voicePreWarmed || !("speechSynthesis" in root)) return;
+    voicePreWarmed = true;
+    pickVoice();
+  }
   if ("speechSynthesis" in root) {
     // addEventListener so a host page's own voiceschanged handler coexists
     // instead of one clobbering the other.
     if (root.speechSynthesis.addEventListener) {
-      root.speechSynthesis.addEventListener("voiceschanged", function () { cachedVoice = null; });
+      root.speechSynthesis.addEventListener("voiceschanged", function () { cachedVoice = null; voicePreWarmed = false; });
     } else {
-      root.speechSynthesis.onvoiceschanged = function () { cachedVoice = null; };
+      root.speechSynthesis.onvoiceschanged = function () { cachedVoice = null; voicePreWarmed = false; };
     }
   }
 
@@ -1014,6 +1022,7 @@
     S.onTiming = opts.onTiming || cfg.onTiming || null;
 
     buildUi(opts.dock || cfg.dock || null);
+    preWarmVoice();
     setupRecognition();
 
     // Screen-lock/tab-switch kills the recognizer through the fail-closed
