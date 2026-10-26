@@ -6,6 +6,10 @@ review queries (N+1) before the batching fix, on the bench's fake dataset
 the same ordered ids AND the same fields (counts, ratings, distances, top
 review, card_url, totals, message).
 
+Issue #121 intentionally refreshed only /api/businesses cases: eligibility
+and global review/proximity ordering now precede the limit. Other routes
+retain the original snapshot.
+
 Re-record ONLY for an intentional behaviour change:
     LOOPER_UPDATE_SNAPSHOT=1 .venv/bin/python -m pytest tests/test_read_path_identity.py
 """

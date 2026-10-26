@@ -23,6 +23,19 @@ sequencing is unchanged.
 See [review evidence](evidence/kaspa-identity-review/README.md) and
 [current tracker](COMPLETION_STATUS.md).
 
+## Issue #121 maintenance checkpoint (2026-10-26)
+
+Authorized selection repair: reproduce distant-prefix/zero-coordinate failures
+in disposable SQLite; filter and rank eligible businesses before limiting;
+retain batched public-review stats, active/category gates and public schema.
+Implementation and focused regressions complete; full repository validation
+and PR review are recorded in the #121 PR. Deterministic ID ties and unknown
+coordinate policy: [decision](../.SEED/decisions/121-businesses-selection.md).
+Next: independent QA and CI on the PR commit; owner deployment remains gated.
+Existing feature sequencing is unchanged. Featured spec/todo/done files are
+absent in this repository; use this plan and STATUS.md rather than inventing
+parallel trackers.
+
 ## 1. Executive Summary
 
 Bill owns three working systems and two large Facebook communities:

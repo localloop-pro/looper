@@ -72,3 +72,18 @@ test('other success shapes remain available and network/JSON errors are fixed', 
     assert.doesNotMatch(JSON.stringify(result), /private/);
   }
 });
+
+test('business list preserves synthetic selected page, count and zero distance', async () => {
+  const selected = [
+    { id: 52, name: 'Reviewed farther', category: 'café', review_count: 3, distance_km: 1.2 },
+    { id: 51, name: 'Coincident', category: 'café', review_count: 0, distance_km: 0 },
+  ];
+  const api = client({ fetchImpl: async () => new Response(JSON.stringify({
+    category: 'café', count: selected.length, results: selected,
+  })) });
+  const reply = await api.businesses({ category: 'café', limit: 2 });
+  assert.equal(reply.ok, true);
+  assert.equal(reply.count, 2);
+  assert.deepEqual(reply.results, selected);
+  assert.ok(reply.artifact.content.indexOf('Reviewed farther') < reply.artifact.content.indexOf('Coincident'));
+});
