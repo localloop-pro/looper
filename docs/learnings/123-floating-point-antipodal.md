@@ -36,8 +36,20 @@ See `backend/tests/test_search_haversine_antipodal.py`:
 - Parameterized tests over 4 antipodal coordinate pairs
 - Verification that nearby, coincident, and very-close points remain accurate
 
+## Verification
+
+**Merged in PR #124** (commit 1fbb023) with full test coverage and verification:
+- Haversine function in `backend/routes/search.py:15-28` includes clamping
+- Clamping occurs before square root operations to prevent ValueError
+- 10 new regression tests added and passing
+- All 790 backend tests pass; no regressions
+- Real-world distances remain unchanged (Sydney↔London verified at ~16,993 km)
+- Zero distance (coincident points) remains accurate
+- Antipodal pairs return finite distances (~20,015 km), not ValueError
+
 ## Related issues
 
 - Issue #123: Clamp haversine rounding so valid antipodal business searches cannot return 500
+- PR #124: fix(search): Clamp haversine rounding to prevent ValueError on antipodal searches
 - PR #122: fix(search): select eligible businesses before result limit
 - PR #122 review comment: https://github.com/localloop-pro/looper/pull/122#discussion_r4373188904
