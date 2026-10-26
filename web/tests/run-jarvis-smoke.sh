@@ -30,3 +30,5 @@ if [ "$ready" != true ]; then
   exit 1
 fi
 node tests/jarvis-smoke.playwright.js
+
+WIDGET_BASE_URL=http://127.0.0.1:8088 node tests/widget-recovery.playwright.js

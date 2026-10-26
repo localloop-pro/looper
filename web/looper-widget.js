@@ -24,7 +24,7 @@
           <span>🏠 Hey Looper!</span>
           <button class="looper-close" id="looper-close">&times;</button>
         </div>
-        <div class="looper-chat" id="looper-chat">
+        <div class="looper-chat" id="looper-chat" role="log" aria-live="polite">
           <div class="looper-msg looper-bot">
             Hey! I'm Looper, your local connection guide. Ask me anything about businesses, services, or what's happening in the area. 🏠
           </div>
@@ -61,36 +61,62 @@
     chat.scrollTop = chat.scrollHeight;
   }
 
+  let searching = false;
+  const SEARCH_TIMEOUT_MS = 15000;
+
   // Send query to LOOPER API
   async function askLooper(query) {
+    if (searching) return;
+    searching = true;
     addMessage(query, true);
     input.value = '';
     input.disabled = true;
     send.disabled = true;
 
-    // Get user location if available
-    let lat, lng;
-    if (navigator.geolocation) {
-      try {
-        const pos = await new Promise((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
-        );
-        lat = pos.coords.latitude;
-        lng = pos.coords.longitude;
-      } catch (e) { /* no location */ }
-    }
+    const controller = new AbortController();
+    let timer;
+    // Race the entire operation, including body parsing. Abort alone cannot
+    // guarantee settlement for every host fetch implementation.
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error('Search timed out'));
+        controller.abort();
+      }, SEARCH_TIMEOUT_MS);
+    });
 
     try {
-      const params = new URLSearchParams({ q: query, limit: '5' });
-      if (lat) params.set('lat', lat);
-      if (lng) params.set('lng', lng);
-
-      const resp = await fetch(`${API_BASE}/search?${params}`);
-      const data = await resp.json();
+      const data = await Promise.race([deadline, (async () => {
+        let lat, lng;
+        if (navigator.geolocation) {
+          try {
+            const pos = await new Promise((resolve, reject) =>
+              navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+            );
+            lat = pos.coords.latitude;
+            lng = pos.coords.longitude;
+          } catch (e) { /* no location */ }
+        }
+        // A late location callback must not start a request after timeout.
+        if (controller.signal.aborted) throw new Error('Search cancelled');
+        const params = new URLSearchParams({ q: query, limit: '5' });
+        if (lat) params.set('lat', lat);
+        if (lng) params.set('lng', lng);
+        const resp = await fetch(`${API_BASE}/search?${params}`, { signal: controller.signal });
+        if (!resp.ok) throw new Error('Search unavailable');
+        const payload = await resp.json();
+        if (!payload || !Array.isArray(payload.results) ||
+            (payload.message != null && typeof payload.message !== 'string') ||
+            payload.results.some(r => !r || typeof r.name !== 'string' ||
+              typeof r.category !== 'string' ||
+              (r.avg_rating != null && (!Number.isFinite(r.avg_rating) || r.avg_rating < 0 || r.avg_rating > 5)))) {
+          throw new Error('Invalid search response');
+        }
+        return payload;
+      })()]);
 
       if (data.results && data.results.length > 0) {
         // Build response
-        let resultText = data.message + '\n\n';
+        let resultText = (data.message || '') + '\n\n';
         data.results.forEach((r, i) => {
           const stars = r.avg_rating ? '⭐'.repeat(Math.round(r.avg_rating)) : 'No ratings yet';
           const dist = r.distance_km ? ` (${r.distance_km}km)` : '';
@@ -105,11 +131,13 @@
       }
     } catch (err) {
       addMessage("Sorry, I'm having trouble connecting right now. Please try again!");
+    } finally {
+      clearTimeout(timer);
+      searching = false;
+      input.disabled = false;
+      send.disabled = false;
+      if (panel.style.display !== 'none') input.focus();
     }
-
-    input.disabled = false;
-    send.disabled = false;
-    input.focus();
   }
 
   // Send on click
