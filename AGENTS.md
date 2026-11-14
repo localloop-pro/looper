@@ -44,6 +44,10 @@ order that plan defines.
    customer data, anything that sends SMS/messages to real people.
 6. **Keep it runnable for a beginner:** the owner (Bill) is a basic coder.
    Every feature must end with simple copy-paste run/verify steps.
+7. **Stay in scope:** keep changes to what the task needs. Do not add
+   unrequested features, files, refactors or docs. Put suggestions at the end
+   of your report. Tests, notes and tracking updates that this file requires
+   are part of the task, not extras.
 
 ## Quality gates before any commit
 
