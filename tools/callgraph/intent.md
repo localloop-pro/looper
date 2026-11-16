@@ -113,7 +113,7 @@ Production state is tracked only in `STATUS.md`; treat anything marked "unverifi
 
 ### 1.6 How to read the generated sections
 
-- §2 sizes each subsystem. §3 lists every way execution enters the code: HTTP routes, desktop tools, IPC and event channels.
+- §2 sizes each subsystem. §3 lists every way execution enters the code: HTTP routes, desktop tools, the Cloudflare Worker handler, IPC and event channels.
 - §4 shows which modules call which (Mermaid). §5 is the complete function-level graph: for every function, what it calls, what it references, what it uses, its external calls and who calls it.
 - §6 is the configuration surface (every environment variable and who reads it). §7 lists the tests you must keep green.
 - Use §5 to find the blast radius of a change: start at the function, follow `← by` upward to the entry point in §3 and `→ calls` downward to the data layer.

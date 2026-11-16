@@ -4,7 +4,7 @@ Function-level call graph for Python sources (ast based, no execution)."""
 import ast, json, os, re, sys
 
 ROOT, DIRS, OUT = sys.argv[1], sys.argv[2].split(","), sys.argv[3]
-EXCLUDE = {".venv", "venv", "node_modules", "__pycache__", "tests", "test", "dist", "build", "callgraph"}
+EXCLUDE = {".venv", "venv", "node_modules", "__pycache__", "tests", "test", "dist", "build"}
 TRIVIAL = set("""len str int float bool dict list set tuple isinstance issubclass print range enumerate zip
 map filter sorted reversed min max sum abs round any all getattr setattr hasattr repr format type id hash iter
 next open super vars object bytes bytearray frozenset slice divmod pow chr ord bin hex oct callable staticmethod
@@ -22,11 +22,11 @@ def files():
         for dp, dns, fns in os.walk(base):
             dns[:] = sorted(x for x in dns if x not in EXCLUDE and not x.startswith("."))
             for fn in sorted(fns):
-                if fn.endswith(".py"):
+                if fn.endswith(".py") and not fn.startswith("test_") and fn != "conftest.py":
                     yield os.path.join(dp, fn)
 
 def modname(path):
-    rel = os.path.relpath(path, ROOT)[:-3].replace(os.sep, ".")
+    rel = os.path.relpath(path, ROOT)[:-3].replace(os.sep, "/").replace("/", ".").lstrip(".")
     if rel.endswith(".__init__"):
         rel = rel[:-9]
     return rel
@@ -91,7 +91,7 @@ for p in files():
     m = modname(p)
     is_pkg = p.endswith("__init__.py")
     pkg = m if is_pkg else (m.rsplit(".", 1)[0] if "." in m else "")
-    info = {"path": os.path.relpath(p, ROOT), "imports": {}, "functions": {}, "classes": {},
+    info = {"path": os.path.relpath(p, ROOT).replace(os.sep, "/"), "imports": {}, "functions": {}, "classes": {},
             "env": [], "lines": src.count("\n") + 1, "doc": (ast.get_docstring(tree) or "").strip().split("\n")[0][:160]}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -177,6 +177,7 @@ def canon_mod(m, modp):
 class Collector(ast.NodeVisitor):
     def __init__(self):
         self.calls, self.refs, self.env, self.includes = [], [], [], []
+        self.env_params = []          # parameter names passed to os.getenv / os.environ.get
         self.router_prefix = None
     def visit_FunctionDef(self, node):   # nested defs are their own entries
         for d in node.decorator_list:
@@ -189,14 +190,19 @@ class Collector(ast.NodeVisitor):
     def visit_Call(self, node):
         name = dotted(node.func)
         arg0 = const_str(node.args[0]) if node.args else None
-        if name and name.split(".")[-1] in ("getenv", "get") and name.split(".")[0] == "os" and arg0:
-            self.env.append(arg0)
+        if name in ("os.getenv", "os.environ.get") and node.args:
+            if arg0:
+                self.env.append(arg0)
+            elif isinstance(node.args[0], ast.Name):
+                self.env_params.append(node.args[0].id)
         if name and name.endswith("APIRouter"):
             self.router_prefix = next((const_str(k.value) for k in node.keywords if k.arg == "prefix"), None)
         if name and name.endswith("include_router") and node.args:
             prefix = next((const_str(k.value) for k in node.keywords if k.arg == "prefix"), None)
             self.includes.append((dotted(node.args[0]), prefix))
-        self.calls.append((name, arg0, node.lineno))
+        consts = [const_str(a) for a in node.args]
+        kwconsts = {k.arg: const_str(k.value) for k in node.keywords if k.arg}
+        self.calls.append((name, arg0, node.lineno, consts, kwconsts))
         for a in list(node.args) + [k.value for k in node.keywords]:
             if isinstance(a, ast.Starred):
                 a = a.value
@@ -217,13 +223,19 @@ for m, info in mods.items():
         node = nodes[(m, q)]
         c = Collector()
         body = node.body if hasattr(node, "body") else []
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for d in node.args.defaults + [d for d in node.args.kw_defaults if d is not None]:
+                c.visit(d)
         for st in body:
             c.visit(st)
         internal, external, uses, seen = [], [], [], set()
-        for name, arg0, ln in c.calls:
+        f["_argcalls"] = []
+        for name, arg0, ln, consts, kwconsts in c.calls:
             if not name:
                 continue
             r = resolve(m, info, name, f["class"], q)
+            if r and r in defs and (any(consts) or any(kwconsts.values())):
+                f["_argcalls"].append((r, consts, kwconsts))
             if r:
                 if r not in seen:
                     seen.add(r)
@@ -251,10 +263,30 @@ for m, info in mods.items():
         f["called_by"] = []
         if c.env:
             info["env"] = sorted(set(info["env"]) | set(c.env))
+        if c.env_params:
+            f["env_params"] = c.env_params
         if c.includes:
             f["includes"] = [{"router": r, "prefix": p} for r, p in c.includes]
         if c.router_prefix is not None:
             info["route_prefix"] = c.router_prefix
+
+# env names that reach os.getenv through a helper parameter, e.g. _env_int("LOOPER_X", 0)
+for m, info in mods.items():
+    for q, f in info["functions"].items():
+        for tgt, consts, kwconsts in f.pop("_argcalls", []):
+            tm, _, tq = tgt.partition(":")
+            callee = mods.get(tm, {}).get("functions", {}).get(tq)
+            if not callee or not callee.get("env_params"):
+                continue
+            for pname in callee["env_params"]:
+                if pname not in callee["args"]:
+                    continue
+                i = callee["args"].index(pname)
+                val = consts[i] if i < len(consts) else None
+                val = val or kwconsts.get(pname)
+                if val:
+                    for mod in {m, tm}:
+                        mods[mod]["env"] = sorted(set(mods[mod]["env"]) | {val})
 
 # callers
 for m, info in mods.items():

@@ -60,10 +60,10 @@ def main():
         raise BuildError("node was not found. Install Node 20+ from https://nodejs.org and run this again.")
     tmp = tempfile.mkdtemp(prefix="looper-callgraph-")
     pyj, jsj = os.path.join(tmp, "py.json"), os.path.join(tmp, "js.json")
-    run([sys.executable, "-I", os.path.join(HERE, "pycg.py"), ROOT, "backend,brain,tools,scripts,training", pyj])
+    run([sys.executable, "-I", os.path.join(HERE, "pycg.py"), ROOT, "backend,brain,tools,scripts,training,.github/scripts", pyj])
     env = dict(os.environ)
     env["NODE_PATH"] = typescript_modules()
-    run(["node", os.path.join(HERE, "jscg.js"), ROOT, "web,workers,looper-bot", jsj], env=env)
+    run(["node", os.path.join(HERE, "jscg.js"), ROOT, "web,workers,looper-bot,tools", jsj], env=env)
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip() or "unknown"
     today = datetime.date.today().isoformat()
     run([sys.executable, "-I", os.path.join(HERE, "render.py"), ROOT, pyj, jsj, os.path.join(HERE, "intent.md"), OUT, sha, today])

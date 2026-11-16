@@ -1,6 +1,6 @@
 # Looper — intent prompt with the complete function call graph
 
-> Generated 2026-11-16 from commit `bb30850` by static analysis of the source (nothing was executed).
+> Generated 2026-11-16 from commit `ac640ae` by static analysis of the source (nothing was executed).
 > Regenerate after code changes with `python3 tools/callgraph/build.py` (see §8).
 > **How to use:** paste this whole file into the agent you are briefing. §1 and §8 are the
 > hand-written intent; §2–§7 are generated from the code and are the ground truth for "who calls what".
@@ -113,7 +113,7 @@ Production state is tracked only in `STATUS.md`; treat anything marked "unverifi
 
 ### 1.6 How to read the generated sections
 
-- §2 sizes each subsystem. §3 lists every way execution enters the code: HTTP routes, desktop tools, IPC and event channels.
+- §2 sizes each subsystem. §3 lists every way execution enters the code: HTTP routes, desktop tools, the Cloudflare Worker handler, IPC and event channels.
 - §4 shows which modules call which (Mermaid). §5 is the complete function-level graph: for every function, what it calls, what it references, what it uses, its external calls and who calls it.
 - §6 is the configuration surface (every environment variable and who reads it). §7 lists the tests you must keep green.
 - Use §5 to find the blast radius of a change: start at the function, follow `← by` upward to the entry point in §3 and `→ calls` downward to the data layer.
@@ -124,11 +124,12 @@ Production state is tracked only in `STATUS.md`; treat anything marked "unverifi
 |---|---:|---:|---:|---|
 | `backend` | 29 | 156 | 4405 | Backend API (FastAPI + SQLite) |
 | `brain` | 5 | 25 | 753 | TypeDB brain sync (additive knowledge graph) |
-| `tools` | 9 | 65 | 1542 | Owner tools, scripts, training export |
+| `tools` | 15 | 125 | 2876 | Owner tools, scripts, training export, this generator |
 | `web` | 6 | 121 | 2539 | Browser widget + Jarvis voice scripts (vanilla JS, served under /web) |
 | `workers` | 1 | 4 | 78 | Cloudflare Worker edge proxy (api.localloop.ai) |
 | `electron` | 6 | 148 | 2663 | Looper desktop bot: Electron main process (tool dispatcher) |
 | `renderer` | 6 | 95 | 1567 | Looper desktop bot: React renderer (OpenAI Realtime over WebRTC) |
+| `ci` | 1 | 5 | 96 | CI helper scripts (.github/scripts) |
 
 Tests are excluded from the graphs below; see §7 for the inventory.
 
@@ -167,7 +168,17 @@ Middleware, in the order a request passes through it (Starlette runs the last-ad
 - **Require a confirmation dialog (8):** `computer_open_app`, `computer_type_text`, `computer_press_key`, `computer_click`, `computer_scroll`, `screen_snapshot`, `ui_inspect`, `records_delete`
 - Dispatch: renderer `LooperRealtimeClient.executeFunctionCalls` → preload `window.looper.executeTool` → IPC `tools:execute` → `main.cjs` handler → `tool-policy.classifyTool/confirmToolCall` → per-tool function (see §5 electron).
 
-### 3.3 IPC, bus and DOM event channels (generated from call sites)
+### 3.3 Edge entry points (Cloudflare Worker)
+
+Requests to `api.localloop.ai/*` enter here before they reach the backend routes in §3.1.
+
+| Handler | Event | Direct internal callees |
+|---|---|---|
+| `workers/looper-api-proxy/src/index.js:default.fetch` (L43) | `fetch` | `ensureRequestId`, `jsonError` |
+
+The handler proxies the request to the Coolify origin set by `ORIGIN` in `workers/looper-api-proxy/wrangler.toml`, which serves the routes in §3.1.
+
+### 3.4 IPC, bus and DOM event channels (generated from call sites)
 
 | Channel / event | Producers (emit, invoke, send, dispatch) | Consumers (handle, on, addEventListener) |
 |---|---|---|
@@ -178,7 +189,6 @@ Middleware, in the order a request passes through it (Starlette runs the last-ad
 | `realtime:create-token` | `looper-bot/electron/preload.cjs:window.looper.createRealtimeToken` | `looper-bot/electron/main.cjs:ipcMain.handle("realtime:create-token")` |
 | `tools:execute` | `looper-bot/electron/preload.cjs:window.looper.executeTool` | `looper-bot/electron/main.cjs:ipcMain.handle("tools:execute")` |
 | `tools:list` | `looper-bot/electron/preload.cjs:window.looper.getToolSpecs` | `looper-bot/electron/main.cjs:ipcMain.handle("tools:list")` |
-| `voiceschanged` | — | `web/jarvis/looper-jarvis.js:<module>` |
 | `will-navigate` | — | `looper-bot/electron/main.cjs:createWindow` |
 | `will-redirect` | — | `looper-bot/electron/main.cjs:createWindow` |
 | `window-all-closed` | — | `looper-bot/electron/main.cjs:app.on("window-all-closed")` |
@@ -230,27 +240,27 @@ flowchart LR
   m_backend_main -->|1| m_backend_services_cors_policy
   m_backend_main -->|1| m_backend_services_edge_boundary
   m_backend_main -->|1| m_backend_services_origin_guard
-  m_backend_routes_discover -->|12| m_backend_models
+  m_backend_routes_discover -->|13| m_backend_models
   m_backend_routes_discover -->|10| m_backend_routes_search
   m_backend_routes_discover -->|2| m_backend_schemas
   m_backend_routes_discover -->|2| m_backend_services_telemetry
   m_backend_routes_identity -->|4| m_backend_services_kaspa_identity
-  m_backend_routes_ingest -->|13| m_backend_models
+  m_backend_routes_ingest -->|16| m_backend_models
   m_backend_routes_ingest -->|2| m_backend_schemas
   m_backend_routes_ingest -->|1| m_backend_services_bridge_hmac
   m_backend_routes_ingest -->|4| m_backend_services_correlation
   m_backend_routes_ingest -->|1| m_brain_sync
-  m_backend_routes_map -->|3| m_backend_models
+  m_backend_routes_map -->|6| m_backend_models
   m_backend_routes_map -->|2| m_backend_routes_search
   m_backend_routes_map -->|2| m_backend_schemas
   m_backend_routes_map -->|1| m_backend_services_write_guard
-  m_backend_routes_reviews -->|12| m_backend_models
+  m_backend_routes_reviews -->|14| m_backend_models
   m_backend_routes_reviews -->|1| m_backend_services_write_guard
-  m_backend_routes_search -->|23| m_backend_models
+  m_backend_routes_search -->|25| m_backend_models
   m_backend_routes_search -->|3| m_backend_schemas
   m_backend_routes_search -->|2| m_backend_services_query_terms
   m_backend_routes_search -->|1| m_backend_services_telemetry
-  m_backend_routes_users -->|2| m_backend_models
+  m_backend_routes_users -->|3| m_backend_models
   m_backend_routes_users -->|2| m_backend_schemas
   m_backend_routes_users -->|1| m_backend_services_write_guard
   m_backend_scripts_import_businesses -->|5| m_backend_models
@@ -272,7 +282,7 @@ flowchart LR
   m_brain_full_sync -->|1| m_brain_sync
 ```
 
-### 4.3 Owner tools, scripts, training export
+### 4.3 Owner tools, scripts, training export, this generator
 
 ```mermaid
 flowchart LR
@@ -282,15 +292,22 @@ flowchart LR
   m_scripts_loop_check["scripts.loop_check"]
   m_tools_bench_read_paths["tools.bench_read_paths"]
   m_tools_bench_search["tools.bench_search"]
+  m_tools_callgraph_build["tools.callgraph.build"]
+  m_tools_callgraph_pycg["tools.callgraph.pycg"]
+  m_tools_callgraph_render["tools.callgraph.render"]
   m_tools_check_skill_citations["tools.check_skill_citations"]
   m_tools_e6_nonprod_check["tools.e6_nonprod_check"]
   m_tools_news_audio_worker["tools.news_audio_worker"]
   m_tools_skills_index["tools.skills_index"]
   m_tools_slo_report["tools.slo_report"]
+  m_tools_callgraph_jscg_js["tools/callgraph/jscg.js"]
+  m_tools_jarvis_sync_check_js["tools/jarvis-sync-check.js"]
+  m_tools_measure_speech_timing_js["tools/measure-speech-timing.js"]
   m_training_export["training.export"]
   m_tools_bench_search -->|1| m_backend_main
   m_tools_bench_search -->|8| m_backend_models
   m_tools_bench_search -->|1| m_backend_services_edge_boundary
+  m_tools_jarvis_sync_check_js -->|2| m_tools_callgraph_jscg_js
   m_training_export -->|5| m_backend_models
 ```
 
@@ -298,12 +315,14 @@ flowchart LR
 
 ```mermaid
 flowchart LR
+  m_tools_measure_speech_timing_js["tools/measure-speech-timing.js (other subsystem)"]
   m_web_jarvis_looper_face_js["web/jarvis/looper-face.js"]
   m_web_jarvis_looper_jarvis_js["web/jarvis/looper-jarvis.js"]
   m_web_jarvis_looper_map_bus_js["web/jarvis/looper-map-bus.js"]
   m_web_jarvis_voice_command_router_js["web/jarvis/voice-command-router.js"]
   m_web_kaspa_identity_js["web/kaspa-identity.js"]
   m_web_looper_widget_js["web/looper-widget.js"]
+  m_web_jarvis_looper_jarvis_js -->|4| m_tools_measure_speech_timing_js
   m_web_jarvis_looper_jarvis_js -->|14| m_web_jarvis_looper_face_js
   m_web_jarvis_looper_jarvis_js -->|17| m_web_jarvis_looper_map_bus_js
   m_web_jarvis_looper_jarvis_js -->|5| m_web_jarvis_voice_command_router_js
@@ -353,6 +372,14 @@ flowchart LR
   m_looper_bot_src_components_ArtifactPanel_tsx -->|1| m_looper_bot_src_components_markdown_inline_tsx
   m_looper_bot_src_lib_realtime_ts -->|4| m_looper_bot_electron_preload_cjs
   m_looper_bot_src_main_tsx -->|1| m_looper_bot_src_App_tsx
+```
+
+### 4.8 CI helper scripts (.github/scripts)
+
+```mermaid
+flowchart LR
+  m_github_scripts_main_red["github.scripts.main_red"]
+  %% no cross-module calls inside this subsystem
 ```
 
 ## 5. Function-level call graph (generated, complete for non-test code)
@@ -405,7 +432,7 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - ← by: `backend.main:<module>`, `backend.seed:main`, `backend.services.facebook_pipeline:run_pipeline`
 - `get_db()` L185
   - → ext: `SessionLocal`, `db.close`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `backend.routes.discover:discover`, `backend.routes.ingest:ingest_hybridcard_deal`, `backend.routes.ingest:ingest_hybridcard_card`, `backend.routes.ingest:ingest_status`, `backend.routes.map:add_pin`, `backend.routes.map:get_pins`, `backend.routes.map:tourist_info`, `backend.routes.reviews:submit_review`, `backend.routes.reviews:get_reviews`, `backend.routes.search:search_businesses`, `backend.routes.search:list_businesses`, `backend.routes.users:onboard_user`
 - `<module>` (top-level code) L1
   - → ext: `os.getenv("LOOPER_DB_URL")`, `create_engine`, `sessionmaker`, `declarative_base`, `event.listens_for`
 
@@ -452,9 +479,9 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - ← by: `discover`
 - `discover(suburb, lat, lng, radius_km, category, limit, intent, session, db)` L256 · **GET /api/discover**
   - → calls: `_graph_discover`, `backend.models:fold_accents`, `backend.routes.search:haversine_km`, `backend.routes.search:review_stats`, `backend.routes.search:top_reviews`, `backend.routes.search:card_urls`, `backend.schemas:SearchResult`, `backend.services.telemetry:log_query`
-  - → refs: `backend.models:Business`
+  - → refs: `backend.models:get_db`, `backend.models:Business`
   - → uses: `backend.models:Business.is_active.is_not`, `backend.models:Business.category`, `backend.models:Business.suburb`, `backend.routes.search:_NO_REVIEWS`
-  - → ext: `os.getenv().lower`, `os.getenv("TYPEDB_ENABLED")`, `db.query().filter`, `db.query`, `query.filter`, `func.fold_accents().like`, `func.fold_accents`, `query.all`, `candidates.append`, `stats.get`, `scored.append`, `scored.sort`, `r[].timestamp`, `results.append`, `tops.get`, `urls.get`
+  - → ext: `Query`, `Depends`, `os.getenv().lower`, `os.getenv("TYPEDB_ENABLED")`, `db.query().filter`, `db.query`, `query.filter`, `func.fold_accents().like`, `func.fold_accents`, `query.all`, `candidates.append`, `stats.get`, `scored.append`, `scored.sort`, `r[].timestamp`, `results.append`, `tops.get`, `urls.get`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `<module>` (top-level code) L1
   - → ext: `APIRouter`, `router.get("/discover")`
@@ -509,20 +536,20 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - ← by: `ingest_hybridcard_deal`, `ingest_hybridcard_card`
 - `ingest_hybridcard_deal(request, background_tasks, db)` L197 · async · **POST /api/ingest/hybridcard-deal**
   - → calls: `_verified_raw_body`, `_misrouted_event_type`, `backend.services.correlation:emit_bridge`, `_parse_sender_ts`, `_trace_result`, `_upsert_business`, `backend.models:Deal`, `_record_event_and_commit`
-  - → refs: `backend.models:BridgeEvent`, `_brain_sync`
+  - → refs: `backend.models:get_db`, `backend.models:BridgeEvent`, `_brain_sync`
   - → uses: `backend.schemas:HybridCardDealPayload.model_validate_json`
-  - → ext: `HTTPException`, `db.query().filter().first`, `db.query().filter`, `db.query`, `db.add`, `result.get("duplicate")`, `background_tasks.add_task`
+  - → ext: `Depends`, `HTTPException`, `db.query().filter().first`, `db.query().filter`, `db.query`, `db.add`, `result.get("duplicate")`, `background_tasks.add_task`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `ingest_hybridcard_card(request, background_tasks, db)` L271 · async · **POST /api/ingest/hybridcard-card**
   - → calls: `_verified_raw_body`, `backend.services.correlation:emit_bridge`, `_parse_sender_ts`, `_trace_result`, `_upsert_business`, `_record_event_and_commit`
-  - → refs: `backend.models:BridgeEvent`, `_brain_sync`
+  - → refs: `backend.models:get_db`, `backend.models:BridgeEvent`, `_brain_sync`
   - → uses: `backend.schemas:HybridCardCardPayload.model_validate_json`
-  - → ext: `HTTPException`, `db.query().filter().first`, `db.query().filter`, `db.query`, `result.get("duplicate")`, `background_tasks.add_task`
+  - → ext: `Depends`, `HTTPException`, `db.query().filter().first`, `db.query().filter`, `db.query`, `result.get("duplicate")`, `background_tasks.add_task`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `ingest_status(db)` L317 · **GET /api/ingest/status**
-  - → refs: `backend.models:BridgeEvent`
+  - → refs: `backend.models:get_db`, `backend.models:BridgeEvent`
   - → uses: `backend.models:BridgeEvent.received_at.desc`, `backend.models:Business.hybrid_card_id.is_not`, `backend.models:BridgeEvent.status`, `backend.models:BridgeEvent.id`, `backend.models:BridgeEvent.event_type`, `backend.models:Deal.id`, `backend.models:Business.id`
-  - → ext: `db.query().order_by().limit().all`, `db.query().order_by().limit`, `db.query().order_by`, `db.query`, `db.query().group_by().all`, `db.query().group_by`, `sa_func.count`, `db.query().filter().scalar`, `db.query().filter`, `by_status.values`, `e.received_at.isoformat`
+  - → ext: `Depends`, `db.query().order_by().limit().all`, `db.query().order_by().limit`, `db.query().order_by`, `db.query`, `db.query().group_by().all`, `db.query().group_by`, `sa_func.count`, `db.query().filter().scalar`, `db.query().filter`, `by_status.values`, `e.received_at.isoformat`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `<module>` (top-level code) L1
   - → ext: `APIRouter`, `router.post("/hybridcard-deal")`, `router.post("/hybridcard-card")`, `router.get("/status")`
@@ -533,17 +560,18 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 
 - `add_pin(req, db)` L14 · **POST /api/pins**
   - → calls: `backend.models:MapPin`, `backend.schemas:MapPinResponse`
-  - → ext: `datetime.now`, `timedelta`, `db.add`, `db.commit`, `db.refresh`
+  - → refs: `backend.models:get_db`
+  - → ext: `Depends`, `datetime.now`, `timedelta`, `db.add`, `db.commit`, `db.refresh`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `get_pins(lat, lng, radius_km, pin_type, db)` L45 · **GET /api/pins**
   - → calls: `backend.routes.search:haversine_km`
-  - → refs: `backend.models:MapPin`
-  - → ext: `db.query().filter`, `db.query`, `query.filter`, `datetime.now`, `query.all`, `results.append`, `pin.created_at.isoformat`, `results.sort`
+  - → refs: `backend.models:get_db`, `backend.models:MapPin`
+  - → ext: `Query`, `Depends`, `db.query().filter`, `db.query`, `query.filter`, `datetime.now`, `query.all`, `results.append`, `pin.created_at.isoformat`, `results.sort`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `tourist_info(lat, lng, db)` L95 · **GET /api/tourist-info**
   - → calls: `backend.routes.search:haversine_km`
-  - → refs: `backend.models:MapPin`
-  - → ext: `db.query().filter().all`, `db.query().filter`, `db.query`, `attractions.append`
+  - → refs: `backend.models:get_db`, `backend.models:MapPin`
+  - → ext: `Depends`, `db.query().filter().all`, `db.query().filter`, `db.query`, `attractions.append`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `<module>` (top-level code) L1
   - → refs: `backend.schemas:MapPinResponse`, `backend.services.write_guard:require_public_writes`
@@ -562,14 +590,14 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 
 - `submit_review(req, db)` L13 · **POST /api/reviews**
   - → calls: `backend.models:Review`
-  - → refs: `backend.models:Business`, `backend.models:User`
+  - → refs: `backend.models:get_db`, `backend.models:Business`, `backend.models:User`
   - → uses: `backend.models:Review.rating`, `backend.models:Review.id`
-  - → ext: `db.query().filter().first`, `db.query().filter`, `db.query`, `HTTPException`, `db.add`, `db.commit`, `db.refresh`, `db.query().filter().scalar`, `func.avg`, `func.count`
+  - → ext: `Depends`, `db.query().filter().first`, `db.query().filter`, `db.query`, `HTTPException`, `db.add`, `db.commit`, `db.refresh`, `db.query().filter().scalar`, `func.avg`, `func.count`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `get_reviews(business_id, limit, db)` L64 · **GET /api/reviews/{business_id}**
-  - → refs: `backend.models:Review`, `backend.models:User`
+  - → refs: `backend.models:get_db`, `backend.models:Review`, `backend.models:User`
   - → uses: `backend.models:Review.created_at.desc`, `backend.models:User.id.in_`, `backend.models:Business.id`, `backend.models:Review.rating`, `backend.models:Review.id`
-  - → ext: `db.query().filter().first`, `db.query().filter`, `db.query`, `HTTPException`, `db.query().filter().order_by().limit().all`, `db.query().filter().order_by().limit`, `db.query().filter().order_by`, `db.query().filter().scalar`, `func.avg`, `func.count`, `db.query().filter().all`, `users.get`, `r.created_at.isoformat`
+  - → ext: `Query`, `Depends`, `db.query().filter().first`, `db.query().filter`, `db.query`, `HTTPException`, `db.query().filter().order_by().limit().all`, `db.query().filter().order_by().limit`, `db.query().filter().order_by`, `db.query().filter().scalar`, `func.avg`, `func.count`, `db.query().filter().all`, `users.get`, `r.created_at.isoformat`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `<module>` (top-level code) L1
   - → refs: `backend.services.write_guard:require_public_writes`
@@ -611,9 +639,9 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - ← by: `_message`
 - `search_businesses(q, lat, lng, radius_km, category, limit, intent, session, db)` L165 · **GET /api/search**
   - → calls: `backend.models:fold_accents`, `backend.services.query_terms:expand`, `backend.services.query_terms:group_matches`, `haversine_km`, `search_businesses.within`, `review_stats`, `top_reviews`, `card_urls`, `backend.schemas:SearchResult`, `_message`, `backend.services.telemetry:log_query`, `backend.schemas:SearchResponse`
-  - → refs: `backend.models:Business`
+  - → refs: `backend.models:get_db`, `backend.models:Business`
   - → uses: `backend.models:Business.is_active.is_not`, `backend.models:Business.name`, `backend.models:Business.category`, `backend.models:Business.suburb`, `backend.models:Business.description`
-  - → ext: `db.query().filter`, `db.query`, `query.filter`, `t.strip`, `q.split`, `conditions.append`, `func.fold_accents().like`, `func.fold_accents`, `or_`, `query.all`, `fields.values`, `candidates.append`, `stats.get`, `results.append`, `results.sort`, `ranked.append`, `tops.get`, `urls.get`
+  - → ext: `Query`, `Depends`, `db.query().filter`, `db.query`, `query.filter`, `t.strip`, `q.split`, `conditions.append`, `func.fold_accents().like`, `func.fold_accents`, `or_`, `query.all`, `fields.values`, `candidates.append`, `stats.get`, `results.append`, `results.sort`, `ranked.append`, `tops.get`, `urls.get`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `search_businesses.within(km)` L246
   - ← by: `search_businesses`
@@ -622,9 +650,9 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - ← by: `search_businesses`
 - `list_businesses(category, lat, lng, radius_km, limit, db)` L363 · **GET /api/businesses**
   - → calls: `haversine_km`, `review_stats`
-  - → refs: `backend.models:Business`
+  - → refs: `backend.models:get_db`, `backend.models:Business`
   - → uses: `backend.models:Business.is_active.is_not`
-  - → ext: `db.query().filter`, `db.query`, `query.filter`, `query.all`, `candidates.append`, `candidates.sort`, `stats.get`
+  - → ext: `Query`, `Depends`, `db.query().filter`, `db.query`, `query.filter`, `query.all`, `candidates.append`, `candidates.sort`, `stats.get`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `<module>` (top-level code) L1
   - → calls: `_read_fallback_km`
@@ -641,7 +669,8 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - ← by: `onboard_user`
 - `onboard_user(req, db)` L23 · **POST /api/onboard**
   - → calls: `generate_join_code`, `backend.models:User`, `backend.schemas:OnboardUserResponse`
-  - → ext: `db.query().filter().first`, `db.query().filter`, `db.query`, `HTTPException`, `db.add`, `db.commit`, `db.refresh`
+  - → refs: `backend.models:get_db`
+  - → ext: `Depends`, `db.query().filter().first`, `db.query().filter`, `db.query`, `HTTPException`, `db.add`, `db.commit`, `db.refresh`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `<module>` (top-level code) L1
   - → refs: `backend.schemas:OnboardUserResponse`, `backend.services.write_guard:require_public_writes`
@@ -843,7 +872,7 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 #### `backend.services.edge_boundary` — [backend/services/edge_boundary.py](backend/services/edge_boundary.py)
 
 - Purpose: Public read-path boundary (issue #8, Functions epic E4): request
-- Env: `LOOPER_CLIENT_IP_HEADER`, `TYPEDB_ENABLED`
+- Env: `LOOPER_CLIENT_IP_HEADER`, `LOOPER_READ_CACHE_MAX_ENTRIES`, `LOOPER_READ_CACHE_STALE_S`, `LOOPER_READ_CACHE_TTL_S`, `LOOPER_READ_RATE_LIMIT_PER_MIN`, `TYPEDB_ENABLED`
 - Classes: `ReadCache`, `RateLimiter`, `PublicReadBoundary`
 
 - `_env_int(name, default)` L71
@@ -939,7 +968,7 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 #### `backend.services.kaspa_identity` — [backend/services/kaspa_identity.py](backend/services/kaspa_identity.py)
 
 - Purpose: Read-only verification of LocalLoop's configured KNS organization identities.
-- Env: `KASPA_IDENTITY_CACHE_PATH`, `KASPA_IDENTITY_STALE_SECONDS`, `KASPA_IDENTITY_TTL_SECONDS`, `KNS_API_BASE_URL`
+- Env: `KASPA_IDENTITY_CACHE_PATH`, `KASPA_IDENTITY_FAILURE_BACKOFF_SECONDS`, `KASPA_IDENTITY_STALE_SECONDS`, `KASPA_IDENTITY_TTL_SECONDS`, `KNS_API_BASE_URL`
 - Classes: `ExpectedIdentity`, `IdentityProviderError` (RuntimeError), `KaspaIdentityVerifier`
 
 - `utc_now()` L61
@@ -1252,7 +1281,7 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 - `<module>` (top-level code) L1
   - → ext: `logging.getLogger`, `Path`, `os.getenv().lower`, `os.getenv("TYPEDB_ENABLED")`, `os.getenv("TYPEDB_ADDRESS")`, `os.getenv("TYPEDB_DB")`, `lru_cache`
 
-### 5.3 Owner tools, scripts, training export
+### 5.3 Owner tools, scripts, training export, this generator
 
 #### `tools.bench_read_paths` — [tools/bench_read_paths.py](tools/bench_read_paths.py)
 
@@ -1495,6 +1524,106 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → calls: `main`
   - → ext: `Path().with_name`, `Path`, `sys.exit`
 
+#### `tools.callgraph.build` — [tools/callgraph/build.py](tools/callgraph/build.py)
+
+- Purpose: Regenerate plans/INTENT_PROMPT_CALL_GRAPH.md from the current checkout.
+- Classes: `BuildError` (Exception)
+
+- `run(cmd)` L24
+  - → calls: `BuildError`
+  - → ext: `os.path.isabs`, `c.startswith`, `os.path.relpath`, `subprocess.run`, `os.path.basename`
+  - ← by: `typescript_modules`, `main`
+- `pinned_typescript()` L32
+  - → calls: `BuildError`
+  - → ext: `json.load`, `os.path.relpath`
+  - ← by: `typescript_modules`
+- `typescript_modules()` L40
+  - → calls: `pinned_typescript`, `BuildError`, `run`
+  - → ext: `os.path.isdir`, `os.path.join`, `shutil.which`, `os.makedirs`
+  - ← by: `main`
+- `main()` L58
+  - → calls: `BuildError`, `run`, `typescript_modules`
+  - → ext: `shutil.which`, `tempfile.mkdtemp`, `os.path.join`, `subprocess.run().stdout.strip`, `subprocess.run`, `datetime.date.today().isoformat`, `datetime.date.today`, `os.path.relpath`
+  - ← by: `<module>`
+- `<module>` (top-level code) L1
+  - → calls: `main`
+  - → ext: `os.path.dirname`, `os.path.abspath`, `os.path.join`, `os.path.expanduser`, `sys.exit`
+
+#### `tools.callgraph.pycg` — [tools/callgraph/pycg.py](tools/callgraph/pycg.py)
+
+- Purpose: pycg.py ROOT DIR1,DIR2,... OUT.json
+- Classes: `Collector` (ast.NodeVisitor)
+
+- `files()` L16
+  - → ext: `os.path.join`, `os.path.isfile`, `os.walk`, `x.startswith`, `fn.endswith`, `fn.startswith`
+  - ← by: `<module>`
+- `modname(path)` L28
+  - → ext: `os.path.relpath()[].replace().replace().lstrip`, `os.path.relpath()[].replace().replace`, `os.path.relpath()[].replace`, `os.path.relpath`, `rel.endswith`
+  - ← by: `<module>`
+- `dotted(n)` L34
+  - → calls: `dotted`
+  - ← by: `dotted`, `Collector.visit_Call`, `Collector.visit_Subscript`
+- `const_str(n)` L48
+  - ← by: `Collector.visit_Call`, `Collector.visit_Subscript`
+- `collect_defs(m, info, body, prefix)` L54
+  - → calls: `collect_defs`
+  - → ext: `ast.unparse`, `ROUTE_RE.match`, `mt.group().upper`, `mt.group`
+  - ← by: `collect_defs`, `<module>`
+- `resolve(m, info, name, scope)` L124
+  - → calls: `canon_mod`
+  - → ext: `name.replace().replace`, `name.replace`, `name.split`, `info[].get().get("bases")`, `info[].get`, `sc.rsplit`, `full.split`, `qual.split`
+  - ← by: `<module>`
+- `canon_mod(m, modp)` L164
+  - → ext: `m.split`, `k.endswith`
+  - ← by: `resolve`
+- `Collector.__init__()` L178
+  - ← by: (none internal: entry point, handler, exported API, or dead code)
+- `Collector.visit_FunctionDef(node)` L182
+  - → ext: `self.visit`
+  - ← by: (none internal: entry point, handler, exported API, or dead code)
+- `Collector.visit_ClassDef(node)` L186
+  - ← by: (none internal: entry point, handler, exported API, or dead code)
+- `Collector.visit_Lambda(node)` L188
+  - → ext: `self.generic_visit`
+  - ← by: (none internal: entry point, handler, exported API, or dead code)
+- `Collector.visit_Call(node)` L190
+  - → calls: `dotted`, `const_str`
+  - → ext: `self.env.append`, `self.env_params.append`, `name.endswith`, `self.includes.append`, `self.calls.append`, `self.refs.append`, `self.generic_visit`
+  - ← by: (none internal: entry point, handler, exported API, or dead code)
+- `Collector.visit_Subscript(node)` L214
+  - → calls: `dotted`, `const_str`
+  - → ext: `self.env.append`, `self.generic_visit`
+  - ← by: (none internal: entry point, handler, exported API, or dead code)
+- `<module>` (top-level code) L1
+  - → calls: `files`, `modname`, `collect_defs`, `Collector`, `resolve`
+  - → ext: `sys.argv[].split`, `re.compile`, `open().read`, `ast.parse`, `p.endswith`, `m.rsplit`, `os.path.relpath().replace`, `os.path.relpath`, `src.count`, `ast.get_docstring`, `ast.walk`, `a.name.split`, `base.rsplit`, `mods.items`, `info[].items`, `c.visit`, `kwconsts.values`, `f[].append`, `seen.add`, `name.split`, `parts[].replace`, `external.append`, `f.pop`, `tgt.partition`, `mods.get().get().get` … +9 more
+
+#### `tools.callgraph.render` — [tools/callgraph/render.py](tools/callgraph/render.py)
+
+- Purpose: render.py ROOT py.json js.json intent.md OUT.md SHA DATE
+
+- `mods_for(key)` L23
+  - → ext: `py.items`, `js.items`, `OrderedDict`, `pred`
+  - ← by: `<module>`
+- `short(target, cur_mod)` L28
+  - → ext: `target.partition`
+  - ← by: `<module>`
+- `mid(s)` L32
+  - → ext: `re.sub`
+  - ← by: `<module>`
+- `fn_sort(items)` L35
+  - → ext: `kv[].get("line")`
+  - ← by: `<module>`
+- `full_route(route, m)` L63
+  - → ext: `route.partition`, `py[].get("route_prefix")`
+  - ← by: `<module>`
+- `arr(name)` L82
+  - → ext: `re.search`, `re.findall`, `mt.group`
+  - ← by: `<module>`
+- `<module>` (top-level code) L1
+  - → calls: `mods_for`, `full_route`, `short`, `arr`, `mid`, `fn_sort`
+  - → ext: `json.load`, `OrderedDict`, `k.startswith`, `w`, `SUBSYSTEMS.items`, `ms.values`, `v.get("lines")`, `py.items`, `info[].items`, `f.get("route")`, `routes.append`, `full_route().split`, `py.get("backend.main")`, `main_mod.get().get().get("includes")`, `main_mod.get().get("<module>")`, `main_mod.get("functions")`, `main_mod.get().get().get("external")`, `os.path.join`, `os.path.exists`, `open().read`, `js.items`, `m.startswith`, `q.split`, `re.compile`, `defaultdict` … +45 more
+
 #### `scripts.loop_check` — [scripts/loop_check.py](scripts/loop_check.py)
 
 - Purpose: Owner-run loop readiness probe. Sends only GET/HEAD; never follows redirects.
@@ -1549,6 +1678,145 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 - `<module>` (top-level code) L1
   - → calls: `export_to_jsonl`
 
+#### `tools/callgraph/jscg.js` — [tools/callgraph/jscg.js](tools/callgraph/jscg.js)
+
+- `walk(dir, out)` L18
+  - → calls: `walk`
+  - → ext: `fs.readdirSync`, `e.isDirectory`, `EXCL.has`, `path.extname`
+  - ← by: `<module>`, `walk`
+- `rel(p)` L29
+  - → ext: `path.relative`
+  - ← by: `<module>`, `resolve`
+- `resolveModule(fromFile, spec)` L31
+  - → calls?: `resolve`
+  - → ext: `path.dirname`, `fileSet.has`
+  - ← by: `noteImport`
+- `kindOf(p)` L41
+  - → ext: `path.extname`
+  - ← by: `<module>`
+- `dotted(n)` L43
+  - → calls: `dotted`
+  - → ext: `ts.isStringLiteralLike`
+  - ← by: `dotted`, `litCond`, `containerName`, `fnName`, `visitImports`, `visit`, `visit [l == "module.exports" | l == "exports"]`
+- `litCond(e)` L61
+  - → calls: `litCond`, `litText`, `dotted`
+  - → ext: `ts.isParenthesizedExpression`, `ts.isBinaryExpression`
+  - ← by: `litCond`, `visit`
+- `litText(n)` L74
+  - → ext: `ts.isStringLiteralLike`, `ts.isTemplateExpression`, `n.getText`
+  - ← by: `litCond`, `containerName`, `fnName`, `visit`
+- `propName(n)` L75
+  - → ext: `ts.isIdentifier`, `ts.isStringLiteralLike`, `ts.isNumericLiteral`, `ts.isPrivateIdentifier`, `n.getText`
+  - ← by: `containerName`, `fnName`, `visit [l == "module.exports" | l == "exports"]`
+- `containerName(obj)` L77
+  - → calls: `containerName`, `propName`, `dotted`, `litText`
+  - → ext: `ts.isVariableDeclaration`, `ts.isIdentifier`, `ts.isPropertyAssignment`, `ts.isBinaryExpression`, `ts.isCallExpression`, `ts.isNewExpression`, `ts.isReturnStatement`, `ts.isExportAssignment`, `ts.isParenthesizedExpression`, `ts.isAsExpression`, `ts.isSatisfiesExpression`, `ts.isArrayLiteralExpression`, `ts.isArrowFunction`, `ts.isFunctionExpression`
+  - ← by: `containerName`, `classNameOf`, `fnName`
+- `classNameOf(c)` L92
+  - → calls: `containerName`
+  - ← by: `fnName`, `visit`
+- `fnName(node, classStack)` L94
+  - → calls: `classNameOf`, `containerName`, `propName`, `dotted`, `fnName`, `litText`
+  - → ext: `ts.isFunctionDeclaration`, `ts.isConstructorDeclaration`, `ts.isMethodDeclaration`, `ts.isGetAccessor`, `ts.isSetAccessor`, `ts.isClassLike`, `ts.isObjectLiteralExpression`, `ts.isArrowFunction`, `ts.isFunctionExpression`, `ts.isVariableDeclaration`, `ts.isIdentifier`, `ts.isPropertyAssignment`, `ts.isPropertyDeclaration`, `ts.isBinaryExpression`, `ts.isExportAssignment`, `ts.isParenthesizedExpression`, `ts.isAsExpression`, `ts.isCallExpression`, `CALLBACK_TAIL.has`
+  - ← by: `fnName`, `visit`
+- `line(n)` L136
+  - → ext: `sf.getLineAndCharacterOfPosition`, `n.getStart`
+  - ← by: `visit`
+- `noteImport(alias, spec, member)` L139
+  - → calls: `resolveModule`
+  - ← by: `visitImports`
+- `visitImports(n)` L140
+  - → calls: `noteImport`, `dotted`
+  - → refs: `visitImports`
+  - → ext: `ts.isImportDeclaration`, `ts.isStringLiteral`, `ts.isNamespaceImport`, `ts.isVariableDeclaration`, `ts.isPropertyAccessExpression`, `ts.isCallExpression`, `ts.isIdentifier`, `ts.isObjectBindingPattern`, `el.name.getText`, `el.propertyName.getText`, `ts.forEachChild`
+  - ← by: `<module>`, `visitImports`
+- `cur()` L164
+  - ← by: `visit`
+- `isDeclName(n)` L165
+  - → ext: `ts.isVariableDeclaration`, `ts.isFunctionDeclaration`, `ts.isParameter`, `ts.isPropertyAssignment`, `ts.isImportSpecifier`, `ts.isImportClause`, `ts.isNamespaceImport`, `ts.isBindingElement`, `ts.isMethodDeclaration`, `ts.isClassDeclaration`, `ts.isPropertyDeclaration`, `ts.isJsxAttribute`, `ts.isTypeReferenceNode`, `ts.isQualifiedName`, `ts.isTypeQueryNode`, `ts.isPropertyAccessExpression`, `ts.isLabeledStatement`, `ts.isBreakOrContinueStatement`, `ts.isExportSpecifier`, `ts.isInterfaceDeclaration`, `ts.isTypeAliasDeclaration`, `ts.isEnumDeclaration`, `ts.isEnumMember`, `ts.isPropertySignature`, `ts.isMethodSignature` … +4 more
+  - ← by: `visit`
+- `visit(n)` L173
+  - → calls: `dotted`, `litCond`, `line`, `visit`, `litText`, `classNameOf`, `fnName`, `cur`, `isDeclName`, `visit [l == "module.exports" | l == "exports"]`
+  - → ext: `ts.isExportAssignment`, `info.exports.add`, `ts.isIdentifier`, `ts.isFunctionDeclaration`, `ts.isClassDeclaration`, `ts.isBinaryExpression`, `ts.isObjectLiteralExpression`, `ts.isVariableDeclaration`, `ts.isIfStatement`, `ts.isCaseClause`, `pendingCases.get`, `pendingCases.set`, `ts.isSwitchStatement`, `ts.isExportDeclaration`, `ts.isNamedExports`, `ts.isVariableStatement`, `ts.isPropertyAccessExpression`, `ts.isElementAccessExpression`, `info.env.add`, `ts.isClassLike`, `h.getText`, `ts.forEachChild`, `ts.isFunctionLike`, `ts.isFunctionTypeNode`, `ts.isMethodSignature` … +17 more
+  - ← by: `<module>`, `visit`
+- `visit [l == "module.exports" | l == "exports"]` L179 · branch
+  - → calls: `dotted`, `propName`
+  - → ext: `ts.isObjectLiteralExpression`, `ts.isShorthandPropertyAssignment`, `info.exports.add`, `ts.isPropertyAssignment`, `ts.isMethodDeclaration`
+  - ← by: `visit`
+- `resolve(r, info, name, scopeQual, classCtx)` L282
+  - → calls: `rel`, `resolve [head == "window" | head == "globalThis" | head == "self"]`
+  - → ext: `allDefs.has("`${r}:${sc}.${name}`")`, `allDefs.has("`${r}:${name}`")`, `allDefs.has("`${nf}:${c}`")`, `allDefs.has("`${tf}:${c}`")`
+  - ← by: `<module>`, `resolveModule`, `tools/jarvis-sync-check.js:<module>`, `tools/jarvis-sync-check.js:loadRouter`
+- `resolve [head == "window" | head == "globalThis" | head == "self"]` L305 · branch
+  - → ext: `allDefs.has("`${r}:${rest}`")`
+  - ← by: `resolve`
+- `<module>` (top-level code) L1
+  - → calls: `walk`, `kindOf`, `rel`, `visitImports`, `visit`, `resolve`
+  - → ext: `require`, `process.exit`, `fs.statSync().isFile`, `fs.statSync`, `fs.readFileSync`, `ts.createSourceFile`, `allDefs.set("`${r}:${q}`")`, `seen.has`, `seen.add`, `DENY_TAIL.has`, `TRIVIAL_HEAD.has`, `KEEP_HEAD.has`, `allDefs.has`, `fs.writeFileSync`
+
+#### `tools/jarvis-sync-check.js` — [tools/jarvis-sync-check.js](tools/jarvis-sync-check.js)
+
+- Exports: `PROBES`, `parseSuburbCoords`, `checkSuburbs`, `checkWakeExports`, `checkProbes`, `checkJarvisDock`, `run`
+
+- `parseSuburbCoords(pySource)` L52
+  - ← by: `<module>`, `run`
+- `loadRouter(file)` L65
+  - → calls?: `tools/callgraph/jscg.js:resolve`
+  - → ext: `require`
+  - ← by: `run`
+- `checkSuburbs(label, router, coords)` L72
+  - ← by: `<module>`, `run`
+- `checkWakeExports(label, router)` L92
+  - ← by: `<module>`, `run`
+- `routeShape(router, text)` L103
+  - → ext: `router.route`
+  - ← by: `checkProbes`
+- `checkProbes(label, router, reference)` L114
+  - → calls: `routeShape`
+  - ← by: `<module>`, `run`
+- `checkJarvisDock(label, jarvisSource)` L125
+  - ← by: `<module>`, `run`
+- `run(opts)` L130
+  - → calls: `parseSuburbCoords`, `loadRouter`, `checkSuburbs`, `checkWakeExports`, `checkProbes`, `checkJarvisDock`
+  - → ext: `fs.readFileSync`
+  - ← by: `<module>`, `main`
+- `main(argv)` L149
+  - → calls: `run`, `main [argv[] == "--map"]`
+  - ← by: `<module>`
+- `main [argv[] == "--map"]` L152 · branch
+  - → ext: `fs.existsSync`
+  - ← by: `main`
+- `<module>` (top-level code) L1
+  - → calls: `main`
+  - → calls?: `tools/callgraph/jscg.js:resolve`
+  - → refs: `parseSuburbCoords`, `checkSuburbs`, `checkWakeExports`, `checkProbes`, `checkJarvisDock`, `run`
+  - → ext: `require`, `process.exit`, `process.argv.slice`
+
+#### `tools/measure-speech-timing.js` — [tools/measure-speech-timing.js](tools/measure-speech-timing.js)
+
+- Browser/UMD globals exposed: `self` = `global`, `root` = `global`, `performance` = `global.performance`, `speechSynthesis` = `mockSpeechSynthesis`, `SpeechSynthesisUtterance` = `mockUtterance`
+- Exports: `global.self`, `global.root`, `global.performance`, `global.speechSynthesis`, `global.SpeechSynthesisUtterance`
+
+- `global.performance.now()` L15
+  - ← by: `runTimingTest`
+- `mockSpeechSynthesis.getVoices()` L20
+  - ← by: `web/jarvis/looper-jarvis.js:pickVoice`
+- `mockSpeechSynthesis.speak()` L25
+  - ← by: `web/jarvis/looper-jarvis.js:speak.buildAndSpeak`
+- `mockSpeechSynthesis.cancel()` L26
+  - ← by: `web/jarvis/looper-jarvis.js:stopSpeaking`
+- `mockSpeechSynthesis.addEventListener()` L27
+  - ← by: `web/jarvis/looper-jarvis.js:<module>`
+- `mockUtterance(text)` L30
+  - ← by: `<module>`
+- `runTimingTest(testName, responseData, iterations)` L53
+  - → calls: `global.performance.now`
+  - ← by: `<module>`
+- `<module>` (top-level code) L1
+  - → calls: `runTimingTest`
+  - → refs: `mockUtterance`
+  - → ext: `require`, `fs.readFileSync`
+
 ### 5.4 Browser widget + Jarvis voice scripts (vanilla JS, served under /web)
 
 #### `web/jarvis/looper-face.js` — [web/jarvis/looper-face.js](web/jarvis/looper-face.js)
@@ -1579,12 +1847,12 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → ext: `setInterval`
   - ← by: `mount`, `web/jarvis/looper-jarvis.js:speak`
 - `mount.stopTalking()` L125
-  - → calls: `mount.smooth`, `silentMouth`
+  - → calls: `mount.smooth`, `silentMouth`, `mount.stopTalking [mood == "speaking"]`
   - → ext: `clearInterval`
   - ← by: `mount`, `mount.startTalking`, `mount.destroy`, `web/jarvis/looper-jarvis.js:speak.finish`, `web/jarvis/looper-jarvis.js:stopSpeaking`
 - `mount.stopTalking [mood == "speaking"]` L128 · branch
   - → calls: `mount.setMood`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `mount.stopTalking`
 - `mount.attachAnalyser(node)` L133
   - → refs: `mount.attachAnalyser.frame`
   - → ext: `new Uint8Array`, `requestAnimationFrame`
@@ -1615,13 +1883,13 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → ext: `document.getElementById("looper-jarvis-css")`, `document.createElement("style")`, `document.head.appendChild`
   - ← by: `buildUi`
 - `buildUi(dock)` L149
-  - → calls: `injectCss`, `web/jarvis/looper-face.js:mount`, `submitTyped`
+  - → calls: `injectCss`, `web/jarvis/looper-face.js:mount`, `submitTyped`, `buildUi [e.key == "Enter"]`
   - → refs: `toggleListening`, `toggleHandsFree`
   - → ext: `document.createElement("div")`, `wrap.style.setProperty`, `document.body.appendChild`, `wrap.querySelector("#lj-panel")`, `wrap.querySelector("#lj-status")`, `wrap.querySelector("#lj-face-btn")`, `wrap.querySelector("#lj-wake")`, `wrap.querySelector("#lj-input-row")`, `wrap.querySelector("#lj-input")`, `wrap.querySelector("#lj-send")`, `S.ui.faceBtn.addEventListener("click")`, `S.ui.wake.addEventListener("click")`, `S.ui.send.addEventListener("click")`, `S.ui.input.addEventListener("keydown")`
   - ← by: `init`
 - `buildUi [e.key == "Enter"]` L189 · branch
   - → calls: `submitTyped`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `buildUi`
 - `submitTyped()` L192
   - → calls: `ask`
   - ← by: `buildUi`, `buildUi [e.key == "Enter"]`
@@ -1645,10 +1913,9 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → calls: `stopSpeaking`, `chunkText`, `pickVoice`, `speak.buildAndSpeak`
   - → calls?: `web/jarvis/looper-face.js:mount.startTalking`
   - → ext: `done`, `S.beforeSpeak`, `performance.now`
-  - ← by: `<module>`, `speak.buildAndSpeak`, `speakResults`, `runSearch`, `runBusiness`, `execute`, `execute [cmd.intent == "greet"]`, `execute [cmd.intent == "help"]`, `execute [cmd.intent == "suburb"]`, `execute [cmd.intent == "reset"]`, `execute [cmd.intent == "set_radius"]`
+  - ← by: `<module>`, `speakResults`, `runSearch`, `runBusiness`, `execute`, `execute [cmd.intent == "greet"]`, `execute [cmd.intent == "help"]`, `execute [cmd.intent == "suburb"]`, `execute [cmd.intent == "reset"]`, `execute [cmd.intent == "set_radius"]`
 - `speak.buildAndSpeak()` L277
-  - → calls: `speak.finish`
-  - → calls?: `speak`
+  - → calls: `speak.finish`, `tools/measure-speech-timing.js:mockSpeechSynthesis.speak`
   - → ext: `new SpeechSynthesisUtterance`
   - ← by: `speak`
 - `speak.finish()` L291
@@ -1659,8 +1926,7 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 - `scoreVoice(v)` L308
   - ← by: `pickVoice`
 - `pickVoice()` L324
-  - → calls: `scoreVoice`
-  - → ext: `root.speechSynthesis.getVoices`
+  - → calls: `tools/measure-speech-timing.js:mockSpeechSynthesis.getVoices`, `scoreVoice`
   - ← by: `speak`, `preWarmVoice`
 - `preWarmVoice()` L336
   - → calls: `pickVoice`
@@ -1668,25 +1934,26 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 - `root.speechSynthesis.onvoiceschanged()` L347
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `stopSpeaking()` L351
+  - → calls: `tools/measure-speech-timing.js:mockSpeechSynthesis.cancel`
   - → calls?: `web/jarvis/looper-face.js:mount.stopTalking`
-  - → ext: `root.speechSynthesis.cancel`
   - ← by: `speak`, `rec.onresult`, `rec.onresult [Router.route().intent == "stop"]`, `startListening`, `execute [cmd.intent == "stop"]`, `ask`, `applyDeepLinks`, `API.stop`
 - `setupRecognition()` L358
   - → calls: `setStatus`
   - → ext: `S.ui.inputRow.classList.add`, `new SR`
   - ← by: `init`
 - `rec.onresult(event)` L372
-  - → calls: `setStatus`, `stopSpeaking`, `web/jarvis/voice-command-router.js:clean`, `ask`, `web/jarvis/voice-command-router.js:route`
+  - → calls: `setStatus`, `stopSpeaking`, `web/jarvis/voice-command-router.js:clean`, `ask`, `web/jarvis/voice-command-router.js:route`, `rec.onresult [Router.route().intent == "stop"]`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `rec.onresult [Router.route().intent == "stop"]` L406 · branch
   - → calls: `stopSpeaking`, `stopListening`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `rec.onresult`
 - `rec.onerror(event)` L426
+  - → calls: `rec.onerror [err == "not-allowed" | err == "service-not-allowed" | err == "audio-capture" | err == "network"]`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `rec.onerror [err == "not-allowed" | err == "service-not-allowed" | err == "audio-capture" | err == "network"]` L429 · branch
   - → calls: `stopListening`, `setStatus`
   - → ext: `S.ui.inputRow.classList.add`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `rec.onerror`
 - `rec.onend()` L449
   - → calls: `stopListening`, `setStatus`, `tryStartRecognition`
   - → calls?: `web/jarvis/looper-face.js:mount.setMood`
@@ -1742,14 +2009,14 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → calls: `finiteKm`, `fmtKm`
   - ← by: `speakResults`
 - `speakResults(results, cmd, radiusKm, data)` L688
-  - → calls: `whereSpoken`, `speak`
+  - → calls: `whereSpoken`, `speak`, `speakResults [cmd.intent == "connect"]`, `speakResults [cmd.intent == "offers"]`, `speakResults [cmd.intent == "booking"]`
   - ← by: `runSearch`
 - `speakResults [cmd.intent == "connect"]` L700 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `speakResults`
 - `speakResults [cmd.intent == "offers"]` L701 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `speakResults`
 - `speakResults [cmd.intent == "booking"]` L702 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `speakResults`
 - `runSearch(cmd)` L706
   - → calls: `mapCenter`, `web/jarvis/looper-map-bus.js:setCategory`, `setStatus`, `pick`, `api`, `settleUi`, `web/jarvis/looper-map-bus.js:clearResults`, `web/jarvis/looper-map-bus.js:flyTo`, `showPanel`, `escapeHtml`, `recordTiming`, `speak`, `web/jarvis/looper-map-bus.js:showResults`, `web/jarvis/looper-map-bus.js:hasValidCoords`, `optionsHtml`, `wireOptionClicks`, `speakResults`
   - → calls?: `web/jarvis/looper-face.js:mount.setMood`
@@ -1761,40 +2028,40 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → ext: `performance.now`, `api().then().catch`, `api().then`
   - ← by: `execute [cmd.intent == "business"]`
 - `execute(cmd)` L869
-  - → calls: `speak`, `pick`, `showPanel`, `escapeHtml`
+  - → calls: `speak`, `pick`, `showPanel`, `escapeHtml`, `execute [cmd.intent == "stop"]`, `execute [cmd.intent == "greet"]`, `execute [cmd.intent == "help"]`, `execute [cmd.intent == "suburb"]`, `execute [cmd.intent == "zoom"]`, `execute [cmd.intent == "reset"]`, `execute [cmd.intent == "set_radius"]`, `execute [cmd.intent == "business"]`, `execute [cmd.intent == "search" | "connect" | "offers" | "booking" | "news"]`
   - ← by: `ask`
 - `execute [cmd.intent == "stop"]` L871 · branch
   - → calls: `stopSpeaking`, `stopListening`, `setStatus`
   - → calls?: `web/jarvis/looper-face.js:mount.setMood`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `execute`
 - `execute [cmd.intent == "greet"]` L884 · branch
   - → calls: `speak`, `pick`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `execute`
 - `execute [cmd.intent == "help"]` L887 · branch
   - → calls: `showPanel`, `escapeHtml`, `speak`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `execute`
 - `execute [cmd.intent == "suburb"]` L891 · branch
   - → calls: `web/jarvis/looper-map-bus.js:clearResults`, `web/jarvis/looper-map-bus.js:flyTo`, `speak`
   - → ext: `S.ui.panel.classList.remove`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `execute`
 - `execute [cmd.intent == "zoom"]` L901 · branch
   - → calls: `web/jarvis/looper-map-bus.js:zoom`
   - → calls?: `web/jarvis/looper-face.js:mount.setMood`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `execute`
 - `execute [cmd.intent == "reset"]` L907 · branch
   - → calls: `web/jarvis/looper-map-bus.js:reset`, `speak`
   - → calls?: `web/jarvis/looper-face.js:mount.setMood`
   - → ext: `S.ui.panel.classList.remove`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `execute`
 - `execute [cmd.intent == "set_radius"]` L916 · branch
   - → calls: `runSearch`, `speak`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `execute`
 - `execute [cmd.intent == "business"]` L926 · branch
   - → calls: `runBusiness`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `execute`
 - `execute [cmd.intent == "search" | "connect" | "offers" | "booking" | "news"]` L933 · branch
   - → calls: `runSearch`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `execute`
 - `ask(text)` L942
   - → calls: `stopSpeaking`, `setStatus`, `web/jarvis/voice-command-router.js:route`, `execute`
   - → ext: `performance.now`
@@ -1819,8 +2086,9 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 - `API.face()` L1078
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `<module>` (top-level code) L1
+  - → calls: `tools/measure-speech-timing.js:mockSpeechSynthesis.addEventListener`
   - → refs: `init`, `ask`, `speak`, `startListening`, `stopListening`
-  - → ext: `root.crypto.randomUUID`, `root.speechSynthesis.addEventListener("voiceschanged")`
+  - → ext: `root.crypto.randomUUID`
 
 #### `web/jarvis/looper-map-bus.js` — [web/jarvis/looper-map-bus.js](web/jarvis/looper-map-bus.js)
 
@@ -1978,10 +2246,11 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → calls: `askLooper`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `input.onkeydown(e)` L150
+  - → calls: `input.onkeydown [e.key == "Enter"]`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `input.onkeydown [e.key == "Enter"]` L151 · branch
   - → calls: `askLooper`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `input.onkeydown`
 - `<module>` (top-level code) L1
   - → ext: `document.createElement("div")`, `document.body.appendChild`, `document.getElementById("looper-toggle")`, `document.getElementById("looper-panel")`, `document.getElementById("looper-close")`, `document.getElementById("looper-chat")`, `document.getElementById("looper-input")`, `document.getElementById("looper-send")`
 
@@ -2127,10 +2396,10 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 - `requireComputerMode()` L611
   - ← by: `refusedBeforeRunning`, `ipcMain.handle("tools:execute")`
 - `refusedBeforeRunning(name, args)` L624
-  - → calls: `requireComputerMode`, `requiresConfirmation`
+  - → calls: `requireComputerMode`, `requiresConfirmation`, `refusedBeforeRunning [name == "records_delete"]`
   - ← by: `ipcMain.handle("tools:execute")`
 - `refusedBeforeRunning [name == "records_delete"]` L625 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `refusedBeforeRunning`
 - `requiresConfirmation(args)` L630
   - ← by: `refusedBeforeRunning`, `ipcMain.handle("tools:execute") [name == "computer_click"]`
 - `keyCodeForKey(key)` L634
@@ -2147,11 +2416,12 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → ext: `event.preventDefault`
   - ← by: `createWindow`
 - `setWindowMode(mode)` L704
+  - → calls: `setWindowMode [mode == "computer"]`
   - → ext: `mainWindow.isDestroyed`, `mainWindow.setAlwaysOnTop`, `mainWindow.setVisibleOnAllWorkspaces`, `mainWindow.setResizable`, `mainWindow.setMinimumSize`, `mainWindow.setBounds`, `mainWindow.center`
   - ← by: `ipcMain.handle("tools:execute") [name == "set_mode"]`
 - `setWindowMode [mode == "computer"]` L707 · branch
   - → ext: `mainWindow.getBounds`, `screen.getCursorScreenPoint`, `screen.getDisplayNearestPoint`, `screen.getDisplayMatching`, `mainWindow.setMinimumSize`, `mainWindow.setResizable`, `mainWindow.setAlwaysOnTop`, `mainWindow.setVisibleOnAllWorkspaces`, `mainWindow.setBounds`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `setWindowMode`
 - `assertTrustedSender(event)` L744
   - → calls: `looper-bot/electron/window-security.cjs:isTrustedIpcSender`
   - → ext: `mainWindow.isDestroyed`
@@ -2164,107 +2434,107 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → ext: `fetch("https://api.openai.com/v1/realtime/client_secrets")`, `crypto.createHash().update().digest`, `crypto.createHash().update`, `crypto.createHash`, `response.text`, `response.json`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `ipcMain.handle("tools:execute")(event, toolCall)` L853 · async
-  - → calls: `assertTrustedSender`, `asObject`, `looper-bot/electron/tool-policy.cjs:classifyTool`, `looper-bot/electron/tool-policy.cjs:needsConfirmation`, `refusedBeforeRunning`, `looper-bot/electron/tool-policy.cjs:confirmToolCall`, `requireComputerMode`
+  - → calls: `assertTrustedSender`, `asObject`, `looper-bot/electron/tool-policy.cjs:classifyTool`, `looper-bot/electron/tool-policy.cjs:needsConfirmation`, `refusedBeforeRunning`, `looper-bot/electron/tool-policy.cjs:confirmToolCall`, `requireComputerMode`, `ipcMain.handle("tools:execute") [classifyTool() == "unknown"]`, `ipcMain.handle("tools:execute") [name == "set_mode"]`, `ipcMain.handle("tools:execute") [name == "artifact_show"]`, `ipcMain.handle("tools:execute") [name == "show_menu"]`, `ipcMain.handle("tools:execute") [name == "web_search"]`, `ipcMain.handle("tools:execute") [name == "localloop_search"]`, `ipcMain.handle("tools:execute") [name == "localloop_discover"]`, `ipcMain.handle("tools:execute") [name == "localloop_businesses"]`, `ipcMain.handle("tools:execute") [name == "localloop_open_map"]`, `ipcMain.handle("tools:execute") [name == "localloop_bridge_status"]`, `ipcMain.handle("tools:execute") [name == "localloop_pending_pins"]`, `ipcMain.handle("tools:execute") [name == "localloop_gateway_health"]`, `ipcMain.handle("tools:execute") [name == "image_generate"]`, `ipcMain.handle("tools:execute") [name == "thumbnail_loading_prepare"]`, `ipcMain.handle("tools:execute") [name == "thumbnail_reference_add"]`, `ipcMain.handle("tools:execute") [name == "thumbnail_generate"]`, `ipcMain.handle("tools:execute") [name == "thumbnail_edit"]`, `ipcMain.handle("tools:execute") [name == "thumbnail_select"]`, `ipcMain.handle("tools:execute") [name == "thumbnail_grid"]`, `ipcMain.handle("tools:execute") [name == "mermaid_render"]`, `ipcMain.handle("tools:execute") [name == "note_add"]`, `ipcMain.handle("tools:execute") [name == "records_create"]`, `ipcMain.handle("tools:execute") [name == "records_search"]`, `ipcMain.handle("tools:execute") [name == "records_update"]`, `ipcMain.handle("tools:execute") [name == "records_delete"]`, `ipcMain.handle("tools:execute") [name == "computer_open_app"]`, `ipcMain.handle("tools:execute") [name == "computer_type_text"]`, `ipcMain.handle("tools:execute") [name == "computer_press_key"]`, `ipcMain.handle("tools:execute") [name == "computer_click"]`, `ipcMain.handle("tools:execute") [name == "computer_scroll"]`, `ipcMain.handle("tools:execute") [name == "screen_snapshot"]`, `ipcMain.handle("tools:execute") [name == "ui_inspect"]`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `ipcMain.handle("tools:execute") [classifyTool() == "unknown"]` L858 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "set_mode"]` L876 · branch
   - → calls: `setWindowMode`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "artifact_show"]` L890 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "show_menu"]` L894 · branch
   - → calls: `buildMenuMarkdown`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "web_search"]` L905 · branch
   - → calls: `webSearch`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "localloop_search"]` L909 · branch
   - → calls: `localloopSearch`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "localloop_discover"]` L913 · branch
   - → calls: `localloopDiscover`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "localloop_businesses"]` L917 · branch
   - → calls: `localloopBusinesses`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "localloop_open_map"]` L921 · branch
   - → calls: `localloopOpenMap`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "localloop_bridge_status"]` L925 · branch
   - → calls: `localloopBridgeStatus`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "localloop_pending_pins"]` L929 · branch
   - → calls?: `looper-bot/electron/localloop-gateway-tools.cjs:createLocalLoopGatewayTools.readPendingPins`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "localloop_gateway_health"]` L933 · branch
   - → calls?: `looper-bot/electron/localloop-gateway-tools.cjs:createLocalLoopGatewayTools.health`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "image_generate"]` L937 · branch
   - → calls: `generateImage`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "thumbnail_loading_prepare"]` L941 · branch
   - → calls: `thumbnailLoadingPrepare`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "thumbnail_reference_add"]` L945 · branch
   - → calls: `thumbnailReferenceAdd`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "thumbnail_generate"]` L949 · branch
   - → calls: `thumbnailGenerate`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "thumbnail_edit"]` L953 · branch
   - → calls: `thumbnailEdit`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "thumbnail_select"]` L957 · branch
   - → calls: `thumbnailSelect`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "thumbnail_grid"]` L961 · branch
   - → calls: `updateDb`, `pageForArgs`, `thumbnailBoardSummary`, `thumbnailBoardArtifact`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "mermaid_render"]` L969 · branch
   - → calls: `normalizeMermaidDiagram`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "note_add"]` L981 · branch
   - → calls: `readDb`, `writeDb`
   - → ext: `crypto.randomUUID`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "records_create"]` L1002 · branch
   - → calls: `readDb`, `asObject`, `writeDb`, `recordsArtifact`
   - → ext: `crypto.randomUUID`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "records_search"]` L1017 · branch
   - → calls: `readDb`, `recordsArtifact`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "records_update"]` L1029 · branch
   - → calls: `readDb`, `asObject`, `writeDb`, `recordsArtifact`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "records_delete"]` L1040 · branch
   - → calls: `readDb`, `writeDb`, `recordsArtifact`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "computer_open_app"]` L1056 · branch
   - → ext: `execFileAsync`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "computer_type_text"]` L1061 · branch
   - → calls: `appleScriptString`
   - → ext: `execFileAsync`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "computer_press_key"]` L1066 · branch
   - → calls: `keyCodeForKey`
   - → ext: `execFileAsync`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "computer_click"]` L1076 · branch
   - → calls: `requiresConfirmation`
   - → ext: `execFileAsync`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "computer_scroll"]` L1084 · branch
   - → ext: `execFileAsync`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "screen_snapshot"]` L1093 · branch
   - → ext: `fs.mkdir`, `execFileAsync`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `ipcMain.handle("tools:execute") [name == "ui_inspect"]` L1108 · branch
   - → ext: `execFileAsync`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `ipcMain.handle("tools:execute")`
 - `localloopSearch(args)` L1140
   - → ext: `looperApi.search`
   - ← by: `ipcMain.handle("tools:execute") [name == "localloop_search"]`
@@ -2316,11 +2586,11 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → calls: `readDb`, `thumbnailByNumberOrSelected`, `imageErrorArtifact`, `editThumbnailPrompt`, `createThumbnailImage`, `thumbnailRecord`, `updateDb`, `replaceLoadingThumbnails`, `thumbnailBoardSummary`, `thumbnailBoardArtifact`, `removeLoadingThumbnailRun`
   - ← by: `ipcMain.handle("tools:execute") [name == "thumbnail_edit"]`
 - `thumbnailSelect(args)` L1515 · async
-  - → calls: `readDb`, `imageErrorArtifact`, `writeDb`, `thumbnailBoardSummary`, `thumbnailBoardArtifact`
+  - → calls: `readDb`, `imageErrorArtifact`, `writeDb`, `thumbnailBoardSummary`, `thumbnailBoardArtifact`, `thumbnailSelect [selected.status == "loading"]`
   - ← by: `ipcMain.handle("tools:execute") [name == "thumbnail_select"]`
 - `thumbnailSelect [selected.status == "loading"]` L1522 · branch
   - → calls: `imageErrorArtifact`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `thumbnailSelect`
 - `createThumbnailImage({ prompt, size, inputPaths })` L1538 · async
   - → calls: `editImageWithInputs`, `saveImageResponse`
   - → ext: `fetch("https://api.openai.com/v1/images/generations")`, `response.text`, `response.json`
@@ -2429,29 +2699,29 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → ext: `ch.codePointAt`
   - ← by: `<module>`, `summarizeToolCall.s`, `buildDialogOptions`
 - `summarizeToolCall(name, args)` L93
-  - → calls: `summarizeToolCall.s`
+  - → calls: `summarizeToolCall.s`, `summarizeToolCall [name == "computer_type_text"]`, `summarizeToolCall [name == "computer_open_app"]`, `summarizeToolCall [name == "computer_press_key"]`, `summarizeToolCall [name == "computer_click"]`, `summarizeToolCall [name == "computer_scroll"]`, `summarizeToolCall [name == "records_delete"]`
   - ← by: `<module>`, `buildDialogOptions`
 - `summarizeToolCall.s(v)` L95
   - → calls: `escapeForDialog`
   - ← by: `summarizeToolCall`
 - `summarizeToolCall [name == "computer_type_text"]` L97 · branch
   - → ext: `s`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `summarizeToolCall`
 - `summarizeToolCall [name == "computer_open_app"]` L99 · branch
   - → ext: `s`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `summarizeToolCall`
 - `summarizeToolCall [name == "computer_press_key"]` L101 · branch
   - → ext: `s`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `summarizeToolCall`
 - `summarizeToolCall [name == "computer_click"]` L103 · branch
   - → ext: `s`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `summarizeToolCall`
 - `summarizeToolCall [name == "computer_scroll"]` L105 · branch
   - → ext: `s`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `summarizeToolCall`
 - `summarizeToolCall [name == "records_delete"]` L111 · branch
   - → ext: `s`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `summarizeToolCall`
 - `buildDialogOptions(name, args)` L118
   - → calls: `escapeForDialog`, `summarizeToolCall`
   - ← by: `<module>`, `confirmToolCall`
@@ -2484,10 +2754,10 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → ext: `pathToFileURL`, `path.resolve`
   - ← by: `looper-bot/electron/main.cjs:<module>`, `<module>`
 - `isAppUrl(value, target)` L49
-  - → calls: `parseUrl`
+  - → calls: `parseUrl`, `isAppUrl [target.kind == "dev"]`
   - ← by: `<module>`, `shouldBlockNavigation`, `isTrustedIpcSender`
 - `isAppUrl [target.kind == "dev"]` L52 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `isAppUrl`
 - `shouldBlockNavigation(value, target)` L60
   - → calls: `isAppUrl`
   - ← by: `looper-bot/electron/main.cjs:createWindow.blockForeignNavigation`, `<module>`
@@ -2509,10 +2779,10 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 - Exports: `App`
 
 - `App()` L10 · exported
-  - → calls: `looper-bot/src/lib/realtime.ts:newEntry`, `App.switchMode`, `looper-bot/src/components/LooperFace.tsx:LooperFace`, `looper-bot/src/components/ArtifactPanel.tsx:ArtifactPanel`
+  - → calls: `looper-bot/src/lib/realtime.ts:newEntry`, `App.switchMode`, `App [mode == "computer"]`, `App [event.key == "Enter"]`, `looper-bot/src/components/LooperFace.tsx:LooperFace`, `looper-bot/src/components/ArtifactPanel.tsx:ArtifactPanel`
   - → refs: `App.sendTextPrompt`, `App.disconnect`, `App.connect`
   - → ext: `useState`, `useRef`, `setTextPrompt`, `Send`, `MicOff`, `Mic`, `setShowTypeInput`, `Keyboard`, `PanelRight`, `MonitorCog`, `setArtifactVisible`, `BrainCircuit`, `setShowLog`, `History`, `setArtifactFullscreen`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `looper-bot/src/main.tsx:<module>`
 - `App.connect()` L29 · async
   - → calls: `looper-bot/src/lib/realtime.ts:LooperRealtimeClient`
   - → refs: `playThumbnailReadySound`
@@ -2525,11 +2795,12 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → ext: `setArtifact`, `setArtifactVisible`, `setArtifactFullscreen`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `new LooperRealtimeClient(opts).onMode(nextMode)` L40
+  - → calls: `new LooperRealtimeClient(opts).onMode [nextMode == "computer"]`
   - → ext: `setMode`, `setArtifactVisible`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `new LooperRealtimeClient(opts).onMode [nextMode == "computer"]` L42 · branch
   - → ext: `setArtifactVisible`, `setArtifactFullscreen`, `setShowLog`, `setShowTypeInput`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `new LooperRealtimeClient(opts).onMode`
 - `new LooperRealtimeClient(opts).onStatus(message)` L51
   - → calls: `looper-bot/src/lib/realtime.ts:newEntry`
   - → ext: `setStatus`, `setTranscript`
@@ -2538,12 +2809,12 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → ext: `clientRef.current.disconnect`, `setStatus`
   - ← by: `App`
 - `App.switchMode(nextMode)` L67 · async
-  - → calls: `looper-bot/electron/preload.cjs:window.looper.executeTool`, `looper-bot/src/lib/realtime.ts:newEntry`
+  - → calls: `looper-bot/electron/preload.cjs:window.looper.executeTool`, `looper-bot/src/lib/realtime.ts:newEntry`, `App.switchMode [nextMode == "computer"]`
   - → ext: `setMode`, `setArtifact`, `setArtifactVisible`, `setTranscript`
   - ← by: `App`
 - `App.switchMode [nextMode == "computer"]` L71 · branch
   - → ext: `setArtifactVisible`, `setArtifactFullscreen`, `setShowLog`, `setShowTypeInput`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `App.switchMode`
 - `App.sendTextPrompt()` L82
   - → calls?: `looper-bot/src/lib/realtime.ts:LooperRealtimeClient.sendText`
   - → ext: `setTextPrompt`, `setShowTypeInput`
@@ -2551,10 +2822,10 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 - `App [mode == "computer"]` L90 · branch
   - → calls: `looper-bot/src/components/LooperFace.tsx:LooperFace`
   - → ext: `switchMode`, `Expand`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `App`
 - `App [event.key == "Enter"]` L124 · branch
   - → ext: `sendTextPrompt`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `App`
 - `playThumbnailReadySound()` L221
   - → ext: `new AudioContextClass`, `audio.createGain`, `audio.createOscillator`, `osc.frequency.setValueAtTime`, `osc.frequency.exponentialRampToValueAtTime`, `gain.gain.setValueAtTime`, `gain.gain.exponentialRampToValueAtTime`, `osc.connect`, `gain.connect`, `osc.start`, `osc.stop`, `window.setTimeout`, `audio.close`
   - ← by: `App.connect`
@@ -2573,29 +2844,30 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 - `EmptyArtifact()` L118
   - ← by: `ArtifactPanel`
 - `renderArtifact(artifact, mermaidState)` L126
+  - → calls: `renderArtifact [artifact.kind == "table"]`, `renderArtifact [artifact.kind == "notes"]`, `renderArtifact [artifact.kind == "mermaid"]`, `renderArtifact [artifact.kind == "image"]`, `renderArtifact [artifact.kind == "imageLoading"]`, `renderArtifact [artifact.kind == "thumbnailBoard"]`, `renderArtifact [artifact.kind == "code"]`, `renderArtifact [artifact.kind == "markdown"]`, `renderArtifact [artifact.kind == "progress"]`
   - ← by: `ArtifactPanel`
 - `renderArtifact [artifact.kind == "table"]` L127 · branch
   - → calls: `JsonTable`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `renderArtifact`
 - `renderArtifact [artifact.kind == "notes"]` L131 · branch
   - → calls: `NotesGrid`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `renderArtifact`
 - `renderArtifact [artifact.kind == "mermaid"]` L135 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `renderArtifact`
 - `renderArtifact [artifact.kind == "image"]` L150 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `renderArtifact`
 - `renderArtifact [artifact.kind == "imageLoading"]` L158 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `renderArtifact`
 - `renderArtifact [artifact.kind == "thumbnailBoard"]` L174 · branch
   - → calls: `ThumbnailBoard`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `renderArtifact`
 - `renderArtifact [artifact.kind == "code"]` L178 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `renderArtifact`
 - `renderArtifact [artifact.kind == "markdown"]` L186 · branch
   - → calls: `MarkdownArtifact`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `renderArtifact`
 - `renderArtifact [artifact.kind == "progress"]` L190 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `renderArtifact`
 - `ThumbnailBoard({ content })` L202
   - → calls: `parseThumbnailBoard`
   - ← by: `renderArtifact [artifact.kind == "thumbnailBoard"]`
@@ -2656,26 +2928,26 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 - `LooperRealtimeClient.constructor(callbacks)` L101
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `LooperRealtimeClient.connect()` L105 · async
-  - → calls: `LooperRealtimeClient.setMood`, `looper-bot/electron/preload.cjs:window.looper.getToolSpecs`, `looper-bot/electron/preload.cjs:window.looper.createRealtimeToken`, `LooperRealtimeClient.handleDrop`, `LooperRealtimeClient.handleServerEvent`, `LooperRealtimeClient.teardown`, `LooperRealtimeClient.scheduleReconnect`, `friendlyErrorMessage`
+  - → calls: `LooperRealtimeClient.setMood`, `looper-bot/electron/preload.cjs:window.looper.getToolSpecs`, `looper-bot/electron/preload.cjs:window.looper.createRealtimeToken`, `LooperRealtimeClient.handleDrop`, `LooperRealtimeClient.handleServerEvent`, `LooperRealtimeClient.teardown`, `LooperRealtimeClient.scheduleReconnect`, `friendlyErrorMessage`, `LooperRealtimeClient.connect [name == "NotAllowedError" | name == "SecurityError"]`, `LooperRealtimeClient.connect [name == "NotFoundError" | name == "OverconstrainedError"]`, `LooperRealtimeClient.connect [peer.connectionState == "failed"]`, `LooperRealtimeClient.connect [peer.connectionState == "disconnected"]`, `LooperRealtimeClient.connect [peer.connectionState == "connected"]`
   - → ext: `this.callbacks.onConnectionState`, `this.callbacks.onStatus`, `new RTCPeerConnection`, `document.createElement("audio")`, `navigator.mediaDevices.getUserMedia`, `this.micStream.getTracks`, `track.stop`, `peer.close`, `this.micStream.getAudioTracks`, `peer.addTrack`, `micTrack.addEventListener("ended")`, `peer.addEventListener("connectionstatechange")`, `peer.createDataChannel`, `dc.addEventListener("open")`, `dc.addEventListener("message")`, `dc.addEventListener("close")`, `peer.createOffer`, `peer.setLocalDescription`, `fetch`, `sdpResponse.text`, `peer.setRemoteDescription`, `dc.close`, `pc.close`
   - ← by: `LooperRealtimeClient.scheduleReconnect`
 - `peer.ontrack(event)` L125
   - → ext: `this.startOutputMeter`
   - ← by: (none internal: entry point, handler, exported API, or dead code)
 - `LooperRealtimeClient.connect [name == "NotAllowedError" | name == "SecurityError"]` L140 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.connect`
 - `LooperRealtimeClient.connect [name == "NotFoundError" | name == "OverconstrainedError"]` L143 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.connect`
 - `LooperRealtimeClient.connect [peer.connectionState == "failed"]` L166 · branch
   - → calls: `LooperRealtimeClient.handleDrop`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.connect`
 - `LooperRealtimeClient.connect [peer.connectionState == "disconnected"]` L168 · branch
   - → calls: `LooperRealtimeClient.clearGraceTimer`, `LooperRealtimeClient.handleDrop`
   - → ext: `window.setTimeout`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.connect`
 - `LooperRealtimeClient.connect [peer.connectionState == "connected"]` L177 · branch
   - → calls: `LooperRealtimeClient.clearGraceTimer`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.connect`
 - `LooperRealtimeClient.disconnect()` L250
   - → calls: `LooperRealtimeClient.clearReconnectTimer`, `LooperRealtimeClient.clearGraceTimer`, `LooperRealtimeClient.teardown`, `LooperRealtimeClient.setMood`, `silentMouthShape`
   - → ext: `this.callbacks.onConnectionState`, `this.callbacks.onMouthShape`
@@ -2696,71 +2968,72 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
   - → ext: `dc.close`, `pc.close`, `this.micStream.getTracks`, `track.stop`, `this.handledCallIds.clear`
   - ← by: `LooperRealtimeClient.connect`, `LooperRealtimeClient.disconnect`, `LooperRealtimeClient.handleDrop`
 - `LooperRealtimeClient.handleServerEvent(raw)` L345 · async
-  - → calls: `safeParseEvent`, `LooperRealtimeClient.executeFunctionCalls`
+  - → calls: `safeParseEvent`, `LooperRealtimeClient.executeFunctionCalls`, `LooperRealtimeClient.handleServerEvent [event.type == "error"]`, `LooperRealtimeClient.handleServerEvent [event.type == "response.created"]`, `LooperRealtimeClient.handleServerEvent [event.type == "input_audio_buffer.speech_started"]`, `LooperRealtimeClient.handleServerEvent [event.type == "input_audio_buffer.speech_stopped"]`, `LooperRealtimeClient.handleServerEvent [event.type == "response.audio_transcript.delta" | event.type == "response.output_audio_transcript.delta" | event.type == "response.output_text.delta"]`, `LooperRealtimeClient.handleServerEvent [event.type == "conversation.item.input_audio_transcription.completed"]`, `LooperRealtimeClient.handleServerEvent [event.type == "conversation.item.input_audio_transcription.failed"]`, `LooperRealtimeClient.handleServerEvent [event.type == "response.done"]`
   - → ext: `this.handledCallIds.has`, `this.handledCallIds.add`
   - ← by: `LooperRealtimeClient.connect`
 - `LooperRealtimeClient.handleServerEvent [event.type == "error"]` L349 · branch
-  - → calls: `LooperRealtimeClient.setMood`
+  - → calls: `LooperRealtimeClient.setMood`, `LooperRealtimeClient.handleServerEvent [event.type == "error"] [event.error.code == "session_expired"]`, `LooperRealtimeClient.handleServerEvent [event.type == "error"] [event.error.code == "conversation_already_has_active_response"]`
   - → ext: `this.callbacks.onStatus`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent`
 - `LooperRealtimeClient.handleServerEvent [event.type == "error"] [event.error.code == "session_expired"]` L352 · branch
   - → calls: `LooperRealtimeClient.handleDrop`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent [event.type == "error"]`
 - `LooperRealtimeClient.handleServerEvent [event.type == "error"] [event.error.code == "conversation_already_has_active_response"]` L359 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent [event.type == "error"]`
 - `LooperRealtimeClient.handleServerEvent [event.type == "response.created"]` L371 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent`
 - `LooperRealtimeClient.handleServerEvent [event.type == "input_audio_buffer.speech_started"]` L377 · branch
   - → calls: `LooperRealtimeClient.setMood`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent`
 - `LooperRealtimeClient.handleServerEvent [event.type == "input_audio_buffer.speech_stopped"]` L384 · branch
   - → calls: `LooperRealtimeClient.setMood`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent`
 - `LooperRealtimeClient.handleServerEvent [event.type == "response.audio_transcript.delta" | event.type == "response.output_audio_transcript.delta" | event.type == "response.output_text.delta"]` L393 · branch
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent`
 - `LooperRealtimeClient.handleServerEvent [event.type == "conversation.item.input_audio_transcription.completed"]` L402 · branch
   - → calls: `collectItemText`, `newEntry`
   - → ext: `this.callbacks.onTranscript`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent`
 - `LooperRealtimeClient.handleServerEvent [event.type == "conversation.item.input_audio_transcription.failed"]` L408 · branch
   - → calls: `newEntry`
   - → ext: `this.callbacks.onTranscript`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent`
 - `LooperRealtimeClient.handleServerEvent [event.type == "response.done"]` L427 · branch
-  - → calls: `newEntry`, `LooperRealtimeClient.executeFunctionCalls`, `LooperRealtimeClient.maybeCreateResponse`, `LooperRealtimeClient.setMood`
+  - → calls: `newEntry`, `LooperRealtimeClient.executeFunctionCalls`, `LooperRealtimeClient.maybeCreateResponse`, `LooperRealtimeClient.setMood`, `LooperRealtimeClient.handleServerEvent [event.type == "response.done"] [event.response.status == "failed"]`
   - → refs: `collectOutputText`
   - → ext: `this.callbacks.onTranscript`, `this.handledCallIds.has`, `this.handledCallIds.add`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent`
 - `LooperRealtimeClient.handleServerEvent [event.type == "response.done"] [event.response.status == "failed"]` L431 · branch
   - → calls: `LooperRealtimeClient.setMood`, `LooperRealtimeClient.maybeCreateResponse`
   - → ext: `this.callbacks.onStatus`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.handleServerEvent [event.type == "response.done"]`
 - `LooperRealtimeClient.maybeCreateResponse()` L481
   - → calls: `LooperRealtimeClient.sendEvent`
   - ← by: `LooperRealtimeClient.handleServerEvent [event.type == "response.done"]`, `LooperRealtimeClient.handleServerEvent [event.type == "response.done"] [event.response.status == "failed"]`, `LooperRealtimeClient.executeFunctionCalls`
 - `LooperRealtimeClient.executeFunctionCalls(items, opts)` L488 · async
-  - → calls: `LooperRealtimeClient.setMood`, `parseToolArguments`, `LooperRealtimeClient.returnToolOutput`, `newEntry`, `looper-bot/electron/preload.cjs:window.looper.executeTool`, `LooperRealtimeClient.maybeCreateResponse`
+  - → calls: `LooperRealtimeClient.setMood`, `parseToolArguments`, `LooperRealtimeClient.returnToolOutput`, `newEntry`, `looper-bot/electron/preload.cjs:window.looper.executeTool`, `LooperRealtimeClient.maybeCreateResponse`, `LooperRealtimeClient.executeFunctionCalls [name == "image_generate"]`, `LooperRealtimeClient.executeFunctionCalls [name == "thumbnail_generate" | name == "thumbnail_edit"]`, `LooperRealtimeClient.executeFunctionCalls [result.mode == "display" | result.mode == "computer"]`
   - → ext: `this.callbacks.onTranscript`, `this.callbacks.onArtifact`, `this.callbacks.onThumbnailReady`
   - ← by: `LooperRealtimeClient.handleServerEvent`, `LooperRealtimeClient.handleServerEvent [event.type == "response.done"]`
 - `LooperRealtimeClient.executeFunctionCalls [name == "image_generate"]` L519 · branch
   - → ext: `this.callbacks.onArtifact`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.executeFunctionCalls`
 - `LooperRealtimeClient.executeFunctionCalls [name == "thumbnail_generate" | name == "thumbnail_edit"]` L526 · branch
   - → calls: `looper-bot/electron/preload.cjs:window.looper.executeTool`
   - → ext: `this.callbacks.onArtifact`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.executeFunctionCalls`
 - `LooperRealtimeClient.executeFunctionCalls [result.mode == "display" | result.mode == "computer"]` L540 · branch
   - → ext: `this.callbacks.onMode`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.executeFunctionCalls`
 - `LooperRealtimeClient.returnToolOutput(callId, result)` L588 · async
   - → calls: `LooperRealtimeClient.sendEvent`, `sanitizeToolResult`
   - ← by: `LooperRealtimeClient.executeFunctionCalls`
 - `LooperRealtimeClient.sendEvent(event)` L599
+  - → calls: `LooperRealtimeClient.sendEvent [this.dc.readyState == "open"]`
   - → ext: `this.callbacks.onStatus`
   - ← by: `LooperRealtimeClient.sendText`, `LooperRealtimeClient.maybeCreateResponse`, `LooperRealtimeClient.returnToolOutput`
 - `LooperRealtimeClient.sendEvent [this.dc.readyState == "open"]` L600 · branch
   - → ext: `this.dc.send`
-  - ← by: (none internal: entry point, handler, exported API, or dead code)
+  - ← by: `LooperRealtimeClient.sendEvent`
 - `LooperRealtimeClient.setMood(mood)` L607
   - → ext: `this.callbacks.onMood`
   - ← by: `LooperRealtimeClient.connect`, `LooperRealtimeClient.disconnect`, `LooperRealtimeClient.scheduleReconnect`, `LooperRealtimeClient.handleServerEvent [event.type == "error"]`, `LooperRealtimeClient.handleServerEvent [event.type == "input_audio_buffer.speech_started"]`, `LooperRealtimeClient.handleServerEvent [event.type == "input_audio_buffer.speech_stopped"]`, `LooperRealtimeClient.handleServerEvent [event.type == "response.done"]`, `LooperRealtimeClient.handleServerEvent [event.type == "response.done"] [event.response.status == "failed"]`, `LooperRealtimeClient.executeFunctionCalls`, `LooperRealtimeClient.startOutputMeter.tick`
@@ -2817,17 +3090,52 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 #### `looper-bot/src/main.tsx` — [looper-bot/src/main.tsx](looper-bot/src/main.tsx)
 
 - `<module>` (top-level code) L1
-  - → calls: `looper-bot/src/App.tsx:default`
+  - → calls: `looper-bot/src/App.tsx:App`
   - → ext: `ReactDOM.createRoot().render`, `ReactDOM.createRoot`, `document.getElementById("root")`, `React.StrictMode`
+
+### 5.8 CI helper scripts (.github/scripts)
+
+#### `github.scripts.main_red` — [.github/scripts/main_red.py](.github/scripts/main_red.py)
+
+- Purpose: Report completed main CI runs. Dry runs never contact GitHub.
+- Env: `GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_REPOSITORY`, `GITHUB_RUN_ID`, `GITHUB_SERVER_URL`, `GITHUB_SHA`, `JOB_RESULTS`, `MAIN_RED_DRY_RUN`, `MAIN_RED_EXISTING_ISSUE`, `MAIN_RED_MERGED_PRS`
+
+- `decide(results, existing_issue)` L10
+  - → ext: `results.values`
+  - ← by: `report`, `main`
+- `api(endpoint)` L20
+  - → ext: `subprocess.run`, `json.dumps`, `json.loads`
+  - ← by: `main`
+- `find_issue(pages)` L33
+  - → ext: `issue.get("title")`, `issue.get("state")`
+  - ← by: `main`
+- `report(results, existing_issue, sha, run_url, merged_prs)` L41
+  - → calls: `decide`
+  - → ext: `results.items`
+  - ← by: `main`
+- `main()` L54
+  - → calls: `api`, `find_issue`, `decide`, `report`
+  - → ext: `os.environ.get("GITHUB_EVENT_NAME")`, `os.environ.get("GITHUB_REF")`, `json.dumps`, `json.loads`, `needs.items`, `os.environ.get("MAIN_RED_DRY_RUN")`, `os.environ.get("MAIN_RED_EXISTING_ISSUE")`, `os.environ.get("MAIN_RED_MERGED_PRS")`, `pr.get("merged_at")`
+  - ← by: `<module>`
+- `<module>` (top-level code) L1
+  - → calls: `main`
 
 ## 6. Configuration surface (generated)
 
 | Env var | Read by |
 |---|---|
 | `EXA_API_KEY` | `looper-bot/electron/main.cjs` |
+| `GITHUB_EVENT_NAME` | `github.scripts.main_red` |
+| `GITHUB_REF` | `github.scripts.main_red` |
+| `GITHUB_REPOSITORY` | `github.scripts.main_red` |
+| `GITHUB_RUN_ID` | `github.scripts.main_red` |
+| `GITHUB_SERVER_URL` | `github.scripts.main_red` |
+| `GITHUB_SHA` | `github.scripts.main_red` |
 | `HYBRIDCARD_INGEST_SECRET` | `backend.services.bridge_hmac`, `tools.e6_nonprod_check` |
 | `HYBRIDCARD_KEY_IDS` | `backend.services.bridge_hmac` |
+| `JOB_RESULTS` | `github.scripts.main_red` |
 | `KASPA_IDENTITY_CACHE_PATH` | `backend.services.kaspa_identity` |
+| `KASPA_IDENTITY_FAILURE_BACKOFF_SECONDS` | `backend.services.kaspa_identity` |
 | `KASPA_IDENTITY_STALE_SECONDS` | `backend.services.kaspa_identity` |
 | `KASPA_IDENTITY_TTL_SECONDS` | `backend.services.kaspa_identity` |
 | `KNS_API_BASE_URL` | `backend.services.kaspa_identity` |
@@ -2844,8 +3152,10 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 | `LOOPER_ORIGIN_KEY` | `backend.services.origin_guard` |
 | `LOOPER_PORT` | `backend.main` |
 | `LOOPER_PUBLIC_WRITES` | `backend.services.write_guard` |
-| `LOOPER_READ_CACHE_TTL_S` | `tools.bench_search` |
-| `LOOPER_READ_RATE_LIMIT_PER_MIN` | `tools.bench_search` |
+| `LOOPER_READ_CACHE_MAX_ENTRIES` | `backend.services.edge_boundary` |
+| `LOOPER_READ_CACHE_STALE_S` | `backend.services.edge_boundary` |
+| `LOOPER_READ_CACHE_TTL_S` | `backend.services.edge_boundary`, `tools.bench_search` |
+| `LOOPER_READ_RATE_LIMIT_PER_MIN` | `backend.services.edge_boundary`, `tools.bench_search` |
 | `LOOPER_SEARCH_FALLBACK_KM` | `backend.routes.search` |
 | `LOOPER_TRACE_LOG` | `backend.services.correlation`, `tools.bench_search` |
 | `LOOPER_TRANSCRIBE_LANGUAGE` | `looper-bot/electron/main.cjs` |
@@ -2853,6 +3163,9 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 | `LOOPER_VAD_EAGERNESS` | `looper-bot/electron/main.cjs` |
 | `LOOPER_VOICE` | `looper-bot/electron/main.cjs` |
 | `LOOPER_VOICE_SPEED` | `looper-bot/electron/main.cjs` |
+| `MAIN_RED_DRY_RUN` | `github.scripts.main_red` |
+| `MAIN_RED_EXISTING_ISSUE` | `github.scripts.main_red` |
+| `MAIN_RED_MERGED_PRS` | `github.scripts.main_red` |
 | `NEWS_AUDIO_BATCH` | `tools.news_audio_worker` |
 | `NEWS_AUDIO_BUCKET` | `tools.news_audio_worker` |
 | `NEWS_AUDIO_VOICE` | `tools.news_audio_worker` |
@@ -2871,6 +3184,7 @@ Legend: `→ calls` internal functions called; `→ calls?` probable call resolv
 
 ## 7. Test inventory (generated)
 
+- `.github/scripts/` (1): `test_main_red.py`
 - `backend/tests/` (45): `conftest.py`, `test_brain_config.py`, `test_bridge_hmac.py`, `test_businesses_selection.py`, `test_coordinate_bounds.py`, `test_correlation_trace.py`, `test_cross_repo_contracts.py`, `test_demo_redirect.py`, `test_discover_telemetry.py`, `test_edge_read_boundary.py`, `test_health_commit.py`, `test_import_businesses.py`, `test_ingest_card.py`, `test_ingest_deal.py`, `test_ingest_hardening.py`, `test_ingest_misrouted_card.py`, `test_ingest_partnership_mismatch.py`, `test_jarvis_suburb_sync.py`, `test_kaspa_identity.py`, `test_loop_check.py`, `test_models_migration.py`, `test_news_audio_worker.py`, `test_origin_lock.py`, `test_public_writes_lockdown.py`, `test_read_path_identity.py`, `test_reviews_read.py`, `test_runtime_requirements.py`, `test_search_antibias.py`, `test_search_card_link_contract.py`, `test_search_fallback.py`, `test_search_haversine_antipodal.py`, `test_search_message_plain_text.py`, `test_search_query_terms.py`, `test_search_sql_budget.py`, `test_search_voice.py`, `test_secret_rotation.py`, `test_seed_guard.py`, `test_skill_citations.py`, `test_skills_answers_record.py`, `test_skills_registry.py`, `test_slo_report.py`, `test_sqlite_backup.py`, `test_telemetry_pii.py`, `test_typedb_integration.py`, `test_weekly_numbers.py`
 - `looper-bot/electron/tests/` (6): `gateway-contract.test.cjs`, `localloop-api.test.cjs`, `localloop-gateway-tools.test.cjs`, `markdown-renderer.test.cjs`, `tool-policy.test.cjs`, `window-security.test.cjs`
 - `web/tests/` (5): `jarvis-smoke.playwright.js`, `jarvis-sync.test.js`, `kaspa-identity.test.js`, `voice-command-router.test.js`, `widget-recovery.playwright.js`

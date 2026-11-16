@@ -12,17 +12,18 @@ MAX_EXT = 25
 SUBSYSTEMS = OrderedDict([
     ("backend", ("Backend API (FastAPI + SQLite)", lambda k: k.startswith("backend"), "py")),
     ("brain", ("TypeDB brain sync (additive knowledge graph)", lambda k: k.startswith("brain"), "py")),
-    ("tools", ("Owner tools, scripts, training export", lambda k: k.startswith(("tools", "scripts", "training")), "py")),
+    ("tools", ("Owner tools, scripts, training export, this generator", lambda k: k.startswith(("tools", "scripts", "training")), "py")),
     ("web", ("Browser widget + Jarvis voice scripts (vanilla JS, served under /web)", lambda k: k.startswith("web/"), "js")),
     ("workers", ("Cloudflare Worker edge proxy (api.localloop.ai)", lambda k: k.startswith("workers/"), "js")),
     ("electron", ("Looper desktop bot: Electron main process (tool dispatcher)", lambda k: k.startswith("looper-bot/electron"), "js")),
     ("renderer", ("Looper desktop bot: React renderer (OpenAI Realtime over WebRTC)", lambda k: k.startswith("looper-bot/src"), "js")),
+    ("ci", ("CI helper scripts (.github/scripts)", lambda k: k.startswith("github."), "py")),
 ])
 
 def mods_for(key):
     _, pred, lang = SUBSYSTEMS[key]
-    src = py if lang == "py" else js
-    return OrderedDict((k, v) for k, v in src.items() if pred(k)), lang
+    both = list(py.items()) + list(js.items())
+    return OrderedDict((k, v) for k, v in both if pred(k)), lang
 
 def short(target, cur_mod):
     m, _, q = target.partition(":")
@@ -86,8 +87,24 @@ if os.path.exists(pol_path):
     w(f"- **Require a confirmation dialog ({len(confirm)}):** " + ", ".join(f"`{t}`" for t in confirm))
     w("- Dispatch: renderer `LooperRealtimeClient.executeFunctionCalls` → preload `window.looper.executeTool` → IPC `tools:execute` → `main.cjs` handler → `tool-policy.classifyTool/confirmToolCall` → per-tool function (see §5 electron).\n")
 
+# Cloudflare Worker handlers (exported default.fetch / scheduled / queue)
+w("### 3.3 Edge entry points (Cloudflare Worker)\n")
+edge = [(m, q, f) for m, info in js.items() if m.startswith("workers/") for q, f in info["functions"].items()
+        if q in ("default.fetch", "default.scheduled", "default.queue")]
+if edge:
+    w("Requests to `api.localloop.ai/*` enter here before they reach the backend routes in §3.1.\n")
+    w("| Handler | Event | Direct internal callees |")
+    w("|---|---|---|")
+    for m, q, f in edge:
+        callees = ", ".join(short(t, m) for t in f["calls"]) or "—"
+        w(f"| `{m}:{q}` (L{f['line']}) | `{q.split('.', 1)[1]}` | {callees} |")
+    w("")
+    w("The handler proxies the request to the Coolify origin set by `ORIGIN` in `workers/looper-api-proxy/wrangler.toml`, which serves the routes in §3.1.\n")
+else:
+    w("No Worker handlers found.\n")
+
 # IPC / event channels
-w("### 3.3 IPC, bus and DOM event channels (generated from call sites)\n")
+w("### 3.4 IPC, bus and DOM event channels (generated from call sites)\n")
 js_defs = {f"{m}:{q}" for m, info in js.items() for q in info["functions"]}
 CH_RE = re.compile(r'^(?:new )?([A-Za-z_$][\w$.]*?)\.?(handle|handleOnce|on|once|off|emit|invoke|send|addEventListener|removeEventListener|dispatchEvent|exposeInMainWorld|postMessage|CustomEvent|subscribe|publish)\("([^"]+)"\)$')
 chan = defaultdict(lambda: defaultdict(list))
@@ -227,7 +244,7 @@ w("")
 # ---------- §8 tests inventory
 w("## 7. Test inventory (generated)\n")
 tests = []
-for base in ("backend/tests", "web/tests", "workers/looper-api-proxy/test", "looper-bot/electron/tests", "looper-bot/src"):
+for base in ("backend/tests", "web/tests", "workers/looper-api-proxy/test", "looper-bot/electron/tests", "looper-bot/src", ".github/scripts"):
     p = os.path.join(ROOT, base)
     if not os.path.isdir(p):
         continue
@@ -235,10 +252,10 @@ for base in ("backend/tests", "web/tests", "workers/looper-api-proxy/test", "loo
         dns[:] = [d for d in dns if d not in ("node_modules", "__pycache__")]
         for fn in sorted(fns):
             if re.search(r"(^test_.*\.py$|\.test\.(js|mjs|cjs|ts|tsx)$|\.playwright\.js$|^conftest\.py$)", fn):
-                tests.append(os.path.relpath(os.path.join(dp, fn), ROOT))
+                tests.append(os.path.relpath(os.path.join(dp, fn), ROOT).replace(os.sep, "/"))
 by_dir = defaultdict(list)
 for t in tests:
-    by_dir[os.path.dirname(t)].append(os.path.basename(t))
+    by_dir[t.rsplit("/", 1)[0]].append(t.rsplit("/", 1)[1])
 for d in sorted(by_dir):
     w(f"- `{d}/` ({len(by_dir[d])}): " + ", ".join(f"`{x}`" for x in by_dir[d]))
 w("")

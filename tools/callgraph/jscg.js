@@ -6,7 +6,7 @@ let ts;
 try { ts = require('typescript'); } catch (e) {
   try { ts = require(path.join(ROOT, 'looper-bot', 'node_modules', 'typescript')); } catch (e2) { console.error('typescript not found: run this through tools/callgraph/build.py, which provides it.'); process.exit(2); }
 }
-const EXCL = new Set(['node_modules', 'dist', 'dist-electron', 'tests', 'test', '__tests__', '.venv', 'release', 'callgraph']);
+const EXCL = new Set(['node_modules', 'dist', 'dist-electron', 'tests', 'test', '__tests__', '.venv', 'release']);
 const EXTS = ['.js', '.cjs', '.mjs', '.ts', '.tsx', '.jsx'];
 const DENY_TAIL = new Set('push pop shift unshift slice splice map filter forEach reduce find findIndex some every includes indexOf join split trim toLowerCase toUpperCase replace replaceAll startsWith endsWith concat sort keys values entries toString toFixed padStart padEnd charAt charCodeAt substring substr test match exec bind call apply at flat flatMap fill from of trimStart trimEnd localeCompare toISOString toLocaleString toLocaleDateString toLocaleTimeString getTime assign freeze isArray stringify parse now max min round floor ceil abs sqrt random log warn error info debug trace isFinite isNaN isInteger lastIndexOf repeat normalize'.split(' '));
 const TRIVIAL_HEAD = new Set('String Number Boolean Array Object parseInt parseFloat isNaN isFinite Math JSON Error TypeError RangeError Set Map WeakMap WeakSet Symbol Date RegExp Promise encodeURIComponent decodeURIComponent encodeURI decodeURI console Reflect Proxy BigInt structuredClone queueMicrotask'.split(' '));
@@ -26,7 +26,7 @@ function walk(dir, out) {
 const files = [];
 for (const d of DIRS.split(',')) { const b = path.join(ROOT, d); if (fs.statSync(b).isFile()) files.push(b); else walk(b, files); }
 const fileSet = new Set(files);
-const rel = p => path.relative(ROOT, p);
+const rel = p => path.relative(ROOT, p).split(path.sep).join('/');
 
 function resolveModule(fromFile, spec) {
   if (!spec.startsWith('.') && !spec.startsWith('/')) return null;
@@ -129,7 +129,7 @@ for (const file of files) {
   const text = fs.readFileSync(file, 'utf8');
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kindOf(file));
   const r = rel(file);
-  const info = { path: r, lines: text.split('\n').length, imports: {}, functions: {}, env: new Set(), exports: new Set(), globals: {}, aliases: {}, rawCalls: [] };
+  const info = { path: r, lines: text.split('\n').length, imports: {}, functions: {}, env: new Set(), exports: new Set(), globals: {}, aliases: {}, defaultExport: null, branchParents: {}, rawCalls: [] };
   const named = { qual: '<module>', line: 1 };
   info.functions['<module>'] = { line: 1, kind: 'module', calls: [], external: [], refs: [], channels: [], jsx: [], _c: [], _r: [], _ch: [] };
   const stack = [named]; const classStack = []; const pendingCases = new Map();
@@ -172,7 +172,8 @@ for (const file of files) {
   }
   function visit(n) {
     // exports
-    if (ts.isExportAssignment(n)) { const d = dotted(n.expression); if (d) info.exports.add(d); }
+    if (ts.isExportAssignment(n)) { const d = dotted(n.expression); if (d) info.exports.add(d); if (!n.isExportEquals && ts.isIdentifier(n.expression)) info.defaultExport = n.expression.text; }
+    if ((ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n)) && n.name && n.modifiers && n.modifiers.some(m => m.kind === ts.SyntaxKind.ExportKeyword) && n.modifiers.some(m => m.kind === ts.SyntaxKind.DefaultKeyword)) info.defaultExport = n.name.text;
     if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
       const l = dotted(n.left);
       if (l === 'module.exports' || l === 'exports') {
@@ -195,6 +196,7 @@ for (const file of files) {
       if (lit) {
         const top = stack[stack.length - 1]; const qual = `${top.qual} [${lit}]`;
         info.functions[qual] = info.functions[qual] || { line: line(n), kind: 'branch', calls: [], external: [], refs: [], channels: [], jsx: [], _c: [], _r: [], _ch: [] };
+        info.branchParents[qual] = top.qual;
         visit(n.expression); stack.push({ qual, line: line(n) }); visit(n.thenStatement); stack.pop();
         if (!info.functions[qual]._c.length && !info.functions[qual]._r.length) delete info.functions[qual];
         if (n.elseStatement) visit(n.elseStatement);
@@ -208,6 +210,7 @@ for (const file of files) {
       const sw = blk && blk.parent; const subj = sw && ts.isSwitchStatement(sw) ? dotted(sw.expression) || 'switch' : 'switch';
       const top = stack[stack.length - 1]; const qual = `${top.qual} [${subj} == ${lits.map(l => `"${l}"`).join(' | ')}]`;
       info.functions[qual] = info.functions[qual] || { line: line(n), kind: 'branch', calls: [], external: [], refs: [], channels: [], jsx: [], _c: [], _r: [], _ch: [] };
+      info.branchParents[qual] = top.qual;
       stack.push({ qual, line: line(n) }); for (const st of n.statements) visit(st); stack.pop();
       if (!info.functions[qual]._c.length && !info.functions[qual]._r.length) delete info.functions[qual];
       return;
@@ -305,6 +308,7 @@ function resolve(r, info, name, scopeQual, classCtx) {
     if (im.file) {
       const tf = rel(im.file); const rest = parts.slice(1);
       const cands = im.member === '*' || im.member === 'default' ? [rest.join('.'), ['default', ...rest].join('.'), ['module.exports', ...rest].join('.')] : [[im.member, ...rest].join('.'), ['module.exports', im.member, ...rest].join('.')];
+      const dflt = im.member === 'default' && mods[tf] && mods[tf].defaultExport; if (dflt) cands.unshift([dflt, ...rest].join('.'));
       for (const c of cands) if (c && allDefs.has(`${tf}:${c}`)) return `${tf}:${c}`;
       // imported name may be an exported object with methods, e.g. api.search -> exported const api
       return `${tf}:${(im.member === '*' || im.member === 'default') ? rest.join('.') || im.member : [im.member, ...rest].join('.')}`;
@@ -348,6 +352,11 @@ for (const [r, info] of Object.entries(mods)) {
     }
     delete f._c; delete f._r; delete f._ch; f.called_by = [];
   }
+}
+// a branch is reached through the function that contains it
+for (const [r, info] of Object.entries(mods)) for (const [bq, pq] of Object.entries(info.branchParents)) {
+  const parent = info.functions[pq]; const id = `${r}:${bq}`;
+  if (info.functions[bq] && parent && !parent.calls.includes(id)) parent.calls.push(id);
 }
 for (const [r, info] of Object.entries(mods)) for (const [q, f] of Object.entries(info.functions)) for (const t of [...f.calls, ...f.refs, ...f.jsx, ...f.probable]) {
   const [tf, tq] = [t.slice(0, t.indexOf(':')), t.slice(t.indexOf(':') + 1)];
