@@ -42,7 +42,8 @@ This repo contains four runnable subsystems (counts in §2):
 4. **Bots never touch production databases directly.** All bot writes go through gateway endpoints with idempotency keys, audit logs and approval gates (LOCALLOOP-BOT-GATEWAY-CONTRACT-v1).
 5. **Hot zones need the owner first:** payments, auth, deploys, migrations, customer data, anything that messages real people.
 6. **Keep it runnable for a beginner.** Every feature ends with copy-paste run and verify steps. Bill is the owner and runs production probes; agents never run anything against production.
-7. **Public writes are locked down by default** (`LOOPER_PUBLIC_WRITES`, `services/write_guard.py`): reviews, onboarding and pins answer 403 unless the owner enables them.
+7. **Stay in scope.** Keep changes to what the task needs: no unrequested features, files, refactors or docs. Put suggestions at the end of your report. Tests, notes and tracking updates that AGENTS.md requires are part of the task, not extras.
+8. **Public writes are locked down by default** (`LOOPER_PUBLIC_WRITES`, `services/write_guard.py`): reviews, onboarding and pins answer 403 unless the owner enables them.
 
 ### 1.3 Runtime topology
 
