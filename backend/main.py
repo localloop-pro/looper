@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from models import init_db
+from public_surface import register_public_surface
 from services.correlation import CorrelationMiddleware
 from services.cors_policy import cors_options
 from services.edge_boundary import PublicReadBoundary
@@ -16,10 +17,17 @@ from routes import users, search, map, reviews, ingest, discover, identity
 # Initialize DB tables
 init_db()
 
+# redirect_slashes=False: never 307 /docs/ or /health/ to the internal
+# http://…sslip.io host. The CF worker already sends X-Forwarded-Host/Proto;
+# uvicorn --proxy-headers (Dockerfile) covers any remaining absolute redirects.
+# docs_url=None: public_surface owns /docs (swagger when dark; 301→/reference when live).
 app = FastAPI(
     title="LOOPER API",
     description="LocalLoop community connection agent. Connects people with businesses and services.",
     version="0.1.0",
+    redirect_slashes=False,
+    docs_url=None,
+    redoc_url=None,
 )
 
 # Public read boundary (issue #8): request id, opt-in per-IP read rate limit
@@ -28,7 +36,7 @@ app = FastAPI(
 app.add_middleware(PublicReadBoundary)
 
 # Origin lock (issue #28): when LOOPER_ORIGIN_KEY is set, only requests that
-# carry the Worker's x-looper-origin-key pass (GET /health exempt). Added
+# carry the Worker's x-looper-origin-key pass (GET/HEAD /health exempt). Added
 # after the read boundary so it sits OUTSIDE it (a rejected caller never
 # spends a rate-limit bucket or gets a cached answer) and before CORS and
 # correlation so the 403 still gets CORS headers and a request id.
@@ -54,6 +62,9 @@ app.include_router(reviews.router)
 app.include_router(ingest.router)
 app.include_router(discover.router)
 app.include_router(identity.router)
+
+# Front door: /, /docs, and (when LOOPER_FRONTDOOR_LIVE) /reference + crawler files.
+register_public_surface(app)
 
 # Serve the embeddable web layer (widget + Jarvis map demo) same-origin so
 # the demo needs zero CORS/config: http://localhost:8000/demo
@@ -82,17 +93,6 @@ if WEB_DIR.exists():
         return RedirectResponse(target)
 
 
-@app.get("/")
-def root():
-    return {
-        "name": "LOOPER API",
-        "version": "0.1.0",
-        "status": "online",
-        "docs": "/docs",
-        "organization_identity": "/api/identity/domains",
-    }
-
-
 def deployed_commit():
     """Short commit baked in at build time (looper#86), or "" when unknown.
 
@@ -106,6 +106,7 @@ def deployed_commit():
 
 
 @app.get("/health")
+@app.head("/health", include_in_schema=False)
 def health():
     return {
         "status": "healthy",

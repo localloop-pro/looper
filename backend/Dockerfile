@@ -45,4 +45,8 @@ WORKDIR /app/looper/backend
 # --no-access-log: uvicorn's access line holds the client IP and the raw query
 # string (dictated names, phone numbers, emails). The no-PII `kind: http` trace
 # record from services/correlation.py replaces it (looper#62).
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+# --proxy-headers + --forwarded-allow-ips=*: trust X-Forwarded-Host/Proto from
+# the Cloudflare worker (and Traefik) so any absolute redirect uses the public
+# https host, never the internal http sslip.io origin (PR A front door).
+# Bill must confirm Coolify still reaches this CMD after deploy.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips", "*"]

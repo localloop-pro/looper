@@ -14,7 +14,7 @@ BACKEND = pathlib.Path(__file__).resolve().parents[1]
 REPO = BACKEND.parent
 
 # Local packages/modules, and optional deps installed from other files.
-LOCAL = {"models", "schemas", "routes", "services", "main", "seed"}
+LOCAL = {"models", "schemas", "routes", "services", "main", "seed", "public_surface"}
 OPTIONAL = {
     "sync": "brain/sync.py, path-inserted at call time",
     "typedb": "requirements-brain.txt (TYPEDB_ENABLED only)",
