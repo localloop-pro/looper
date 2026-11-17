@@ -58,8 +58,14 @@ def test_health_is_exempt(client, key_set):
     assert resp.json()["status"] == "healthy"
 
 
+def test_head_health_is_exempt(client, key_set):
+    resp = client.head("/health")
+    assert resp.status_code == 200
+    assert resp.content == b""
+
+
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-def test_only_get_health_is_exempt(client, key_set, method):
+def test_only_get_and_head_health_are_exempt(client, key_set, method):
     resp = client.request(method, "/health")
     assert resp.status_code == 403
     assert resp.json() == {"detail": "forbidden"}

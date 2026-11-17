@@ -11,10 +11,10 @@ read limit (services/edge_boundary.py).
   LOOPER_ORIGIN_KEY   unset/blank = off (behaviour unchanged). Same random
                       value as the Worker's ORIGIN_KEY secret.
 
-`GET /health` stays open for the Coolify/Docker health check. Register this
-AFTER PublicReadBoundary and BEFORE CORSMiddleware in main.py: CORS and
-correlation then still wrap the 403, and a rejected caller never spends a
-rate-limit bucket or gets a cached answer.
+`GET` and `HEAD` `/health` stay open for the Coolify/Docker health check.
+Register this AFTER PublicReadBoundary and BEFORE CORSMiddleware in main.py:
+CORS and correlation then still wrap the 403, and a rejected caller never
+spends a rate-limit bucket or gets a cached answer.
 """
 from __future__ import annotations
 
@@ -43,7 +43,10 @@ class OriginKeyGuard:
             await self.app(scope, receive, send)
             return
         expected = expected_key()
-        health_check = scope.get("method") == "GET" and scope.get("path") == "/health"
+        health_check = (
+            scope.get("method") in ("GET", "HEAD")
+            and scope.get("path") == "/health"
+        )
         if not expected or health_check:
             await self.app(scope, receive, send)
             return
