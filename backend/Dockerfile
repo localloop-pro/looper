@@ -18,6 +18,8 @@ ARG WITH_TOOLS=1
 COPY tools/requirements.txt tools/requirements.txt
 RUN if [ "$WITH_TOOLS" = "1" ]; then pip install --no-cache-dir -r tools/requirements.txt; fi
 
+COPY backend/docker-entrypoint.sh /usr/local/bin/looper-api-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/looper-api-entrypoint.sh
 COPY backend/ backend/
 COPY brain/ brain/
 COPY tools/ tools/
@@ -45,8 +47,7 @@ WORKDIR /app/looper/backend
 # --no-access-log: uvicorn's access line holds the client IP and the raw query
 # string (dictated names, phone numbers, emails). The no-PII `kind: http` trace
 # record from services/correlation.py replaces it (looper#62).
-# --proxy-headers + --forwarded-allow-ips=*: trust X-Forwarded-Host/Proto from
-# the Cloudflare worker (and Traefik) so any absolute redirect uses the public
-# https host, never the internal http sslip.io origin (PR A front door).
-# Bill must confirm Coolify still reaches this CMD after deploy.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Proxy-header trust is configured in docker-entrypoint.sh (never *): Traefik on
+# the private Docker network is in the default RFC1918 allow list; tighten with
+# LOOPER_FORWARDED_ALLOW_IPS in Coolify if needed (PR A front door).
+CMD ["/usr/local/bin/looper-api-entrypoint.sh"]

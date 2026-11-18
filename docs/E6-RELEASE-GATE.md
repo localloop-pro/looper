@@ -198,7 +198,7 @@ A percentage split belongs at the Worker (devops lane, other issue).
 |---|---|---|
 | Tracing (this PR) | set `LOOPER_TRACE_LOG=off` and restart, or `git revert` and redeploy | none: tracing writes no rows |
 | uvicorn access log off in `main.py` (this PR, local runs only) | remove `access_log=False` from `uvicorn.run` (brings back IP + query-text logging) | none |
-| uvicorn access log off in the Docker image (looper#62) | remove `"--no-access-log"` from the `backend/Dockerfile` `CMD` (or `git revert` the PR) and redeploy looper-api in Coolify. Brings back IP + query-text logging | none: the flag only changes stdout |
+| uvicorn access log off in the Docker image (looper#62) | remove `"--no-access-log"` from `backend/docker-entrypoint.sh` (or `git revert` the PR) and redeploy looper-api in Coolify. Brings back IP + query-text logging | none: the flag only changes stdout |
 | Read cache / rate limit (PR #16) | set the flags to `0` and restart | none: in-process only |
 | `looper-api-proxy` Worker (looper#17) | `npx wrangler rollback` (`docs/WORKER-DEPLOY-RUNBOOK.md` §4) | none: the Worker stores nothing |
 | Any backend release | Coolify: redeploy the previous commit | none: bridge receipts are idempotent on `eventId`, and the sender retries every non-2xx, so events missed during a bad deploy re-arrive |
