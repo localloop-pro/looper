@@ -5,15 +5,17 @@ A business or pin 0 to 50 m away rounds to 0.0 km. The old truthiness checks
 key fell back to 999, so a coincident result lost to a farther one with the
 same relevance and review count. Both must treat 0.0 as a real distance.
 """
+import pytest
+
 from models import Business, MapPin, Review, User
 
 LAT, LNG = -33.8908, 151.2748  # Bondi Beach
 NEAR_KM_DEG = 0.009  # about 1 km of latitude
 
 
-def _vet(db, name, lat):
+def _vet(db, name, lat, lng=LNG):
     biz = Business(name=name, category="vet", suburb="Eastern Suburbs",
-                   lat=lat, lng=LNG, source="manual", is_active=True)
+                   lat=lat, lng=lng, source="manual", is_active=True)
     db.add(biz)
     db.flush()
     user = User(first_name="Tester", mobile_number=f"04000002{biz.id:02d}")
@@ -39,6 +41,31 @@ def test_search_coincident_business_is_zero_km_and_ranks_first(client, db):
     assert results[0]["distance_km"] == 0.0
     assert results[1]["distance_km"] is not None and results[1]["distance_km"] > 0
     assert here.id > far.id  # the order above is proximity, not insertion
+
+
+# Zero latitude or longitude is a real coordinate (equator / prime meridian).
+# A business there, searched from its own point, must be 0.0 km, not unknown.
+@pytest.mark.parametrize("lat,lng", [(0.0, 0.0), (0.0, LNG), (LAT, 0.0)])
+def test_search_zero_coordinate_business_is_zero_km_and_ranks_first(client, db, lat, lng):
+    # Far one is created first, a full-precision 1 km step away from the zero line.
+    far = _vet(db, "Far Vet", lat + NEAR_KM_DEG, lng)
+    here = _vet(db, "Here Vet", lat, lng)
+    # Unknown coordinates must still sort last, with null distance.
+    unknown = _vet(db, "Unknown Vet", LAT, LNG)
+    unknown.lat = None
+    unknown.lng = None
+    db.commit()
+
+    resp = client.get("/api/search", params={
+        "q": "vet", "lat": lat, "lng": lng, "radius_km": 5.0,
+    })
+    assert resp.status_code == 200
+    results = resp.json()["results"]
+    assert [r["name"] for r in results] == ["Here Vet", "Far Vet", "Unknown Vet"]
+    assert results[0]["distance_km"] == 0.0
+    assert results[1]["distance_km"] is not None and results[1]["distance_km"] > 0
+    assert results[2]["distance_km"] is None
+    assert here.id > far.id
 
 
 def test_map_pins_coincident_pin_is_zero_km_and_sorts_first(client, db):

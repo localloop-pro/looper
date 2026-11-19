@@ -239,7 +239,7 @@ def search_businesses(
 
         # Distance if coords available
         distance = None
-        if lat is not None and lng is not None and biz.lat and biz.lng:
+        if lat is not None and lng is not None and biz.lat is not None and biz.lng is not None:
             distance = haversine_km(lat, lng, biz.lat, biz.lng)
         candidates.append((biz, fields, distance))
 
