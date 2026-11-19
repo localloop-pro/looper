@@ -60,6 +60,16 @@ SUBURB_COORDS = {
 }
 
 
+def _suburb_key(text):
+    """Known suburb a free-text suburb names, longest name first, so
+    "North Bondi" is north bondi, never bondi (#151). None if unknown."""
+    folded = fold_accents(text) or ""
+    for key in sorted(SUBURB_COORDS, key=len, reverse=True):
+        if key == folded or key in folded:
+            return key
+    return None
+
+
 def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
                     intent=None, session_id=None):
     """TypeDB graph engine for /api/discover (F2.3).
@@ -179,7 +189,10 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
             distance = haversine_km(center_lat, center_lng, biz.lat, biz.lng)
             if distance > radius_km:
                 continue
-        # no coords: include without distance (sorts last); matches SQLite-path behaviour
+        elif suburb_key and _suburb_key(biz.suburb) != suburb_key:
+            # no coords can't be radius-checked: keep it only when it is in
+            # the requested suburb itself (#151); matches SQLite path
+            continue
 
         candidates.append((biz, distance))
     stats = review_stats(db, [biz.id for biz, _ in candidates])
@@ -303,6 +316,10 @@ def discover(
             distance = haversine_km(center[0], center[1], biz.lat, biz.lng)
             if distance > radius_km:
                 continue
+        elif suburb_key and _suburb_key(biz.suburb) != suburb_key:
+            # no coords can't be radius-checked: keep it only when it is in
+            # the requested suburb itself (#151)
+            continue
 
         candidates.append((biz, distance))
     stats = review_stats(db, [biz.id for biz, _ in candidates])
