@@ -11,7 +11,9 @@ ANTI-BIAS INVARIANT (BRIDGE-CONTRACT-v1 §7): ranking inputs are
 review count, review recency, and proximity ONLY — never discount_size,
 source, tier, or any paid signal.
 """
+import logging
 import os
+import re
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
@@ -25,6 +27,14 @@ from schemas import SearchResult
 from services import telemetry
 
 router = APIRouter(prefix="/api", tags=["discover"])
+logger = logging.getLogger("looper.discover")
+
+# Graph-failure warnings (issue #152) log only the exception class name and,
+# for TypeDB driver exceptions, the driver's "[CXN01]"-style error code. The
+# exception message itself is never logged: driver and SQL messages can carry
+# request values, addresses or credentials, and no scrubber is safe enough.
+_CLASS_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,100}(\.[A-Za-z_][A-Za-z0-9_]{0,100}){0,10}")
+_TYPEDB_CODE = re.compile(r"\[([A-Z]{3}[0-9]{2})\]")  # at the start of the message
 
 # Buffer added to radius_km when testing suburb centroids against the search
 # radius — prevents false negatives when a suburb centroid sits just outside
@@ -265,6 +275,27 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
     }
 
 
+def _graph_failure_summary(exc: Exception) -> str:
+    """Exception class name plus, for typedb.* exceptions, its error code.
+
+    Nothing else from the exception is returned: no message text, no
+    traceback, no arguments.
+    """
+    cls = type(exc)
+    module = cls.__module__ if isinstance(cls.__module__, str) else ""
+    name = cls.__name__ if module == "builtins" else f"{module}.{cls.__name__}"
+    if not _CLASS_NAME.fullmatch(name):
+        name = "Exception"
+    if module == "typedb" or module.startswith("typedb."):
+        try:
+            code = _TYPEDB_CODE.match(str(exc))
+        except Exception:  # a broken __str__ must not turn the fallback into a 500
+            code = None
+        if code:
+            name += f" [{code.group(1)}]"
+    return name
+
+
 @router.get("/discover")
 def discover(
     suburb: str | None = Query(None, description="Suburb name, e.g. Bondi"),
@@ -284,7 +315,11 @@ def discover(
         try:
             return _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
                                    intent=intent, session_id=session)
-        except Exception:
+        except Exception as exc:
+            # One line so a broken graph is visible in production; class name
+            # and TypeDB code only (see _graph_failure_summary).
+            logger.warning("discover graph engine failed, using fallback: %s",
+                           _graph_failure_summary(exc))
             engine = "fallback"  # graph down → transparent fallback (additive rule)
 
     # Resolve a center: known suburb name beats raw coords.
