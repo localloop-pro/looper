@@ -81,12 +81,12 @@ def get_pins(
             "lat": pin.lat,
             "lng": pin.lng,
             "category": pin.category,
-            "distance_km": round(distance, 1) if distance is not None else None,
+            "distance_km": round(distance, 1) if distance else None,
             "created_at": pin.created_at.isoformat(),
         })
 
     # Sort: nearest first
-    results.sort(key=lambda p: p["distance_km"] if p["distance_km"] is not None else 999)
+    results.sort(key=lambda p: p["distance_km"] or 999)
 
     return {"count": len(results), "pins": results}
 

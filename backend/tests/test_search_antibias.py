@@ -44,7 +44,7 @@ def test_ranking_code_never_references_bridge_fields():
     assert "discount" not in code
     assert "rank_boost" not in code
     # the sort key itself is load-bearing — fail loudly if someone edits it
-    assert 'results.sort(key=lambda r: (-r["relevance"], -r["review_count"], r["distance_km"] if r["distance_km"] is not None else 999))' in code
+    assert 'results.sort(key=lambda r: (-r["relevance"], -r["review_count"], r["distance_km"] or 999))' in code
 
 
 def test_deactivated_business_hidden_from_search(client, db):

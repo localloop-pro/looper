@@ -239,7 +239,7 @@ def search_businesses(
 
         # Distance if coords available
         distance = None
-        if lat is not None and lng is not None and biz.lat is not None and biz.lng is not None:
+        if lat is not None and lng is not None and biz.lat and biz.lng:
             distance = haversine_km(lat, lng, biz.lat, biz.lng)
         candidates.append((biz, fields, distance))
 
@@ -280,7 +280,7 @@ def search_businesses(
             "business": biz,
             "review_count": review_count,
             "avg_rating": round(avg_rating, 1) if avg_rating else None,
-            "distance_km": round(distance, 1) if distance is not None else None,
+            "distance_km": round(distance, 1) if distance else None,
             "relevance": relevance,
         })
 
@@ -289,7 +289,7 @@ def search_businesses(
     # ANTI-BIAS INVARIANT (BRIDGE-CONTRACT-v1 §7): ranking inputs are
     # relevance, review_count, distance ONLY. Never discount_size, source,
     # rank_boost, or any paid signal. test_search_antibias.py enforces this.
-    results.sort(key=lambda r: (-r["relevance"], -r["review_count"], r["distance_km"] if r["distance_km"] is not None else 999))
+    results.sort(key=lambda r: (-r["relevance"], -r["review_count"], r["distance_km"] or 999))
 
     # Build response
     page = results[:limit]
