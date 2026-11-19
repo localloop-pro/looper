@@ -12,6 +12,7 @@ Contract rules this file lives by:
 - discount_size / rank_boost are stored/ignored — never ranking inputs.
 """
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -24,7 +25,9 @@ from schemas import HybridCardCardPayload, HybridCardDealPayload
 from services import bridge_hmac
 from services.bridge_hmac import BridgeAuthError
 from services.correlation import emit_bridge
+from routes.discover import _graph_failure_summary
 
+logger = logging.getLogger("looper.ingest")
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
 
@@ -67,8 +70,10 @@ def _brain_sync(
             slug=slug,
             skip_archetype=skip_archetype,
         )
-    except Exception:
-        pass  # additive: TypeDB never blocks ingest
+    except Exception as exc:
+        # additive: TypeDB never blocks ingest. One public-safe line (class
+        # name and TypeDB code only; see _graph_failure_summary).
+        logger.warning("ingest brain sync failed: %s", _graph_failure_summary(exc))
 
 # Real contract payloads are ~2 KB; cap well above that but far below
 # anything that could hurt (body is buffered pre-auth and stored in
