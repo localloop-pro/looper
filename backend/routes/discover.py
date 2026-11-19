@@ -12,11 +12,12 @@ review count, review recency, and proximity ONLY — never discount_size,
 source, tier, or any paid signal.
 """
 import logging
+import math
 import os
 import re
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from models import Business, fold_accents, get_db
@@ -342,6 +343,40 @@ def discover(
     if suburb and center is None:
         # unknown suburb: fall back to name-matching the businesses' suburb
         query = query.filter(func.fold_accents(Business.suburb).like(f"%{fold_accents(suburb)}%"))
+
+    if center:
+        # A spherical cap's enclosing box is conservative; haversine below
+        # remains authoritative. Handle poles and the antimeridian explicitly.
+        angular = radius_km / 6371.0
+        lat_rad = math.radians(center[0])
+        lat_delta = math.degrees(angular) + 1e-9
+        south, north = center[0] - lat_delta, center[0] + lat_delta
+        in_box = [Business.lat.between(south, north)]
+        if south > -90 and north < 90:
+            lng_delta = math.degrees(math.asin(min(1.0, math.sin(angular) / math.cos(lat_rad)))) + 1e-9
+            west, east = center[1] - lng_delta, center[1] + lng_delta
+            if west < -180:
+                longitude = or_(Business.lng >= west + 360, Business.lng <= east)
+            elif east > 180:
+                longitude = or_(Business.lng >= west, Business.lng <= east - 360)
+            else:
+                longitude = Business.lng.between(west, east)
+            in_box.append(longitude)
+        no_coordinates = or_(Business.lat.is_(None), Business.lng.is_(None))
+        if suburb_key:
+            folded_suburb = func.fold_accents(Business.suburb)
+            keys = sorted(SUBURB_COORDS, key=len, reverse=True)
+            matches_suburb = and_(
+                func.instr(folded_suburb, suburb_key) > 0,
+                *(func.instr(folded_suburb, key) == 0
+                  for key in keys[:keys.index(suburb_key)]),
+            )
+            no_coordinates = and_(no_coordinates, matches_suburb)
+        # Legacy rows may contain out-of-range coordinates; retain them for
+        # the existing haversine calculation rather than changing eligibility.
+        nonstandard_coordinates = or_(Business.lat < -90, Business.lat > 90,
+                                      Business.lng < -180, Business.lng > 180)
+        query = query.filter(or_(no_coordinates, nonstandard_coordinates, and_(*in_box)))
 
     # Radius filter first, then one batched review-stats query (issue #30).
     candidates = []
