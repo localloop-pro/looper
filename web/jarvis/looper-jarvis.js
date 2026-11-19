@@ -861,14 +861,15 @@
         return;
       }
       var top = results[0];
-      // every listed match gets a marker — the panel and the map must agree
-      Bus.showResults(results);
-      // both coords or no flight — a null lat coerces to the equator
-      if (top.lng != null && top.lat != null) Bus.flyTo(top.lng, top.lat, 17); // old build: zoom 17
+      // panel first: the camera moves land above it on phones (looper#142)
       var renderStart = performance.now();
       showPanel(optionsHtml(results, "Matching options:"));
       var render_ms = performance.now() - renderStart;
       wireOptionClicks(results);
+      // every listed match gets a marker — the panel and the map must agree
+      Bus.showResults(results);
+      // both coords or no flight — a null lat coerces to the equator
+      if (top.lng != null && top.lat != null) Bus.flyTo(top.lng, top.lat, 17); // old build: zoom 17
       var line = top.name;
       if (top.avg_rating) line += " — " + top.avg_rating + " stars from " + top.review_count + " community reviews.";
       else line += " — no reviews yet. Maybe you'll leave the first one?";

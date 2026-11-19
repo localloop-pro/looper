@@ -12,7 +12,8 @@
  *     markerLib: window.maplibregl || window.mapboxgl,
  *     onCategory: (cat|null) => {...},       // host syncs its filter chips
  *     resolveBusiness: async (name) => ({name, lng, lat, ...}) | null,
- *     fitOptions: () => ({padding, pitch, ...}) | null, // extra fitBounds options for fitPoints
+ *     fitOptions: () => ({padding, pitch, ...}) | null, // extra fitBounds options;
+ *                                            // when set, flyTo lands in that box too
  *   })
  *
  * Every method is safe to call from the DevTools console (F3.4 acceptance).
@@ -97,11 +98,33 @@
       console.warn("[LooperMapBus] flyTo ignored — invalid coordinates", lng, lat);
       return;
     }
+    var z = typeof zoom === "number" ? zoom : Math.max(state.map.getZoom(), 14);
+    var extra = hostFitOptions();
+    if (extra) {
+      // host asked for a fit box (looper#142: a phone result panel), so land
+      // the target in that box at the same zoom: a ~0.1 m box around it,
+      // capped at the zoom asked for (a fly would centre it under the panel)
+      var e = 1e-6, lo = [Number(lng) - e, Number(lat) - e], hi = [Number(lng) + e, Number(lat) + e];
+      var fit = { essential: true };
+      for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) fit[k] = extra[k];
+      fit.maxZoom = z;
+      state.map.fitBounds([lo, hi], fit);
+      return;
+    }
     state.map.flyTo({
       center: [Number(lng), Number(lat)],
-      zoom: typeof zoom === "number" ? zoom : Math.max(state.map.getZoom(), 14),
+      zoom: z,
       essential: true,
     });
+  }
+
+  // Host fitBounds options (init opts.fitOptions), or null for the defaults.
+  function hostFitOptions() {
+    if (!state.fitOptions) return null;
+    try { return state.fitOptions() || null; } catch (e) {
+      console.warn("[LooperMapBus] fitOptions hook failed", e);
+      return null;
+    }
   }
 
   // fitBounds over an array of {lng,lat} — old build behaviour:
@@ -122,12 +145,8 @@
     });
     if (valid.length === 1) return flyTo(minLng, minLat, 16);
     var fit = { padding: 50, maxZoom: 15 };
-    if (state.fitOptions) {
-      try {
-        var extra = state.fitOptions();
-        for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) fit[k] = extra[k];
-      } catch (e) { console.warn("[LooperMapBus] fitOptions hook failed", e); }
-    }
+    var extra = hostFitOptions();
+    for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) fit[k] = extra[k];
     state.map.fitBounds([[minLng, minLat], [maxLng, maxLat]], fit);
   }
 

@@ -29,6 +29,9 @@ async function spokenFor(page, text, response) {
   return page.evaluate(() => window.__spoken.join(" "));
 }
 
+const mx = (lng) => (lng + 180) / 360;
+const my = (lat) => (1 - Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / Math.PI) / 2;
+
 // Screen pixels of [lng, lat] points after map.fitBounds(bounds, opts) on a
 // flat (unpitched) w x h Web Mercator map, as MapLibre places them: fit the
 // bounds into the box left after padding (capped at maxZoom), centred in it.
@@ -36,8 +39,6 @@ function placeFitBounds(bounds, opts, w, h, points) {
   const pad = typeof opts.padding === "number"
     ? { top: opts.padding, bottom: opts.padding, left: opts.padding, right: opts.padding }
     : Object.assign({ top: 0, bottom: 0, left: 0, right: 0 }, opts.padding);
-  const mx = (lng) => (lng + 180) / 360;
-  const my = (lat) => (1 - Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / Math.PI) / 2;
   const [[west, south], [east, north]] = bounds;
   const boxW = w - pad.left - pad.right, boxH = h - pad.top - pad.bottom;
   let scale = Math.min(boxW / (mx(east) - mx(west)), boxH / (my(south) - my(north)));
@@ -47,6 +48,17 @@ function placeFitBounds(bounds, opts, w, h, points) {
   return points.map(([lng, lat]) => ({
     x: Math.round(boxCx + (mx(lng) - cx) * scale),
     y: Math.round(boxCy + (my(lat) - cy) * scale),
+  }));
+}
+
+// Screen pixels of [lng, lat] points after a recorded fake-map camera call:
+// fitBounds as above, flyTo with its centre in the middle of the w x h map.
+function placeCamera(call, w, h, points) {
+  if (call[0] === "fitBounds") return placeFitBounds(call[1], call[2] || {}, w, h, points);
+  const o = call[1], scale = 512 * 2 ** o.zoom;
+  return points.map(([lng, lat]) => ({
+    x: Math.round(w / 2 + (mx(lng) - mx(o.center[0])) * scale),
+    y: Math.round(h / 2 + (my(lat) - my(o.center[1])) * scale),
   }));
 }
 
@@ -294,43 +306,82 @@ const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10
       await sp.close();
     }
 
-    // 9. Phone result pins (looper#142): after a search on a 375 x 780 phone,
-    // every result pin must land on the map OUTSIDE the open result panel and
-    // below the host's 120 px top bar (topInset, like the /demo chip bar).
-    // The fake map has no renderer, so place the pins the way MapLibre's
-    // fitBounds would (flat Web Mercator, padding, maxZoom) from the call
-    // the bus made, then check each pin centre against the panel's box.
-    const phone = await browser.newPage({ viewport: { width: 375, height: 780 } });
+    // 9. Phone result pins (looper#142): on 375 x 780 and 375 x 667 phones, after ALL the
+    // camera moves of a turn, every pin the user is shown must land on the
+    // map OUTSIDE the open result panel and below the host's 120 px top bar
+    // (topInset, like the /demo chip bar). The fake map has no renderer, so
+    // the final camera call is replayed the way MapLibre places pins (flat
+    // Web Mercator; fitBounds padding and maxZoom; flyTo centres the target).
+    for (const vp of [{ width: 375, height: 780 }, { width: 375, height: 667 }]) {
+    const phone = await browser.newPage({ viewport: vp });
     phone.setDefaultTimeout(10_000);
     phone.on("pageerror", (e) => errors.push("phone pageerror: " + e.message));
     await phone.goto("http://127.0.0.1:8088/tests/jarvis-harness.html?defer=1");
     await phone.evaluate(() => LooperJarvis.init({ map: window.fakeMap, district: "Bondi", apiBase: "http://stub", topInset: () => 120 }));
     await phone.waitForSelector("#looper-jarvis .lj-face-btn .looper-face");
-    await phone.evaluate(() => LooperJarvis.ask("find me a cafe"));
-    await phone.waitForSelector("#looper-jarvis .lj-option");
-    const phoneFit = await phone.evaluate(() => {
-      const fit = window.__calls.filter((c) => c[0] === "fitBounds").slice(-1)[0];
-      const p = document.querySelector("#looper-jarvis .lj-panel").getBoundingClientRect();
-      return { fit, panel: { left: p.left, right: p.right, top: p.top, bottom: p.bottom } };
-    });
-    if (!phoneFit.fit) {
-      errors.push("phone search made no fitBounds call");
-    } else {
-      const pins = [[151.2735, -33.8893], [151.2748, -33.8908], [151.2750, -33.8910]]; // harness default, valid coords
-      const placed = placeFitBounds(phoneFit.fit[1], phoneFit.fit[2] || {}, 375, 780, pins);
-      const R = 12; // a result marker is 24 px across: half under the panel is hidden
-      const under = placed.filter((pt) => pt.x >= phoneFit.panel.left - R && pt.x <= phoneFit.panel.right + R &&
-        pt.y >= phoneFit.panel.top - R && pt.y <= phoneFit.panel.bottom + R);
-      console.log("phone pins:", JSON.stringify(placed), "panel:", JSON.stringify(phoneFit.panel),
-        "fit options:", JSON.stringify(phoneFit.fit[2]));
-      if (under.length) errors.push("phone: " + under.length + " of " + pins.length + " result pins under the result panel");
-      const hidden = placed.filter((pt) => pt.y < 120 + R);
-      if (hidden.length) errors.push("phone: " + hidden.length + " of " + pins.length + " result pins under the host top bar");
-      // placeFitBounds is flat, like MapLibre's fit: a tilted phone map would
+    const R = 12; // a result marker is 24 px across: half under the panel is hidden
+    async function checkPhonePins(tag, pins) {
+      const st = await phone.evaluate(() => {
+        const cam = window.__calls.filter((c) => c[0] === "fitBounds" || c[0] === "flyTo").slice(-1)[0];
+        const p = document.querySelector("#looper-jarvis .lj-panel").getBoundingClientRect();
+        return { cam, panel: { left: p.left, right: p.right, top: p.top, bottom: p.bottom } };
+      });
+      tag = vp.height + "px " + tag;
+      if (!st.cam) { errors.push("phone " + tag + ": no camera move"); return; }
+      const placed = placeCamera(st.cam, vp.width, vp.height, pins);
+      console.log("phone " + tag + " pins:", JSON.stringify(placed), "panel:", JSON.stringify(st.panel),
+        "final camera:", JSON.stringify(st.cam));
+      const under = placed.filter((pt) => pt.x >= st.panel.left - R && pt.x <= st.panel.right + R &&
+        pt.y >= st.panel.top - R && pt.y <= st.panel.bottom + R);
+      if (under.length) errors.push("phone " + tag + ": " + under.length + " of " + pins.length + " result pins under the result panel");
+      const hidden = placed.filter((pt) => pt.y < 120 + R || pt.x < R || pt.x > vp.width - R);
+      if (hidden.length) errors.push("phone " + tag + ": " + hidden.length + " of " + pins.length + " result pins under the top bar or off screen");
+      // the placement is flat, like MapLibre's fit: a tilted phone map would
       // push the nearest pins back under the panel (seen on the real /demo)
-      if (phoneFit.fit[2].pitch !== 0) errors.push("phone fit keeps the map tilted: " + JSON.stringify(phoneFit.fit[2]));
+      if (st.cam[0] === "fitBounds" && st.cam[2].pitch !== 0) errors.push("phone " + tag + ": final camera keeps the map tilted: " + JSON.stringify(st.cam[2]));
     }
+    async function askOnPhone(text, response, firstName) {
+      return phone.evaluate(async ({ text, response, firstName }) => {
+        window.__searchResponse = response;
+        window.__calls = [];
+        const cmd = LooperJarvis.ask(text);
+        const t0 = Date.now();
+        while (!Array.from(document.querySelectorAll("#looper-jarvis .lj-option .lj-name")).some((e) => e.textContent.includes(firstName))) {
+          if (Date.now() - t0 > 5000) break;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        return cmd && cmd.intent;
+      }, { text, response, firstName });
+    }
+    const CAFE = { category: "café", review_count: 1, avg_rating: 4, top_review: null, website: null, card_url: null };
+    // a full list (search limit 5) with one mappable row: the panel is as
+    // tall as a real Food answer
+    const SOLO = { query: "cafe", message: "Here are 5 options for 'cafe': best match first, then most community reviews, then nearest.", total_results: 5, results: [
+      Object.assign({ business_id: 31, name: "Solo Pin Cafe", lat: -33.8893, lng: 151.2735, distance_km: 0.4 }, CAFE),
+    ].concat([32, 33, 34, 35].map((id) => Object.assign({ business_id: id, name: "No Coords Cafe " + id, lat: "", lng: "", distance_km: 0.5 }, CAFE))) };
+    // a named lookup returns up to 3 matches (runBusiness limit)
+    const NAMED = { query: "gertrude", message: "Matching options.", total_results: 3, results: [
+      Object.assign({ business_id: 1, name: "Gertrude & Alice", lat: -33.8893, lng: 151.2735, distance_km: 0.4 }, CAFE),
+      Object.assign({ business_id: 2, name: "Bondi Wholefoods", lat: -33.8908, lng: 151.2748, distance_km: 0.6 }, CAFE),
+      Object.assign({ business_id: 3, name: "Gertrude Street Deli", lat: -33.8902, lng: 151.2741, distance_km: 0.5 }, CAFE),
+    ] };
+
+    // 9a. several pins: fitted between the top bar and the panel
+    await askOnPhone("find me a cafe", null, "Gertrude");
+    await checkPhonePins("search", [[151.2735, -33.8893], [151.2748, -33.8908], [151.2750, -33.8910]]);
+    // 9b. one mappable pin among the listed results (fitPoints flies to it)
+    await askOnPhone("find me a cafe", SOLO, "Solo Pin Cafe");
+    await checkPhonePins("one valid pin", [[151.2735, -33.8893]]);
+    // 9c. named business: pins, then a zoom-17 flight to the top match
+    const namedIntent = await askOnPhone("take me to gertrude and alice", NAMED, "Gertrude");
+    if (namedIntent !== "business") errors.push("phone: named lookup routed as " + namedIntent);
+    await checkPhonePins("named business", [[151.2735, -33.8893]]);
+    // 9d. tapping a listed option flies to that business
+    await phone.evaluate(() => { window.__calls = []; });
+    await phone.click('#looper-jarvis .lj-option[data-i="1"]');
+    await checkPhonePins("option tap", [[151.2748, -33.8908]]);
     await phone.close();
+    }
 
     console.log("errors:", errors.length ? errors : "none");
     if (errors.length) throw new Error("Jarvis smoke failed: " + errors.join("; "));
