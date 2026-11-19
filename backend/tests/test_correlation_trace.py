@@ -180,13 +180,29 @@ def final_cmd(dockerfile: str) -> list[str]:
 
 
 def test_uvicorn_access_log_off_in_dockerfile():
-    """looper#62: the production image's CMD must run uvicorn with
+    """looper#62: the production entrypoint must run uvicorn with
     --no-access-log, or every request writes the client IP and the raw query
     string (dictated phone numbers/emails) to the Coolify logs."""
+    entrypoint = (_BACKEND / "docker-entrypoint.sh").read_text()
+    assert "uvicorn" in entrypoint
+    assert "--no-access-log" in entrypoint
+    assert "--access-log" not in entrypoint
     argv = final_cmd((_BACKEND / "Dockerfile").read_text())
-    assert argv[0] == "uvicorn"
-    assert "--no-access-log" in argv
-    assert "--access-log" not in argv
+    assert argv[0].endswith("looper-api-entrypoint.sh")
+
+
+def test_forwarded_allow_ips_not_wildcard_in_production_launcher():
+    """X-Forwarded-* trust must not default to * (spoofable off-proxy)."""
+    dockerfile = (_BACKEND / "Dockerfile").read_text()
+    assert '"*"' not in dockerfile
+    entrypoint = (_BACKEND / "docker-entrypoint.sh").read_text()
+    assert "LOOPER_FORWARDED_ALLOW_IPS" in entrypoint
+    assert "*" not in entrypoint.replace("${LOOPER_FORWARDED_ALLOW_IPS", "")
+    default_line = [ln for ln in entrypoint.splitlines() if "LOOPER_FORWARDED_ALLOW_IPS:-" in ln]
+    assert default_line, "entrypoint must document a default allow list"
+    default_val = default_line[0].split(":-", 1)[1].rstrip("}")
+    assert "*" not in default_val
+    assert "172.16.0.0/12" in default_val
 
 
 def test_final_cmd_check_catches_old_cmd():

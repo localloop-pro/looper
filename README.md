@@ -70,6 +70,16 @@ LOOPER_PORT=8010 docker compose up -d --build
 curl http://localhost:8010/health
 ```
 
+Behind Coolify’s Traefik proxy, the container image starts uvicorn with
+`--proxy-headers` so absolute redirects respect the public `https://` host. Trusted
+forwarded-header source IPs are **not** `*`: the entrypoint
+(`backend/docker-entrypoint.sh`) defaults to loopback plus RFC1918 private ranges
+(`127.0.0.1`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), which covers Traefik
+on the usual Docker bridge network. To restrict or override, set
+`LOOPER_FORWARDED_ALLOW_IPS` on the looper-api Coolify service (comma-separated
+IPs or CIDRs, same syntax as uvicorn’s `--forwarded-allow-ips`) **before** deploy
+if your proxy path is non-standard.
+
 ## Looper desktop companion
 
 ```bash

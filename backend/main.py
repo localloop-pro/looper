@@ -19,7 +19,7 @@ init_db()
 
 # redirect_slashes=False: never 307 /docs/ or /health/ to the internal
 # http://…sslip.io host. The CF worker already sends X-Forwarded-Host/Proto;
-# uvicorn --proxy-headers (Dockerfile) covers any remaining absolute redirects.
+# docker-entrypoint.sh runs uvicorn --proxy-headers with a narrow forwarded-allow-ips list.
 # docs_url=None: public_surface owns /docs (swagger when dark; 301→/reference when live).
 app = FastAPI(
     title="LOOPER API",

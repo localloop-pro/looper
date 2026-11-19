@@ -8,9 +8,10 @@ negotiation on `/` (HTML only when `text/html` beats JSON on q-values), plus
 `/docs` → `/reference`. `/api/*` is never content-negotiated.
 
 Always on (not gated): `redirect_slashes=False` so `/docs/` and `/health/`
-never 307 to the internal `http://…sslip.io` host; uvicorn
-`--proxy-headers --forwarded-allow-ips=*` so any absolute redirect trusts
-the worker's `X-Forwarded-Host` / `X-Forwarded-Proto`; explicit `GET`+`HEAD`
+never 307 to the internal `http://…sslip.io` host; uvicorn `--proxy-headers`
+with a narrowed `LOOPER_FORWARDED_ALLOW_IPS` (see `docker-entrypoint.sh`) so
+absolute redirects trust the worker's `X-Forwarded-Host` / `X-Forwarded-Proto`
+only from the reverse proxy; explicit `GET`+`HEAD`
 on `/`, `/health`, and `/reference`.
 
 Owner rollout (not agent actions): deploy image first with the flag still
