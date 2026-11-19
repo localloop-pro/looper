@@ -17,6 +17,8 @@
  *     home: { lng: 151.2743, lat: -33.8915, zoom: 14.5 },
  *     markerLib: window.maplibregl,
  *     onCategory: (cat) => {...},              // sync host filter chips
+ *     topInset: () => headerEl.getBoundingClientRect().bottom, // px of map under
+ *                                              // the host's top bar (or a number)
  *   });
  *
  * PERSONA (from SEED.md / the master plan — Looper is LocalLoop's community
@@ -93,6 +95,7 @@
     beforeSpeak: null, // host hook: silence competing audio (news podcast) before TTS
     timings: [], // last 20 PII-free route/fetch/render/speech timing records
     onTiming: null, // optional host hook; failures never break a turn
+    topInset: 0, // px (or fn -> px) of the map hidden under the host's top bar
     turnStart: null,
     // anonymous per-page-load session id — telemetry only, never identity
     session: (root.crypto && root.crypto.randomUUID) ? root.crypto.randomUUID() : "s" + String(Math.random()).slice(2),
@@ -216,6 +219,27 @@
   function showPanel(html) {
     S.ui.panel.innerHTML = html;
     S.ui.panel.classList.add("lj-open");
+  }
+
+  // Phones (looper#142): the open panel spans the map's width and covers its
+  // lower half, so result pins are fitted into the map strip above it, on a
+  // flat map: fitBounds ignores pitch, and a tilted map pushes the nearest
+  // pins back under the panel. Desktop (panel beside the pins) keeps the
+  // bus default and its tilt.
+  function fitAbovePanel() {
+    if (!S.ui.panel || !S.ui.panel.classList.contains("lj-open")) return null;
+    var p = S.ui.panel.getBoundingClientRect();
+    var c = S.map && S.map.getContainer ? S.map.getContainer().getBoundingClientRect()
+      : { top: 0, bottom: root.innerHeight, width: root.innerWidth, height: root.innerHeight };
+    if (p.width < c.width / 2) return null;
+    var inset = 0;
+    try { inset = Number(typeof S.topInset === "function" ? S.topInset() : S.topInset) || 0; } catch (e) { /* host hook */ }
+    var top = Math.max(50, Math.ceil(inset - c.top) + 12); // 12 px: a pin's radius
+    var bottom = Math.ceil(c.bottom - p.top) + 12;
+    // keep an 80 px fit box: MapLibre/Mapbox skip a fit that has no room
+    top = Math.min(top, c.height - 50 - 80);
+    bottom = Math.max(50, Math.min(bottom, c.height - top - 80));
+    return { padding: { top: top, right: 50, bottom: bottom, left: 50 }, pitch: 0 };
   }
 
   function escapeHtml(s) {
@@ -757,6 +781,11 @@
         speak(none);
         return;
       }
+      // panel first: the pins are fitted around its final size (looper#142)
+      var renderStart = performance.now();
+      showPanel(optionsHtml(results, data.message || "Here's what the loop knows:"));
+      var render_ms = performance.now() - renderStart;
+      wireOptionClicks(results);
       Bus.showResults(results);
       // showResults already fitted bounds over the pins — only fall back to
       // the suburb's own camera when there was nothing to fit
@@ -765,10 +794,6 @@
       // suburb fly ("cafes in Bronte" with unmappable rows still flies)
       var hasPins = results.some(function (r) { return Bus.hasValidCoords(r); });
       if (cmd.coords && !hasPins) Bus.flyTo(cmd.coords.lng, cmd.coords.lat, cmd.coords.zoom);
-      var renderStart = performance.now();
-      showPanel(optionsHtml(results, data.message || "Here's what the loop knows:"));
-      var render_ms = performance.now() - renderStart;
-      wireOptionClicks(results);
       var to_speech_ms = performance.now() - turnStart;
       recordTiming({ intent: cmd.intent, rid: timingMeta.rid, cache: timingMeta.cache, status: timingMeta.status,
         route_ms: route_ms, fetch_ms: timingMeta.fetch_ms, parse_ms: timingMeta.parse_ms,
@@ -1020,6 +1045,7 @@
     S.onMicClose = opts.onMicClose || cfg.onMicClose || null;
     S.beforeSpeak = opts.beforeSpeak || cfg.beforeSpeak || null;
     S.onTiming = opts.onTiming || cfg.onTiming || null;
+    S.topInset = opts.topInset || cfg.topInset || 0;
 
     buildUi(opts.dock || cfg.dock || null);
     preWarmVoice();
@@ -1049,6 +1075,7 @@
         onCategory: opts.onCategory || cfg.onCategory || null,
         claimCta: opts.claimCta || cfg.claimCta || null,
         district: S.district,
+        fitOptions: fitAbovePanel,
         resolveBusiness: function (name) {
           return api("/search", { q: name, limit: 1 }).then(function (response) {
             return (response.data.results && response.data.results[0]) || null;

@@ -29,6 +29,27 @@ async function spokenFor(page, text, response) {
   return page.evaluate(() => window.__spoken.join(" "));
 }
 
+// Screen pixels of [lng, lat] points after map.fitBounds(bounds, opts) on a
+// flat (unpitched) w x h Web Mercator map, as MapLibre places them: fit the
+// bounds into the box left after padding (capped at maxZoom), centred in it.
+function placeFitBounds(bounds, opts, w, h, points) {
+  const pad = typeof opts.padding === "number"
+    ? { top: opts.padding, bottom: opts.padding, left: opts.padding, right: opts.padding }
+    : Object.assign({ top: 0, bottom: 0, left: 0, right: 0 }, opts.padding);
+  const mx = (lng) => (lng + 180) / 360;
+  const my = (lat) => (1 - Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / Math.PI) / 2;
+  const [[west, south], [east, north]] = bounds;
+  const boxW = w - pad.left - pad.right, boxH = h - pad.top - pad.bottom;
+  let scale = Math.min(boxW / (mx(east) - mx(west)), boxH / (my(south) - my(north)));
+  if (typeof opts.maxZoom === "number") scale = Math.min(scale, 512 * 2 ** opts.maxZoom);
+  const cx = (mx(west) + mx(east)) / 2, cy = (my(north) + my(south)) / 2;
+  const boxCx = pad.left + boxW / 2, boxCy = pad.top + boxH / 2;
+  return points.map(([lng, lat]) => ({
+    x: Math.round(boxCx + (mx(lng) - cx) * scale),
+    y: Math.round(boxCy + (my(lat) - cy) * scale),
+  }));
+}
+
 const VET = { category: "vet", review_count: 0, avg_rating: null, top_review: null, website: null, card_url: null };
 const WIDENED_VETS = {
   query: "vet",
@@ -119,6 +140,8 @@ const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10
     // Ghost Listing has blank-string coords — a marker/bounds at [0,0]
     // (Gulf of Guinea) means the coordinate guard let '' coerce to 0
     const fit = calls.find((c) => c[0] === "fitBounds");
+    // desktop (looper#142): the panel sits beside the pins, padding stays 50
+    if (fit && (fit[2].padding !== 50 || "pitch" in fit[2])) errors.push("desktop fit options changed: " + JSON.stringify(fit[2]));
     if (fit && (Math.abs(fit[1][0][0]) < 100 || Math.abs(fit[1][0][1]) < 20)) {
       errors.push("blank-coord result dragged fitBounds toward [0,0]: " + JSON.stringify(fit[1]));
     }
@@ -270,6 +293,44 @@ const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10
       if (/add (it|one)|first to add/i.test(bare)) errors.push(tag + ": empty speech invites adding: " + bare);
       await sp.close();
     }
+
+    // 9. Phone result pins (looper#142): after a search on a 375 x 780 phone,
+    // every result pin must land on the map OUTSIDE the open result panel and
+    // below the host's 120 px top bar (topInset, like the /demo chip bar).
+    // The fake map has no renderer, so place the pins the way MapLibre's
+    // fitBounds would (flat Web Mercator, padding, maxZoom) from the call
+    // the bus made, then check each pin centre against the panel's box.
+    const phone = await browser.newPage({ viewport: { width: 375, height: 780 } });
+    phone.setDefaultTimeout(10_000);
+    phone.on("pageerror", (e) => errors.push("phone pageerror: " + e.message));
+    await phone.goto("http://127.0.0.1:8088/tests/jarvis-harness.html?defer=1");
+    await phone.evaluate(() => LooperJarvis.init({ map: window.fakeMap, district: "Bondi", apiBase: "http://stub", topInset: () => 120 }));
+    await phone.waitForSelector("#looper-jarvis .lj-face-btn .looper-face");
+    await phone.evaluate(() => LooperJarvis.ask("find me a cafe"));
+    await phone.waitForSelector("#looper-jarvis .lj-option");
+    const phoneFit = await phone.evaluate(() => {
+      const fit = window.__calls.filter((c) => c[0] === "fitBounds").slice(-1)[0];
+      const p = document.querySelector("#looper-jarvis .lj-panel").getBoundingClientRect();
+      return { fit, panel: { left: p.left, right: p.right, top: p.top, bottom: p.bottom } };
+    });
+    if (!phoneFit.fit) {
+      errors.push("phone search made no fitBounds call");
+    } else {
+      const pins = [[151.2735, -33.8893], [151.2748, -33.8908], [151.2750, -33.8910]]; // harness default, valid coords
+      const placed = placeFitBounds(phoneFit.fit[1], phoneFit.fit[2] || {}, 375, 780, pins);
+      const R = 12; // a result marker is 24 px across: half under the panel is hidden
+      const under = placed.filter((pt) => pt.x >= phoneFit.panel.left - R && pt.x <= phoneFit.panel.right + R &&
+        pt.y >= phoneFit.panel.top - R && pt.y <= phoneFit.panel.bottom + R);
+      console.log("phone pins:", JSON.stringify(placed), "panel:", JSON.stringify(phoneFit.panel),
+        "fit options:", JSON.stringify(phoneFit.fit[2]));
+      if (under.length) errors.push("phone: " + under.length + " of " + pins.length + " result pins under the result panel");
+      const hidden = placed.filter((pt) => pt.y < 120 + R);
+      if (hidden.length) errors.push("phone: " + hidden.length + " of " + pins.length + " result pins under the host top bar");
+      // placeFitBounds is flat, like MapLibre's fit: a tilted phone map would
+      // push the nearest pins back under the panel (seen on the real /demo)
+      if (phoneFit.fit[2].pitch !== 0) errors.push("phone fit keeps the map tilted: " + JSON.stringify(phoneFit.fit[2]));
+    }
+    await phone.close();
 
     console.log("errors:", errors.length ? errors : "none");
     if (errors.length) throw new Error("Jarvis smoke failed: " + errors.join("; "));

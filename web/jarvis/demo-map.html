@@ -184,6 +184,8 @@
         apiBase: new URLSearchParams(location.search).get("api") ||
           (location.pathname.indexOf("/web/") === 0 ? location.origin : "http://localhost:8000"),
         onCategory: highlightChip,
+        // phones: fit result pins below the chip bar, not under it (looper#142)
+        topInset: function () { return document.querySelector(".topbar").getBoundingClientRect().bottom; },
       });
       Array.prototype.forEach.call(chipsEl.children, function (c) { c.disabled = false; });
     });

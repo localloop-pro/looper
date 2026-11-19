@@ -12,6 +12,7 @@
  *     markerLib: window.maplibregl || window.mapboxgl,
  *     onCategory: (cat|null) => {...},       // host syncs its filter chips
  *     resolveBusiness: async (name) => ({name, lng, lat, ...}) | null,
+ *     fitOptions: () => ({padding, pitch, ...}) | null, // extra fitBounds options for fitPoints
  *   })
  *
  * Every method is safe to call from the DevTools console (F3.4 acceptance).
@@ -25,6 +26,7 @@
     home: { lng: 151.2743, lat: -33.8915, zoom: 14.5 }, // Bondi
     onCategory: null,
     resolveBusiness: null,
+    fitOptions: null, // host hook: fitPoints fitBounds options, e.g. clear a result panel
     activeCategory: null,
     resultMarkers: [],
     resultPopup: null,
@@ -64,6 +66,7 @@
     if (opts.home) state.home = opts.home;
     if (opts.onCategory) state.onCategory = opts.onCategory;
     if (opts.resolveBusiness) state.resolveBusiness = opts.resolveBusiness;
+    if (opts.fitOptions) state.fitOptions = opts.fitOptions;
     if (opts.claimCta) state.claimCta = opts.claimCta;
     if (!opts.claimCta && opts.district) {
       var d = String(opts.district).toLowerCase().replace(/\s+/g, "-");
@@ -118,7 +121,14 @@
       if (lat > maxLat) maxLat = lat;
     });
     if (valid.length === 1) return flyTo(minLng, minLat, 16);
-    state.map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 50, maxZoom: 15 });
+    var fit = { padding: 50, maxZoom: 15 };
+    if (state.fitOptions) {
+      try {
+        var extra = state.fitOptions();
+        for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) fit[k] = extra[k];
+      } catch (e) { console.warn("[LooperMapBus] fitOptions hook failed", e); }
+    }
+    state.map.fitBounds([[minLng, minLat], [maxLng, maxLat]], fit);
   }
 
   // Category + radius view: sets the filter, then lets the host decide what
