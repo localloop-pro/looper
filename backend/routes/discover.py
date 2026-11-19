@@ -29,14 +29,24 @@ from services import telemetry
 router = APIRouter(prefix="/api", tags=["discover"])
 logger = logging.getLogger("looper.discover")
 
-# Graph-failure warnings (issue #152) never log str(exc): driver and SQL
-# messages can carry request values, coordinates, addresses or credentials.
-# Only the exception class plus details proven safe are logged.
+# Graph-failure warnings (issue #152) log the exception class and a scrubbed
+# message. Driver and SQL messages can carry request values, coordinates,
+# addresses or credentials, so the message is filtered word by word: only plain
+# words survive, and request words, address labels and credential keywords
+# (plus the word after them) become "[redacted]". SQL errors log only the
+# database driver's own message, never the statement or its parameters.
 _NO_CENTER = "no center to search from"
-_SAFE_MESSAGES = frozenset({_NO_CENTER})       # fixed strings raised in this file
-_TYPEDB_ERROR_CODE = re.compile(r"\[([A-Z]{3}\d{2})\]")  # e.g. "[CXN01]"
+_PLAIN_WORD = re.compile(r"""[(\["'`]?[A-Za-z][A-Za-z']{0,19}[)\]"'`,.;:!?]*""")
+_ERROR_CODE = re.compile(r"\[[A-Z]{3}\d{2}\][,.;:]?")  # TypeDB codes, e.g. "[CXN01]"
 _SQLALCHEMY_CODE = re.compile(r"[a-z0-9]{4}")    # e.g. "e3q8"
 _MODULE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,80}")
+_CREDENTIAL_WORDS = frozenset({
+    "password", "passwd", "pwd", "pass", "secret", "token", "key", "apikey",
+    "auth", "authorization", "bearer", "credential", "credentials", "user",
+    "username", "login",
+})
+_REDACTED = "[redacted]"
+_MAX_DETAIL_WORDS = 16
 
 # Buffer added to radius_km when testing suburb centroids against the search
 # radius — prevents false negatives when a suburb centroid sits just outside
@@ -264,31 +274,63 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
     }
 
 
-def _graph_failure_summary(exc: Exception) -> tuple[str, str]:
-    """(exception class, safe detail) for the graph-failure warning.
+def _words(*values) -> set[str]:
+    """Lower-cased, accent-folded alphabetic words from the given values."""
+    words = set()
+    for value in values:
+        if value:
+            words.update(w for w in re.split(r"[^a-z]+", fold_accents(str(value)).lower()) if w)
+    return words
 
-    The detail is a fixed string, a TypeDB error code, a SQLAlchemy error
-    code or a missing module name — never free text from the message.
+
+def _scrub_message(message: str, sensitive: set[str]) -> str:
+    """Keep plain words; replace anything that could carry data with [redacted]."""
+    out = []
+    redact_next = False
+    for token in message.split()[:_MAX_DETAIL_WORDS]:  # split() also drops newlines
+        words = set(re.findall(r"[a-z]+", token.lower()))  # "Bondi's" -> bondi, s
+        credential = bool(words & _CREDENTIAL_WORDS)
+        safe = (_ERROR_CODE.fullmatch(token) is not None
+                or (_PLAIN_WORD.fullmatch(token) is not None and not words & sensitive))
+        if redact_next or credential or not safe:
+            if not out or out[-1] != _REDACTED:
+                out.append(_REDACTED)
+        else:
+            out.append(token)
+        redact_next = credential
+    return " ".join(out)
+
+
+def _graph_failure_summary(exc: Exception, *request_values) -> tuple[str, str]:
+    """(exception class, scrubbed message) for the graph-failure warning.
+
+    `request_values` are the caller's own inputs (suburb, category, ...);
+    their words never reach the log. Neither do digits (coordinates, ports,
+    IPs), symbols (URLs, key=value pairs, SQL), TypeDB address labels or the
+    word after a credential keyword.
     """
     cls = type(exc)
     name = cls.__qualname__ if cls.__module__ == "builtins" else f"{cls.__module__}.{cls.__qualname__}"
-    try:
-        message = str(exc)
-    except Exception:  # a broken __str__ must not turn the fallback into a 500
-        message = ""
-    if message in _SAFE_MESSAGES:
-        return name, message
     if isinstance(exc, ImportError) and exc.name and _MODULE_NAME.fullmatch(exc.name):
         return name, f"missing module {exc.name}"
-    if cls.__module__.startswith("typedb"):
-        match = _TYPEDB_ERROR_CODE.search(message)
-        if match:
-            return name, f"typedb error {match.group(1)}"
+    source, suffix = exc, ""
     if cls.__module__.startswith("sqlalchemy"):
+        # str() of a SQLAlchemy error includes the SQL and its bound parameters.
+        source = getattr(exc, "orig", None)
         code = getattr(exc, "code", None)
         if isinstance(code, str) and _SQLALCHEMY_CODE.fullmatch(code):
-            return name, f"sqlalchemy error {code}"
-    return name, "message withheld"
+            suffix = f" (sqlalchemy error {code})"
+    try:
+        message = str(source) if source is not None else ""
+    except Exception:  # a broken __str__ must not turn the fallback into a 500
+        message = ""
+    address = os.getenv("TYPEDB_ADDRESS") or ""
+    sensitive = _words(*request_values) | {
+        label for label in re.split(r"[^a-z0-9-]+", address.lower()) if label}
+    detail = _scrub_message(message, sensitive)
+    if not detail or detail == _REDACTED:
+        detail = "message withheld"
+    return name, detail + suffix
 
 
 @router.get("/discover")
@@ -312,9 +354,9 @@ def discover(
                                    intent=intent, session_id=session)
         except Exception as exc:
             # One line so a broken graph is visible in production; no
-            # traceback and no raw message (see _graph_failure_summary).
+            # traceback, and the message is scrubbed (see _graph_failure_summary).
             logger.warning("discover graph engine failed, using fallback: %s: %s",
-                           *_graph_failure_summary(exc))
+                           *_graph_failure_summary(exc, suburb, category, intent, session))
             engine = "fallback"  # graph down → transparent fallback (additive rule)
 
     # Resolve a center: known suburb name beats raw coords.

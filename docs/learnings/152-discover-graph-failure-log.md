@@ -15,12 +15,18 @@ Lessons:
   injected newlines. Masking the one configured address and truncating is not
   enough: a review showed partial addresses, IPs and `password=` pairs still
   got through.
-- Use an allowlist instead: log the exception class plus only details proven
-  safe (a fixed string raised in our own code, a `[CXN01]`-style TypeDB code,
-  a SQLAlchemy error code, a missing module name). Everything else becomes
-  "message withheld". The class name alone usually says what broke.
-- Prove privacy with adversarial tests: feed messages full of request values
-  and secret-like strings and assert none of them reach the log. A benign
-  test message only proves that a warning is written.
+- Don't swing to the other extreme either. A second review rejected
+  "message withheld" for ordinary errors: the operator can't tell two
+  `RuntimeError`s apart. Scrub word by word instead
+  (`_graph_failure_summary`). Plain words and `[CXN01]`-style TypeDB codes
+  survive. Tokens with digits or symbols (coordinates, ports, IPs, URLs,
+  `key=value`), the caller's own suburb/category words, TypeDB address labels,
+  credential keywords and the word after them become `[redacted]`. For
+  SQLAlchemy errors, log only the driver's own message (`exc.orig`), never the
+  statement or its parameters.
+- Test both sides: adversarial messages full of request values and
+  secret-like strings must not reach the log, and benign messages
+  ("typedb connection refused", "database is locked") must survive word for
+  word.
 - A fresh worktree has no `backend/data/`, so the test DB can't open
   (`unable to open database file`). Run `mkdir -p backend/data` first.

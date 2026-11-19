@@ -1,5 +1,5 @@
 """Issue #152: a TypeDB graph failure in /api/discover must leave one warning
-on the `looper.discover` logger (exception class + safe detail) while the
+on the `looper.discover` logger (exception class + scrubbed message) while the
 transparent SQLite fallback and response shape stay unchanged. The warning
 must never carry request values, coordinates, addresses or secrets."""
 import logging
@@ -76,7 +76,7 @@ def test_graph_failure_logs_one_warning_and_falls_back(client, db, caplog, monke
     [record] = _warnings(caplog)
     text = record.getMessage()
     assert text.startswith("discover graph engine failed, using fallback: ")
-    assert "_GraphDown" in text and "message withheld" in text
+    assert text.endswith("_GraphDown: typedb connection refused")
 
 
 @pytest.mark.parametrize("exc", [
@@ -92,33 +92,57 @@ def test_graph_failure_logs_one_warning_and_falls_back(client, db, caplog, monke
     TypeDBDriverException("[CXN01] Unable to connect to TypeDB server at "
                           f"{TYPEDB_ADDRESS}; user admin password hunter2"),
     TypeDBDriverException("no code here: category=private-query at 10.0.0.5:1729"),
+    RuntimeError("no businesses near Bondi for private query"),
+    RuntimeError("cache miss for 'Bondi' and Bondi's private stuff"),
+    RuntimeError("auth token abcdefXYZ rejected; password: hunter then retry"),
+    RuntimeError("login secretvalue failed for user admin"),
+    RuntimeError("timeout " + "word " * 40 + "Bondi"),
 ], ids=["key-values", "newline-injection", "exact-address", "partial-address",
         "ip-address", "url-credentials", "coords-in-valueerror", "sqlalchemy-params",
-        "typedb-coded", "typedb-uncoded"])
+        "typedb-coded", "typedb-uncoded", "plain-word-request-values",
+        "quoted-request-values", "credential-keywords", "credential-plain-words",
+        "long-message"])
 def test_warning_never_leaks_request_values_or_secrets(client, db, caplog, monkeypatch, exc):
     text = _fail_discover(client, caplog, monkeypatch, exc)
     assert type(exc).__name__ in text
     assert "\n" not in text and "\r" not in text
     for leaked in FORBIDDEN:
         assert leaked not in text, f"{leaked!r} leaked into: {text}"
-    assert len(text) < 200
+    assert "abcdefXYZ" not in text and "hunter" not in text
+    assert len(text) < 250
 
 
-def test_safe_details_are_kept(client, db, caplog, monkeypatch):
-    """Useful, provably safe diagnostics survive the policy."""
-    coded = _fail_discover(client, caplog, monkeypatch,
-                           TypeDBDriverException(f"[CXN01] cannot reach {TYPEDB_ADDRESS}"))
-    assert coded.endswith("typedb.common.exception.TypeDBDriverException: typedb error CXN01")
+@pytest.mark.parametrize("exc, detail", [
+    (_GraphDown("typedb connection refused"), "typedb connection refused"),
+    (ConnectionResetError("Connection reset by peer"), "Connection reset by peer"),
+    (TimeoutError("timed out waiting for the graph"), "timed out waiting for the graph"),
+    (ValueError(discover_route._NO_CENTER), "no center to search from"),
+    (TypeDBDriverException(f"[CXN01] Unable to connect to TypeDB server at {TYPEDB_ADDRESS}"),
+     "[CXN01] Unable to connect to TypeDB server at [redacted]"),
+    (TypeDBDriverException("[TXN08] The transaction has been closed."),
+     "[TXN08] The transaction has been closed."),
+    (OperationalError("SELECT 1", ("private-query",), Exception("database is locked")),
+     "database is locked (sqlalchemy error e3q8)"),
+    (ConnectionError("dial tcp 10.0.0.5:1729: connection refused"),
+     "dial tcp [redacted] connection refused"),
+], ids=["benign-runtime", "benign-reset", "benign-timeout", "no-center", "typedb-coded",
+        "typedb-closed", "sqlalchemy-orig", "mixed"])
+def test_benign_message_survives(client, db, caplog, monkeypatch, exc, detail):
+    """Useful diagnostics survive: plain words, TypeDB codes, the DB driver's message."""
+    text = _fail_discover(client, caplog, monkeypatch, exc)
+    assert text.endswith(f"{type(exc).__name__}: {detail}"), text
 
-    caplog.clear()
-    sql = _fail_discover(client, caplog, monkeypatch,
-                         OperationalError("SELECT 1", ("private-query",), Exception("locked")))
-    assert sql.endswith("sqlalchemy.exc.OperationalError: sqlalchemy error e3q8")
 
-    caplog.clear()
-    no_center = _fail_discover(client, caplog, monkeypatch,
-                               ValueError(discover_route._NO_CENTER))
-    assert no_center.endswith("ValueError: no center to search from")
+def test_plain_word_typedb_host_is_redacted(client, db, caplog, monkeypatch):
+    """A one-word host (e.g. a Docker service name) is a connection detail too."""
+    monkeypatch.setenv("TYPEDB_ADDRESS", "graphhost:1729")
+    monkeypatch.setenv("TYPEDB_ENABLED", "true")
+    monkeypatch.setattr(discover_route, "_graph_discover",
+                        _raiser(ConnectionError("cannot resolve graphhost right now")))
+    caplog.set_level(logging.WARNING, logger="looper.discover")
+    assert client.get("/api/discover", params=REQUEST).json()["engine"] == "fallback"
+    [record] = _warnings(caplog)
+    assert record.getMessage().endswith("ConnectionError: cannot resolve [redacted] right now")
 
 
 class _BadStr(RuntimeError):
