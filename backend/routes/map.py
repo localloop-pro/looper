@@ -1,6 +1,8 @@
 """LOOPER API — Map Pin Routes"""
 from datetime import datetime, timedelta, timezone
+import math
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from models import MapPin, get_db
 from routes.params import Latitude, Longitude, OptionalLatitude, OptionalLongitude, RadiusKm
@@ -47,6 +49,7 @@ def get_pins(
     lng: OptionalLongitude = None,
     radius_km: RadiusKm = 10.0,
     pin_type: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=500, description="Maximum pins returned (default 100, maximum 500)."),
     db: Session = Depends(get_db),
 ):
     """Get map pins in an area. Filters by type if specified."""
@@ -60,7 +63,24 @@ def get_pins(
     if pin_type:
         query = query.filter(MapPin.pin_type == pin_type)
 
-    pins = query.all()
+    if lat is not None and lng is not None:
+        # Conservative spherical bounding box; exact distance is checked below.
+        angular = radius_km / 6371.0
+        lat_delta = math.degrees(angular)
+        query = query.filter(MapPin.lat >= max(-90, lat - lat_delta),
+                             MapPin.lat <= min(90, lat + lat_delta))
+        if abs(lat) + lat_delta < 90:
+            lng_delta = math.degrees(math.asin(min(1.0, math.sin(angular) / math.cos(math.radians(lat)))))
+            low, high = lng - lng_delta, lng + lng_delta
+            if low <= -180:
+                query = query.filter(or_(MapPin.lng >= low + 360, MapPin.lng <= high))
+            elif high >= 180:
+                query = query.filter(or_(MapPin.lng >= low, MapPin.lng <= high - 360))
+            else:
+                query = query.filter(MapPin.lng >= low, MapPin.lng <= high)
+        pins = query.all()
+    else:
+        pins = query.limit(limit).all()
 
     # Filter by distance if coordinates provided
     from routes.search import haversine_km
@@ -88,6 +108,7 @@ def get_pins(
     # Sort: nearest first
     results.sort(key=lambda p: p["distance_km"] if p["distance_km"] is not None else 999)
 
+    results = results[:limit]
     return {"count": len(results), "pins": results}
 
 
