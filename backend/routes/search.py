@@ -156,6 +156,29 @@ FALLBACK_KM = _read_fallback_km()
 ORDER_TEXT = "best match first, then most community reviews, then nearest"
 
 
+def _split_place_words(tokens: list[str]) -> tuple[list[str], list[str]]:
+    """Split folded query tokens into (subject words, place words).
+
+    Place words are whole known suburb names (/api/discover's SUBURB_COORDS,
+    longest first so "bondi junction" wins over "bondi"). Trailing
+    punctuation is ignored when comparing ("Bondi Junction?")."""
+    # Imported here: routes.discover imports this module at load time.
+    from routes.discover import SUBURB_COORDS
+    places = sorted((key.split() for key in SUBURB_COORDS), key=len, reverse=True)
+    words = [t.strip(".,!?;:") for t in tokens]
+    subject, place = [], []
+    i = 0
+    while i < len(tokens):
+        hit = next((p for p in places if words[i:i + len(p)] == p), None)
+        if hit:
+            place.extend(hit)
+            i += len(hit)
+        else:
+            subject.append(tokens[i])
+            i += 1
+    return subject, place
+
+
 def _km(value: float) -> str:
     """1.5 -> "1.5", 10.0 -> "10"."""
     return f"{round(value, 1):g}"
@@ -195,11 +218,20 @@ def search_businesses(
     tokens = [fold_accents(t.strip()) for t in q.split() if len(t.strip()) > 1]
     # Also include stopwords that might be relevant (like "beach", "road")
     stopwords = {"near", "the", "a", "an", "in", "at", "on", "is", "are", "was", "for", "to", "of", "and", "or", "i", "me", "my", "what", "where", "who", "how", "find", "good", "best", "great"}
-    search_tokens = [t for t in tokens if t not in stopwords]
-    
+    # Place words ("Bondi Junction") say where, not what (looper#143): when
+    # the question also names a thing ("vet"), only that thing decides which
+    # businesses match, and the place only scores against the suburb field.
+    # A place-only question ("Bondi") keeps matching every field as before.
+    subject_tokens, place_tokens = _split_place_words(tokens)
+    search_tokens = [t for t in subject_tokens if t not in stopwords]
+    place_groups = query_terms.expand(place_tokens) if search_tokens else []
+
+    if not search_tokens:
+        search_tokens = [t for t in tokens if t not in stopwords]
+
     if not search_tokens:
         search_tokens = tokens  # fallback if all words are stopwords
-    
+
     # Expand each word with the explicit synonym / compound table
     # (services/query_terms.py, looper#29): "hairdresser" also tries "hair"
     # and "salon". Originals always stay; added words must start a word.
@@ -275,6 +307,9 @@ def search_businesses(
                 relevance += 2  # suburb match
             if query_terms.group_matches(group, fields["description"]):
                 relevance += 1
+        for group in place_groups:
+            if query_terms.group_matches(group, fields["suburb"]):
+                relevance += 2  # suburb match, never a name match (#143)
 
         results.append({
             "business": biz,
