@@ -140,6 +140,8 @@ const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10
     // Ghost Listing has blank-string coords — a marker/bounds at [0,0]
     // (Gulf of Guinea) means the coordinate guard let '' coerce to 0
     const fit = calls.find((c) => c[0] === "fitBounds");
+    // desktop (looper#142): the panel sits beside the pins, padding stays 50
+    if (fit && (fit[2].padding !== 50 || "pitch" in fit[2])) errors.push("desktop fit options changed: " + JSON.stringify(fit[2]));
     if (fit && (Math.abs(fit[1][0][0]) < 100 || Math.abs(fit[1][0][1]) < 20)) {
       errors.push("blank-coord result dragged fitBounds toward [0,0]: " + JSON.stringify(fit[1]));
     }
@@ -293,14 +295,16 @@ const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10
     }
 
     // 9. Phone result pins (looper#142): after a search on a 375 x 780 phone,
-    // every result pin must land on the map OUTSIDE the open result panel.
+    // every result pin must land on the map OUTSIDE the open result panel and
+    // below the host's 120 px top bar (topInset, like the /demo chip bar).
     // The fake map has no renderer, so place the pins the way MapLibre's
     // fitBounds would (flat Web Mercator, padding, maxZoom) from the call
     // the bus made, then check each pin centre against the panel's box.
     const phone = await browser.newPage({ viewport: { width: 375, height: 780 } });
     phone.setDefaultTimeout(10_000);
     phone.on("pageerror", (e) => errors.push("phone pageerror: " + e.message));
-    await phone.goto("http://127.0.0.1:8088/tests/jarvis-harness.html");
+    await phone.goto("http://127.0.0.1:8088/tests/jarvis-harness.html?defer=1");
+    await phone.evaluate(() => LooperJarvis.init({ map: window.fakeMap, district: "Bondi", apiBase: "http://stub", topInset: () => 120 }));
     await phone.waitForSelector("#looper-jarvis .lj-face-btn .looper-face");
     await phone.evaluate(() => LooperJarvis.ask("find me a cafe"));
     await phone.waitForSelector("#looper-jarvis .lj-option");
@@ -320,6 +324,11 @@ const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10
       console.log("phone pins:", JSON.stringify(placed), "panel:", JSON.stringify(phoneFit.panel),
         "fit options:", JSON.stringify(phoneFit.fit[2]));
       if (under.length) errors.push("phone: " + under.length + " of " + pins.length + " result pins under the result panel");
+      const hidden = placed.filter((pt) => pt.y < 120 + R);
+      if (hidden.length) errors.push("phone: " + hidden.length + " of " + pins.length + " result pins under the host top bar");
+      // placeFitBounds is flat, like MapLibre's fit: a tilted phone map would
+      // push the nearest pins back under the panel (seen on the real /demo)
+      if (phoneFit.fit[2].pitch !== 0) errors.push("phone fit keeps the map tilted: " + JSON.stringify(phoneFit.fit[2]));
     }
     await phone.close();
 
