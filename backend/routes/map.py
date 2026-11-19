@@ -80,7 +80,8 @@ def get_pins(
                 query = query.filter(MapPin.lng >= low, MapPin.lng <= high)
         pins = query.all()
     else:
-        pins = query.limit(limit).all()
+        # Newest first, so new pins are not hidden behind the cap (looper#162).
+        pins = query.order_by(MapPin.created_at.desc(), MapPin.id.desc()).limit(limit).all()
 
     # Filter by distance if coordinates provided
     from routes.search import haversine_km
@@ -93,7 +94,7 @@ def get_pins(
             if distance > radius_km:
                 continue
 
-        results.append({
+        results.append((distance, {
             "id": pin.id,
             "pin_type": pin.pin_type,
             "title": pin.title,
@@ -103,12 +104,14 @@ def get_pins(
             "category": pin.category,
             "distance_km": round(distance, 1) if distance is not None else None,
             "created_at": pin.created_at.isoformat(),
-        })
+        }))
 
-    # Sort: nearest first
-    results.sort(key=lambda p: p["distance_km"] if p["distance_km"] is not None else 999)
+    # Sort: nearest first, by exact distance so the cap never keeps a farther pin
+    # that rounds to the same 0.1 km (looper#162). Stable sort keeps newest first
+    # when there are no coordinates.
+    results.sort(key=lambda r: r[0] if r[0] is not None else 999)
 
-    results = results[:limit]
+    results = [pin for _, pin in results[:limit]]
     return {"count": len(results), "pins": results}
 
 
