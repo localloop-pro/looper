@@ -54,3 +54,18 @@ def test_limit_out_of_range_is_422(client, db, limit):
 def test_limit_in_range_is_200(client, db, limit):
     biz = _business(db)
     assert client.get(f"/api/reviews/{biz.id}?limit={limit}").status_code == 200
+
+
+def test_reviewer_first_name_is_not_published(client, db):
+    """looper#133: a real member's first name (from the Facebook import) must
+    never appear in the public review read; every reviewer gets one label."""
+    biz = _business(db)
+    user = User(first_name="Sarah", mobile_number="0400000133")
+    db.add(user)
+    db.flush()
+    db.add(Review(business_id=biz.id, user_id=user.id, rating=5,
+                  review_text="Lovely coffee"))
+    db.commit()
+    body = client.get(f"/api/reviews/{biz.id}").json()
+    assert [r["reviewer"] for r in body["reviews"]] == ["Community member"]
+    assert "Sarah" not in client.get(f"/api/reviews/{biz.id}").text
