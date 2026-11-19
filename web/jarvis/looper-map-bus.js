@@ -181,6 +181,9 @@
           marker.setPopup(new lib.Popup({ offset: 18 }).setHTML(popupHtml(r)));
         }
         marker.addTo(state.map);
+        // After addTo(): the map library labels every marker "Map marker"
+        // there, which tells a screen-reader user nothing.
+        if (r.name) el.setAttribute("aria-label", r.name);
         state.resultMarkers.push(marker);
       }
     });

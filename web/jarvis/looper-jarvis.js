@@ -113,12 +113,15 @@
     // narrow phones: the dock row (wake + status + face) must never exceed
     // the viewport — wrap the pills above a smaller face
     "@media (max-width:480px){#looper-jarvis{max-width:calc(100vw - 24px);}#looper-jarvis .lj-dock{flex-wrap:wrap;justify-content:flex-end;row-gap:6px;}#looper-jarvis .lj-status{max-width:140px;font-size:11px;padding:5px 10px;}#looper-jarvis .lj-wake{font-size:11px;padding:5px 9px;}}",
-    "#looper-jarvis .lj-panel{width:min(340px,calc(100vw - 36px));max-height:46vh;overflow-y:auto;background:rgba(10,12,18,.94);color:#e8ecf4;border:1px solid rgba(86,189,255,.35);border-radius:16px;padding:12px 14px;backdrop-filter:blur(14px);box-shadow:0 12px 40px rgba(0,0,0,.45);display:none;}",
+    // border-box: the 340px includes padding, so a phone panel stays on screen
+    "#looper-jarvis .lj-panel{box-sizing:border-box;width:min(340px,calc(100vw - 36px));max-height:46vh;overflow-y:auto;background:rgba(10,12,18,.94);color:#e8ecf4;border:1px solid rgba(86,189,255,.35);border-radius:16px;padding:12px 14px;backdrop-filter:blur(14px);box-shadow:0 12px 40px rgba(0,0,0,.45);display:none;}",
     "#looper-jarvis .lj-panel.lj-open{display:block;}",
     "#looper-jarvis .lj-msg{font-size:13.5px;line-height:1.45;margin:0 0 8px;}",
     "#looper-jarvis .lj-option{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;margin:6px 0;border:1px solid rgba(255,255,255,.09);border-radius:10px;background:rgba(255,255,255,.04);cursor:pointer;}",
     "#looper-jarvis .lj-option:hover{border-color:rgba(86,189,255,.6);}",
-    "#looper-jarvis .lj-option .lj-name{font-weight:650;font-size:13px;}",
+    // The name is a real <button> so keyboard users can reach each option.
+    "#looper-jarvis .lj-option .lj-name{display:block;background:none;border:0;padding:0;margin:0;color:inherit;font-family:inherit;font-weight:650;font-size:13px;text-align:left;cursor:pointer;border-radius:4px;}",
+    "#looper-jarvis .lj-option .lj-name:focus-visible{outline:2px solid #7ddfff;outline-offset:2px;}",
     "#looper-jarvis .lj-option .lj-meta{font-size:12px;color:#9fb4c8;}",
     "#looper-jarvis .lj-option a{color:#7ddfff;text-decoration:none;font-size:12px;white-space:nowrap;}",
     "#looper-jarvis .lj-dock{display:flex;align-items:center;gap:10px;}",
@@ -641,7 +644,7 @@
       var distKm = Number(r.distance_km);
       var stars = (r.avg_rating != null && isFinite(rating)) ? "⭐ " + rating : "no ratings yet";
       var meta = (r.category || "") + " · " + stars + " · " +
-        (isFinite(reviewCount) ? reviewCount : 0) + " reviews" +
+        reviewsText(isFinite(reviewCount) ? reviewCount : 0) +
         (r.distance_km != null && isFinite(distKm) ? " · " + distKm + " km" : "");
       var siteHref = safeUrl(r.website);
       var link = cardUrl(r)
@@ -649,7 +652,8 @@
         : (siteHref ? '<a href="' + escapeHtml(siteHref) + '" target="_blank" rel="noopener">Website →</a>' : "");
       html +=
         '<div class="lj-option" data-i="' + i + '">' +
-        '<div><div class="lj-name">' + (i + 1) + ". " + escapeHtml(r.name) + "</div>" +
+        '<div><button type="button" class="lj-name" aria-label="Show ' + escapeHtml(r.name) + ' on the map">' +
+        (i + 1) + ". " + escapeHtml(r.name) + "</button>" +
         '<div class="lj-meta">' + escapeHtml(meta) + "</div></div>" +
         "<div>" + link + "</div></div>";
     });
@@ -664,6 +668,9 @@
       });
     });
   }
+
+  // 1 -> "1 review", 2 -> "2 reviews"
+  function reviewsText(n) { return n + " review" + (n === 1 ? "" : "s"); }
 
   // 1.5 -> "1.5", 10 -> "10" (same rounding as the API's _km)
   function fmtKm(km) { return String(Math.round(km * 10) / 10); }
@@ -692,8 +699,8 @@
       "I found " + n + " option" + (n === 1 ? "" : "s") + where.within + ". ";
     var names = results.slice(0, 3).map(function (r) {
       var bit = r.name;
-      if (r.avg_rating) bit += " has " + r.avg_rating + " stars from " + r.review_count + " reviews";
-      else if (r.review_count) bit += " has " + r.review_count + " reviews";
+      if (r.avg_rating) bit += " has " + r.avg_rating + " stars from " + reviewsText(r.review_count);
+      else if (r.review_count) bit += " has " + reviewsText(r.review_count);
       return bit;
     });
     var tail = "";

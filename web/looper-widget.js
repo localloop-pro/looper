@@ -22,7 +22,7 @@
       <div class="looper-panel" id="looper-panel" style="display:none">
         <div class="looper-header">
           <span>🏠 Hey Looper!</span>
-          <button class="looper-close" id="looper-close">&times;</button>
+          <button class="looper-close" id="looper-close" aria-label="Close Looper">&times;</button>
         </div>
         <div class="looper-chat" id="looper-chat" role="log" aria-live="polite">
           <div class="looper-msg looper-bot">
@@ -49,8 +49,9 @@
   const send = document.getElementById('looper-send');
 
   // Toggle panel
-  toggle.onclick = () => { panel.style.display = 'block'; toggle.style.display = 'none'; };
-  close.onclick = () => { panel.style.display = 'none'; toggle.style.display = 'flex'; };
+  // Move focus with the swap so keyboard users never land on a hidden button.
+  toggle.onclick = () => { panel.style.display = 'block'; toggle.style.display = 'none'; input.focus(); };
+  close.onclick = () => { panel.style.display = 'none'; toggle.style.display = 'flex'; toggle.focus(); };
 
   // Add message to chat
   function addMessage(text, isUser = false) {
@@ -120,7 +121,8 @@
         data.results.forEach((r, i) => {
           const stars = r.avg_rating ? '⭐'.repeat(Math.round(r.avg_rating)) : 'No ratings yet';
           const dist = r.distance_km ? ` (${r.distance_km}km)` : '';
-          resultText += `${i+1}. **${r.name}**${dist} — ${r.category}\n`;
+          // Plain text: addMessage uses textContent, so **bold** would show raw.
+          resultText += `${i+1}. ${r.name}${dist} — ${r.category}\n`;
           resultText += `   ${stars} · ${r.review_count} review${r.review_count !== 1 ? 's' : ''}\n`;
           if (r.top_review) resultText += `   ${r.top_review}\n`;
           resultText += '\n';
