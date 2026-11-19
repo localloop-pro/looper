@@ -163,7 +163,7 @@ def _km(value: float) -> str:
 
 @router.get("/search", response_model=SearchResponse)
 def search_businesses(
-    q: str = Query(..., min_length=1, description="Search query"),
+    q: str = Query(..., min_length=1, max_length=200, description="Search query (1-200 characters; longer returns 422)"),
     lat: OptionalLatitude = None,
     lng: OptionalLongitude = None,
     radius_km: float = Query(5.0, ge=0.1, le=5000.0),
