@@ -6,6 +6,9 @@ from models import Review, Business, User, get_db
 from schemas import SubmitReviewRequest
 from services.write_guard import require_public_writes
 
+# looper#133: reviewer first names stay in the DB and never leave on a public read.
+PUBLIC_REVIEWER_LABEL = "Community member"
+
 router = APIRouter(prefix="/api", tags=["reviews"])
 
 
@@ -89,10 +92,8 @@ def get_reviews(
         Review.business_id == business_id, Review.is_public == True
     ).scalar()
 
-    # Get reviewer names
-    user_ids = list(set(r.user_id for r in reviews))
-    users = {u.id: u.first_name for u in db.query(User).filter(User.id.in_(user_ids)).all()}
-
+    # Public-safe: never publish a member's name (looper#133). Every reviewer
+    # gets the same label, so the response shape stays the same.
     return {
         "business_id": business_id,
         "avg_rating": round(avg_rating, 1) if avg_rating else None,
@@ -102,7 +103,7 @@ def get_reviews(
                 "id": r.id,
                 "rating": r.rating,
                 "text": r.review_text,
-                "reviewer": users.get(r.user_id, "Anonymous"),
+                "reviewer": PUBLIC_REVIEWER_LABEL,
                 "verified_visit": r.verified_visit,
                 "created_at": r.created_at.isoformat(),
             }
