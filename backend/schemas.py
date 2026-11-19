@@ -66,8 +66,10 @@ class MapPinRequest(BaseModel):
     pin_type: str  # offering, looking_for, event, alert
     title: str
     description: Optional[str]
-    lat: float
-    lng: float
+    # Same bounds as the read params (routes/params.py): the #160 bounding box
+    # never matches a pin stored outside them (looper#162).
+    lat: float = Field(..., ge=-90.0, le=90.0, allow_inf_nan=False)
+    lng: float = Field(..., ge=-180.0, le=180.0, allow_inf_nan=False)
     category: Optional[str]
     expires_in_days: Optional[int] = 30
 
