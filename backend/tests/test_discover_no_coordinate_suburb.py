@@ -30,6 +30,7 @@ def _names(body):
 def _seed(db):
     _biz(db)  # in Bondi, with coordinates
     _biz(db, name="Byron Trim", suburb="Byron Bay", lat=None, lng=None)
+    _biz(db, name="Surry Hills Barber", suburb="Surry Hills", lat=None, lng=None)
     _biz(db, name="Bondí Hair Studio", suburb="Bondí", lat=None, lng=None)
 
 
@@ -39,12 +40,22 @@ class TestFallbackEngine:
         body = client.get("/api/discover", params={"suburb": "Bondi"}).json()
         assert body["engine"] == "fallback"
         assert "Byron Trim" not in _names(body)
+        assert "Surry Hills Barber" not in _names(body)
         assert body["total_results"] == 2
 
     def test_no_coordinate_business_in_requested_suburb_is_kept(self, client, db):
         _seed(db)
         body = client.get("/api/discover", params={"suburb": "Bondi"}).json()
         assert _names(body) == ["Bondi Cuts", "Bondí Hair Studio"]
+
+    def test_coordinate_only_search_is_unchanged(self, client, db):
+        # No suburb asked for, so there is nothing to match a no-coordinate
+        # business against: it stays in, without a distance, as before.
+        _seed(db)
+        body = client.get("/api/discover",
+                          params={"lat": -33.8915, "lng": 151.2743}).json()
+        assert _names(body) == ["Bondi Cuts", "Bondí Hair Studio",
+                                "Byron Trim", "Surry Hills Barber"]
 
 
 def _fake_typedb_module():

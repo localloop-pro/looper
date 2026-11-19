@@ -680,23 +680,9 @@
  "/api/discover?{\"category\": \"bar\", \"radius_km\": 2, \"suburb\": \"Surry Hills\"}": {
   "category": "bar",
   "engine": "fallback",
-  "message": "3 options around surry hills, ranked by community experience. I don't pick favourites — you decide!",
+  "message": "2 options around surry hills, ranked by community experience. I don't pick favourites — you decide!",
   "radius_km": 2.0,
   "results": [
-   {
-    "address": "212 Fake St, Tamarama NSW",
-    "avg_rating": 1.5,
-    "business_id": 199,
-    "card_url": null,
-    "category": "bar",
-    "distance_km": null,
-    "lat": null,
-    "lng": null,
-    "name": "Sunny Ocean Bar 198",
-    "review_count": 2,
-    "top_review": "\"A bit noisy at lunch Friendly staff Quick service (#1795)\"",
-    "website": null
-   },
    {
     "address": "147 Fake St, Surry Hills NSW",
     "avg_rating": 1.0,
@@ -727,7 +713,7 @@
    }
   ],
   "suburb": "surry hills",
-  "total_results": 3
+  "total_results": 2
  },
  "/api/discover?{\"category\": \"café\", \"suburb\": \"Coogee\"}": {
   "category": "café",
@@ -1317,7 +1303,7 @@
    }
   ],
   "suburb": "bondi",
-  "total_results": 292
+  "total_results": 282
  },
  "/api/search?{\"lat\": -33.8908, \"lng\": 151.2743, \"q\": \"café near Bondi Beach\", \"radius_km\": 3}": {
   "message": "Here are 5 options for 'café near Bondi Beach': best match first, then most community reviews, then nearest. I don't pick favorites — you decide! ✨",

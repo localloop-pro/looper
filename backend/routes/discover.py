@@ -179,7 +179,10 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
             distance = haversine_km(center_lat, center_lng, biz.lat, biz.lng)
             if distance > radius_km:
                 continue
-        # no coords: include without distance (sorts last); matches SQLite-path behaviour
+        elif suburb_key and suburb_key not in (fold_accents(biz.suburb) or ""):
+            # no coords can't be radius-checked: keep it only when its own
+            # suburb matches the requested one (#151); matches SQLite path
+            continue
 
         candidates.append((biz, distance))
     stats = review_stats(db, [biz.id for biz, _ in candidates])
@@ -303,6 +306,10 @@ def discover(
             distance = haversine_km(center[0], center[1], biz.lat, biz.lng)
             if distance > radius_km:
                 continue
+        elif suburb_key and suburb_key not in (fold_accents(biz.suburb) or ""):
+            # no coords can't be radius-checked: keep it only when its own
+            # suburb matches the requested one (#151)
+            continue
 
         candidates.append((biz, distance))
     stats = review_stats(db, [biz.id for biz, _ in candidates])
