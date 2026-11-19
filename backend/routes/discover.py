@@ -11,6 +11,7 @@ ANTI-BIAS INVARIANT (BRIDGE-CONTRACT-v1 §7): ranking inputs are
 review count, review recency, and proximity ONLY — never discount_size,
 source, tier, or any paid signal.
 """
+import logging
 import os
 
 from fastapi import APIRouter, Depends, Query
@@ -25,6 +26,7 @@ from schemas import SearchResult
 from services import telemetry
 
 router = APIRouter(prefix="/api", tags=["discover"])
+logger = logging.getLogger("looper.discover")
 
 # Buffer added to radius_km when testing suburb centroids against the search
 # radius — prevents false negatives when a suburb centroid sits just outside
@@ -271,7 +273,16 @@ def discover(
         try:
             return _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
                                    intent=intent, session_id=session)
-        except Exception:
+        except Exception as exc:
+            # One line so a broken graph is visible in production. Class and
+            # message only: never the caller's suburb/coords, never a traceback,
+            # and the TypeDB address is masked in case the driver echoes it.
+            detail = str(exc)
+            typedb_address = os.getenv("TYPEDB_ADDRESS")
+            if typedb_address:
+                detail = detail.replace(typedb_address, "[typedb-address]")
+            logger.warning("discover graph engine failed, using fallback: %s: %s",
+                           type(exc).__name__, detail[:200])
             engine = "fallback"  # graph down → transparent fallback (additive rule)
 
     # Resolve a center: known suburb name beats raw coords.
