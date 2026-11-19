@@ -59,7 +59,8 @@ test('one privacy-safe log line for success, failure, timeout and invalid base',
     await client({ ...options, log: line => logs.push(line) }).search({ query: 'Private Cafe', lat: -33, lng: 151 });
     assert.equal(logs.length, 1);
     assert.match(logs[0], /^\[looper-api\] search \d+ms status=\S+ cache=\S+ rid=lb-[0-9a-f-]{36}$/);
-    assert.doesNotMatch(logs[0], /q=|Private Cafe|https?:|secret|-33/);
+    // The rid is a random UUID that can contain "-33"; check everything else.
+    assert.doesNotMatch(logs[0].replace(/ rid=\S+$/, ''), /q=|Private Cafe|https?:|secret|-33/);
   }
 });
 test('other success shapes remain available and network/JSON errors are fixed', async () => {
