@@ -13,6 +13,7 @@ source, tier, or any paid signal.
 """
 import logging
 import os
+import re
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
@@ -27,6 +28,15 @@ from services import telemetry
 
 router = APIRouter(prefix="/api", tags=["discover"])
 logger = logging.getLogger("looper.discover")
+
+# Graph-failure warnings (issue #152) never log str(exc): driver and SQL
+# messages can carry request values, coordinates, addresses or credentials.
+# Only the exception class plus details proven safe are logged.
+_NO_CENTER = "no center to search from"
+_SAFE_MESSAGES = frozenset({_NO_CENTER})       # fixed strings raised in this file
+_TYPEDB_ERROR_CODE = re.compile(r"\[([A-Z]{3}\d{2})\]")  # e.g. "[CXN01]"
+_SQLALCHEMY_CODE = re.compile(r"[a-z0-9]{4}")    # e.g. "e3q8"
+_MODULE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,80}")
 
 # Buffer added to radius_km when testing suburb centroids against the search
 # radius — prevents false negatives when a suburb centroid sits just outside
@@ -91,7 +101,7 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
     if center is None and lat is not None and lng is not None:
         center = (lat, lng)
     if center is None:
-        raise ValueError("no center to search from")
+        raise ValueError(_NO_CENTER)
 
     center_lat, center_lng = center
 
@@ -254,6 +264,33 @@ def _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
     }
 
 
+def _graph_failure_summary(exc: Exception) -> tuple[str, str]:
+    """(exception class, safe detail) for the graph-failure warning.
+
+    The detail is a fixed string, a TypeDB error code, a SQLAlchemy error
+    code or a missing module name — never free text from the message.
+    """
+    cls = type(exc)
+    name = cls.__qualname__ if cls.__module__ == "builtins" else f"{cls.__module__}.{cls.__qualname__}"
+    try:
+        message = str(exc)
+    except Exception:  # a broken __str__ must not turn the fallback into a 500
+        message = ""
+    if message in _SAFE_MESSAGES:
+        return name, message
+    if isinstance(exc, ImportError) and exc.name and _MODULE_NAME.fullmatch(exc.name):
+        return name, f"missing module {exc.name}"
+    if cls.__module__.startswith("typedb"):
+        match = _TYPEDB_ERROR_CODE.search(message)
+        if match:
+            return name, f"typedb error {match.group(1)}"
+    if cls.__module__.startswith("sqlalchemy"):
+        code = getattr(exc, "code", None)
+        if isinstance(code, str) and _SQLALCHEMY_CODE.fullmatch(code):
+            return name, f"sqlalchemy error {code}"
+    return name, "message withheld"
+
+
 @router.get("/discover")
 def discover(
     suburb: str | None = Query(None, description="Suburb name, e.g. Bondi"),
@@ -274,15 +311,10 @@ def discover(
             return _graph_discover(db, suburb, lat, lng, radius_km, category, limit,
                                    intent=intent, session_id=session)
         except Exception as exc:
-            # One line so a broken graph is visible in production. Class and
-            # message only: never the caller's suburb/coords, never a traceback,
-            # and the TypeDB address is masked in case the driver echoes it.
-            detail = str(exc)
-            typedb_address = os.getenv("TYPEDB_ADDRESS")
-            if typedb_address:
-                detail = detail.replace(typedb_address, "[typedb-address]")
+            # One line so a broken graph is visible in production; no
+            # traceback and no raw message (see _graph_failure_summary).
             logger.warning("discover graph engine failed, using fallback: %s: %s",
-                           type(exc).__name__, detail[:200])
+                           *_graph_failure_summary(exc))
             engine = "fallback"  # graph down → transparent fallback (additive rule)
 
     # Resolve a center: known suburb name beats raw coords.
