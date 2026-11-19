@@ -1,7 +1,8 @@
 """Issue #152: a TypeDB graph failure in /api/discover must leave one warning
-on the `looper.discover` logger (exception class + scrubbed message) while the
-transparent SQLite fallback and response shape stay unchanged. The warning
-must never carry request values, coordinates, addresses or secrets."""
+on the `looper.discover` logger while the transparent SQLite fallback and
+response shape stay unchanged. The warning carries only the exception class
+name and, for typedb.* exceptions, a "[CXN01]"-style error code. No exception
+message text, traceback, request value or TypeDB address ever reaches it."""
 import logging
 
 import pytest
@@ -10,14 +11,16 @@ from sqlalchemy.exc import OperationalError
 from models import Business
 from routes import discover as discover_route
 
+PREFIX = "discover graph engine failed, using fallback: "
 REQUEST = {"suburb": "Bondi", "lat": -33.8915, "lng": 151.2743,
            "category": "private-query"}
 TYPEDB_ADDRESS = "typedb-internal.example:1729"
 
-# Anything request-derived or secret-like that must never reach the log.
+# Request values and secret-like strings that must never reach the log.
 FORBIDDEN = ("Bondi", "bondi", "-33.8915", "33.89", "151.2743", "151.27",
-             "private-query", "private", "typedb-internal", "1729", "10.0.0.5",
-             "hunter2", "admin", "secret", "password", "example", "SELECT")
+             "private", "query", "typedb-internal", "1729", "10.0.0.5",
+             "hunter", "admin", "secret", "password", "example", "SELECT",
+             "Ocean", "Street", "25", "authentication", "redacted", "withheld")
 
 
 class _GraphDown(RuntimeError):
@@ -29,6 +32,14 @@ class TypeDBDriverException(Exception):
 
 
 TypeDBDriverException.__module__ = "typedb.common.exception"
+TYPEDB_NAME = "typedb.common.exception.TypeDBDriverException"
+
+
+class NotTypeDBException(Exception):
+    """Same code-like message, but not a typedb.* exception."""
+
+
+NotTypeDBException.__module__ = "typedbx.errors"
 
 
 def _raiser(exc):
@@ -51,7 +62,7 @@ def _fail_discover(client, caplog, monkeypatch, exc):
     assert resp.status_code == 200
     assert resp.json()["engine"] == "fallback"
     [record] = _warnings(caplog)
-    assert record.exc_info is None  # no traceback (could carry locals/paths)
+    assert record.exc_info is None and record.stack_info is None  # no traceback
     return record.getMessage()
 
 
@@ -74,88 +85,72 @@ def test_graph_failure_logs_one_warning_and_falls_back(client, db, caplog, monke
     assert [r["name"] for r in body["results"]] == ["Gertrude & Alice"]
 
     [record] = _warnings(caplog)
-    text = record.getMessage()
-    assert text.startswith("discover graph engine failed, using fallback: ")
-    assert text.endswith("_GraphDown: typedb connection refused")
+    assert record.getMessage() == PREFIX + f"{_GraphDown.__module__}._GraphDown"
 
 
-@pytest.mark.parametrize("exc", [
-    RuntimeError("category=private-query lat=-33.8915 password=secret"),
-    RuntimeError("suburb=Bondi\nlooper.discover WARNING forged line lng=151.2743"),
-    ConnectionError(f"Unable to connect to TypeDB server at {TYPEDB_ADDRESS}"),
-    ConnectionError("connect failed: typedb-internal.example (port 1729)"),
-    ConnectionError("dial tcp 10.0.0.5:1729: connection refused"),
-    ConnectionError("typedb://admin:hunter2@typedb-internal.example:1729/localloop"),
-    ValueError("could not convert -33.89 / 151.27 for Bondi"),
-    OperationalError("SELECT * FROM businesses WHERE category LIKE ?",
-                     ("%private-query%", -33.8915, 151.2743), Exception("password=secret")),
-    TypeDBDriverException("[CXN01] Unable to connect to TypeDB server at "
-                          f"{TYPEDB_ADDRESS}; user admin password hunter2"),
-    TypeDBDriverException("no code here: category=private-query at 10.0.0.5:1729"),
-    RuntimeError("no businesses near Bondi for private query"),
-    RuntimeError("cache miss for 'Bondi' and Bondi's private stuff"),
-    RuntimeError("auth token abcdefXYZ rejected; password: hunter then retry"),
-    RuntimeError("login secretvalue failed for user admin"),
-    RuntimeError("timeout " + "word " * 40 + "Bondi"),
-], ids=["key-values", "newline-injection", "exact-address", "partial-address",
-        "ip-address", "url-credentials", "coords-in-valueerror", "sqlalchemy-params",
-        "typedb-coded", "typedb-uncoded", "plain-word-request-values",
-        "quoted-request-values", "credential-keywords", "credential-plain-words",
-        "long-message"])
-def test_warning_never_leaks_request_values_or_secrets(client, db, caplog, monkeypatch, exc):
+@pytest.mark.parametrize("exc, logged", [
+    # The two review repros: free text around a credential or an address.
+    (RuntimeError("authentication failed for password is hunter"), "RuntimeError"),
+    (RuntimeError("failed for address 25 Ocean Street"), "RuntimeError"),
+    (RuntimeError("category=private-query lat=-33.8915 password=secret"), "RuntimeError"),
+    (RuntimeError("suburb=Bondi\nlooper.discover WARNING forged line lng=151.2743"),
+     "RuntimeError"),
+    (ConnectionError(f"Unable to connect to TypeDB server at {TYPEDB_ADDRESS}"),
+     "ConnectionError"),
+    (ConnectionError("dial tcp 10.0.0.5:1729: connection refused"), "ConnectionError"),
+    (ConnectionError("typedb://admin:hunter2@typedb-internal.example:1729/localloop"),
+     "ConnectionError"),
+    (ValueError("no businesses near Bondi for private query"), "ValueError"),
+    (OperationalError("SELECT * FROM businesses WHERE category LIKE ?",
+                      ("%private-query%", -33.8915, 151.2743), Exception("password=secret")),
+     "sqlalchemy.exc.OperationalError"),
+    (TypeDBDriverException(f"[CXN01] Unable to connect to TypeDB server at {TYPEDB_ADDRESS}"
+                           "; user admin password hunter2"), TYPEDB_NAME + " [CXN01]"),
+    (TypeDBDriverException("[TXN08]\nWARNING forged line suburb=Bondi"),
+     TYPEDB_NAME + " [TXN08]"),
+    # Strict code match: only an exact [ABC12] at the very start counts.
+    (TypeDBDriverException("category=private-query at 10.0.0.5:1729 [CXN01]"), TYPEDB_NAME),
+    (TypeDBDriverException("[CXN1] Bondi"), TYPEDB_NAME),
+    (TypeDBDriverException("[cxn01] Bondi"), TYPEDB_NAME),
+    (TypeDBDriverException("[CXN012] Bondi"), TYPEDB_NAME),
+    (TypeDBDriverException("[Bondi] password hunter"), TYPEDB_NAME),
+    # A code-like message on a non-typedb exception is not logged at all.
+    (NotTypeDBException("[CXN01] password hunter"), "typedbx.errors.NotTypeDBException"),
+    (RuntimeError("[CXN01] Bondi"), "RuntimeError"),
+], ids=["repro-password", "repro-address", "key-values", "newline-injection",
+        "exact-address", "ip-address", "url-credentials", "plain-word-request-values",
+        "sqlalchemy-params", "typedb-coded-with-secrets", "typedb-coded-newline",
+        "typedb-code-not-at-start", "typedb-code-short", "typedb-code-lowercase",
+        "typedb-code-long", "typedb-code-words", "typedb-lookalike-module",
+        "builtin-with-code"])
+def test_warning_logs_only_class_and_code(client, db, caplog, monkeypatch, exc, logged):
     text = _fail_discover(client, caplog, monkeypatch, exc)
-    assert type(exc).__name__ in text
-    assert "\n" not in text and "\r" not in text
+    assert text == PREFIX + logged  # exact: nothing else from the exception
     for leaked in FORBIDDEN:
         assert leaked not in text, f"{leaked!r} leaked into: {text}"
-    assert "abcdefXYZ" not in text and "hunter" not in text
-    assert len(text) < 250
 
 
-@pytest.mark.parametrize("exc, detail", [
-    (_GraphDown("typedb connection refused"), "typedb connection refused"),
-    (ConnectionResetError("Connection reset by peer"), "Connection reset by peer"),
-    (TimeoutError("timed out waiting for the graph"), "timed out waiting for the graph"),
-    (ValueError(discover_route._NO_CENTER), "no center to search from"),
-    (TypeDBDriverException(f"[CXN01] Unable to connect to TypeDB server at {TYPEDB_ADDRESS}"),
-     "[CXN01] Unable to connect to TypeDB server at [redacted]"),
-    (TypeDBDriverException("[TXN08] The transaction has been closed."),
-     "[TXN08] The transaction has been closed."),
-    (OperationalError("SELECT 1", ("private-query",), Exception("database is locked")),
-     "database is locked (sqlalchemy error e3q8)"),
-    (ConnectionError("dial tcp 10.0.0.5:1729: connection refused"),
-     "dial tcp [redacted] connection refused"),
-], ids=["benign-runtime", "benign-reset", "benign-timeout", "no-center", "typedb-coded",
-        "typedb-closed", "sqlalchemy-orig", "mixed"])
-def test_benign_message_survives(client, db, caplog, monkeypatch, exc, detail):
-    """Useful diagnostics survive: plain words, TypeDB codes, the DB driver's message."""
-    text = _fail_discover(client, caplog, monkeypatch, exc)
-    assert text.endswith(f"{type(exc).__name__}: {detail}"), text
-
-
-def test_plain_word_typedb_host_is_redacted(client, db, caplog, monkeypatch):
-    """A one-word host (e.g. a Docker service name) is a connection detail too."""
-    monkeypatch.setenv("TYPEDB_ADDRESS", "graphhost:1729")
-    monkeypatch.setenv("TYPEDB_ENABLED", "true")
-    monkeypatch.setattr(discover_route, "_graph_discover",
-                        _raiser(ConnectionError("cannot resolve graphhost right now")))
-    caplog.set_level(logging.WARNING, logger="looper.discover")
-    assert client.get("/api/discover", params=REQUEST).json()["engine"] == "fallback"
-    [record] = _warnings(caplog)
-    assert record.getMessage().endswith("ConnectionError: cannot resolve [redacted] right now")
-
-
-class _BadStr(RuntimeError):
+class _BadStr(TypeDBDriverException):
     def __str__(self):
         raise RuntimeError("password=secret")
 
 
-def test_unprintable_exception_still_falls_back(client, db, caplog, monkeypatch):
+_BadStr.__module__ = "typedb.common.exception"
+
+
+def test_unprintable_typedb_exception_still_falls_back(client, db, caplog, monkeypatch):
     text = _fail_discover(client, caplog, monkeypatch, _BadStr())
-    assert "_BadStr" in text and "message withheld" in text and "secret" not in text
+    assert text == PREFIX + "typedb.common.exception._BadStr"
 
 
-def test_real_graph_path_without_driver_logs_missing_module(client, db, caplog, monkeypatch):
+def test_odd_class_name_is_not_logged(client, db, caplog, monkeypatch):
+    """A class name is code, but check it strictly too."""
+    odd = type("Bondi password=hunter\nforged", (RuntimeError,), {})
+    text = _fail_discover(client, caplog, monkeypatch, odd("x"))
+    assert text == PREFIX + "Exception"
+
+
+def test_real_graph_path_without_driver_logs_class_only(client, db, caplog, monkeypatch):
     """The unpatched engine: typedb-driver is not installed in the lean backend."""
     try:
         import typedb  # noqa: F401
@@ -167,7 +162,7 @@ def test_real_graph_path_without_driver_logs_missing_module(client, db, caplog, 
     caplog.set_level(logging.WARNING, logger="looper.discover")
     assert client.get("/api/discover", params=REQUEST).json()["engine"] == "fallback"
     [record] = _warnings(caplog)
-    assert record.getMessage().endswith("ModuleNotFoundError: missing module typedb")
+    assert record.getMessage() == PREFIX + "ModuleNotFoundError"
 
 
 def test_graph_disabled_logs_nothing(client, db, caplog):

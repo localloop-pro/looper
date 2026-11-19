@@ -9,24 +9,28 @@ Lessons:
 - A transparent fallback still needs one log line. Log a single WARNING on
   `looper.discover`, then fall back as before. The response shape stays the
   same, so callers see no change.
-- Never log `str(exc)` from a broad `except`. The catch covers the TypeDB
-  driver and SQLAlchemy queries, and their messages can carry request values
-  (category, coordinates), SQL parameters, host:port, URL credentials or
-  injected newlines. Masking the one configured address and truncating is not
-  enough: a review showed partial addresses, IPs and `password=` pairs still
-  got through.
-- Don't swing to the other extreme either. A second review rejected
-  "message withheld" for ordinary errors: the operator can't tell two
-  `RuntimeError`s apart. Scrub word by word instead
-  (`_graph_failure_summary`). Plain words and `[CXN01]`-style TypeDB codes
-  survive. Tokens with digits or symbols (coordinates, ports, IPs, URLs,
-  `key=value`), the caller's own suburb/category words, TypeDB address labels,
-  credential keywords and the word after them become `[redacted]`. For
-  SQLAlchemy errors, log only the driver's own message (`exc.orig`), never the
-  statement or its parameters.
-- Test both sides: adversarial messages full of request values and
-  secret-like strings must not reach the log, and benign messages
-  ("typedb connection refused", "database is locked") must survive word for
-  word.
+- Never log exception message text from a broad `except`. The catch covers
+  the TypeDB driver and SQLAlchemy queries, and their messages can carry
+  request values (suburb, category, coordinates), SQL parameters, host:port,
+  URL credentials, street addresses or injected newlines.
+- Don't try to scrub free text. This PR tried masking the address, then a
+  word-by-word scrubber (plain words kept; digits, symbols, request words and
+  credential keywords redacted). Three review rounds still found leaks:
+  `authentication failed for password is hunter` logged
+  `... [redacted] hunter`, and `failed for address 25 Ocean Street` logged
+  `... [redacted] Ocean Street`. Plain words can be secrets or addresses, and
+  no rule list can tell.
+- So log only what the code controls: the exception class name (checked
+  against a strict identifier regex) and, for `typedb.*` exceptions, a
+  `[XXX00]` error code matched strictly at the start of the message. Nothing
+  else: no message, no traceback, no request values, no `TYPEDB_ADDRESS`.
+  Example: `discover graph engine failed, using fallback:
+  typedb.common.exception.TypeDBDriverException [CXN01]`.
+- This deliberately drops useful diagnostics: "connection refused" and
+  "database is locked" both log only their class. That is the price of a
+  log that can't leak. To find the detail, reproduce with the same
+  `TYPEDB_ADDRESS` locally, or look up the TypeDB code.
+- Tests assert the exact log line, not a list of forbidden words, so any
+  extra text fails the test.
 - A fresh worktree has no `backend/data/`, so the test DB can't open
   (`unable to open database file`). Run `mkdir -p backend/data` first.
