@@ -44,3 +44,19 @@ def test_place_words_do_not_pull_in_other_trades(client, seeded, q, wanted):
     assert results, f"no results for {q!r}"
     others = [r for r in results if r[1] != wanted]
     assert others == [], f"{q!r} listed non-{wanted} businesses: {others}"
+
+
+def test_place_still_scores_against_suburb(client, seeded):
+    # Both vets match "vet"; the one whose suburb is Bondi comes first.
+    assert [n for n, _ in _categories(client, "vet in Bondi Junction")] == [
+        "Bondi Vet", "Rose Bay Vet"]
+
+
+def test_place_only_question_still_lists_that_place(client, seeded):
+    names = [n for n, _ in _categories(client, "Bondi")]
+    assert len(names) >= 2
+    assert "Rose Bay Vet" not in names
+
+
+def test_business_name_with_a_place_in_it_still_found(client, seeded):
+    assert _categories(client, "Bondi Plumbing")[0][0] == "Bondi Plumbing Co"

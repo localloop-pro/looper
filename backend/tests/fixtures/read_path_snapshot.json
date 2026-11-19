@@ -1394,7 +1394,7 @@
     "website": null
    }
   ],
-  "total_results": 70,
+  "total_results": 10,
   "widened_to_km": null
  },
  "/api/search?{\"lat\": -33.914, \"limit\": 10, \"lng\": 151.241, \"q\": \"vet\", \"radius_km\": 5}": {
@@ -1830,7 +1830,7 @@
     "website": null
    }
   ],
-  "total_results": 44,
+  "total_results": 23,
   "widened_to_km": null
  },
  "/api/search?{\"q\": \"cafe\"}": {
@@ -1986,7 +1986,7 @@
     "website": null
    }
   ],
-  "total_results": 47,
+  "total_results": 28,
   "widened_to_km": null
  },
  "/api/search?{\"q\": \"where can I get pizza in surry hills\"}": {
@@ -2064,7 +2064,7 @@
     "website": null
    }
   ],
-  "total_results": 38,
+  "total_results": 20,
   "widened_to_km": null
  }
 }
