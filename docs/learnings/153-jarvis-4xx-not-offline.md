@@ -14,4 +14,10 @@ Lessons:
   same error path drift apart.
 - A radius claim needs at least one known distance. A row with no
   coordinates (`distance_km: null`) proves nothing about where it is, so
-  leave the radius out of the speech.
+  leave the radius out of the speech. That includes the widened "Nothing
+  within N kilometres, so I looked further" lead: with no known distance,
+  say only how many options there are.
+- The dock is an IIFE with no exports, but it still runs under Node: load
+  it in `node:vm` with a tiny fake DOM, stubbed bus, face and speech, and a
+  stubbed `fetch` (`web/tests/jarvis-honesty.test.js`). `jarvis-sync.test.js`
+  runs it, so CI covers it without a workflow change.

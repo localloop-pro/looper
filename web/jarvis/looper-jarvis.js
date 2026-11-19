@@ -714,13 +714,13 @@
       .filter(function (d) { return typeof d === "number" && isFinite(d); });
     var nearest = dists.length ? Math.min.apply(null, dists) : null;
     var outside = dists.some(function (d) { return d > radiusKm; });
-    // no known distance (rows without coordinates): claim no radius at all
-    // (looper#153)
-    var known = dists.length > 0;
-    if (!widened && !outside) return { prefix: "", within: known ? " within " + fmtKm(radiusKm) + " kilometres" : "" };
+    // no known distance (rows without coordinates): claim no radius at all,
+    // not even a widened one (looper#153)
+    if (!dists.length) return { prefix: "", within: "" };
+    if (!widened && !outside) return { prefix: "", within: " within " + fmtKm(radiusKm) + " kilometres" };
     var prefix = "Nothing within " + fmtKm(radiusKm) + " kilometres, so I looked further. ";
     if (nearest != null) prefix += "The nearest is " + fmtKm(nearest) + " kilometres away. ";
-    return { prefix: prefix, within: widened && known ? " within " + fmtKm(widened) + " kilometres" : "" };
+    return { prefix: prefix, within: widened ? " within " + fmtKm(widened) + " kilometres" : "" };
   }
 
   function speakResults(results, cmd, radiusKm, data) {

@@ -1,4 +1,5 @@
-/* Tests for tools/jarvis-sync-check.js (looper#39).
+/* Tests for tools/jarvis-sync-check.js (looper#39), plus the Jarvis dock's
+ * failure and distance wording (jarvis-honesty.test.js, looper#153).
  * Run: node web/tests/jarvis-sync.test.js
  * Node-only, zero deps — same style as voice-command-router.test.js.
  */
@@ -72,5 +73,9 @@ ok("Router.WAKE_RE in looper-jarvis.js accepted",
 const ownDock = require("fs").readFileSync(require("path").join(__dirname, "../jarvis/looper-jarvis.js"), "utf8");
 ok("Looper's own looper-jarvis.js reads Router.WAKE_*", sync.checkJarvisDock("looper", ownDock).length === 0);
 
-console.log(`\n${passed} passed, ${failed} failed`);
-process.exit(failed === 0 ? 0 : 1);
+// ---- what the dock says about failures and distance (looper#153) ---------
+// lives in jarvis-honesty.test.js; run here so CI's existing command covers it
+require("./jarvis-honesty.test.js").run(ok).then(() => {
+  console.log(`\n${passed} passed, ${failed} failed`);
+  process.exit(failed === 0 ? 0 : 1);
+}, (e) => { console.error(e); process.exit(1); });
