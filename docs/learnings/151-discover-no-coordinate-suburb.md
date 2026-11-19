@@ -7,5 +7,7 @@ for "Bondi". Both engines (fallback and graph) had the same gap.
 
 When a check needs data a row may lack, decide what happens to that row on
 purpose. Here: with a known suburb, a no-coordinate business is kept only when
-its accent-folded suburb contains the requested suburb key. Coordinate-only
-searches (no suburb) keep the old behaviour.
+its own suburb resolves to the same known suburb. Compare suburb identities,
+not substrings: "bondi" is inside "North Bondi" and "Bondi Junction", which are
+different suburbs (first fix missed this; review caught it).
+Coordinate-only searches (no suburb) keep the old behaviour.

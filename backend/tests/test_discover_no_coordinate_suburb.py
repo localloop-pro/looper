@@ -3,7 +3,8 @@ coordinates from another suburb.
 
 A business with NULL lat/lng cannot be radius-checked, so for a known suburb
 (e.g. Bondi) it is only eligible when its own suburb field matches the
-requested suburb (accent-folded). Radius rules and ranking are unchanged.
+requested suburb (accent-folded). "North Bondi" and "Bondi Junction" are
+their own suburbs, not Bondi. Radius rules and ranking are unchanged.
 """
 import sys
 import types
@@ -31,6 +32,8 @@ def _seed(db):
     _biz(db)  # in Bondi, with coordinates
     _biz(db, name="Byron Trim", suburb="Byron Bay", lat=None, lng=None)
     _biz(db, name="Surry Hills Barber", suburb="Surry Hills", lat=None, lng=None)
+    _biz(db, name="North Bondi Hair", suburb="North Bondi", lat=None, lng=None)
+    _biz(db, name="Junction Blowdry", suburb="Bondi Junction", lat=None, lng=None)
     _biz(db, name="Bondí Hair Studio", suburb="Bondí", lat=None, lng=None)
 
 
@@ -42,6 +45,19 @@ class TestFallbackEngine:
         assert "Byron Trim" not in _names(body)
         assert "Surry Hills Barber" not in _names(body)
         assert body["total_results"] == 2
+
+    def test_overlapping_suburb_names_are_not_a_match(self, client, db):
+        _seed(db)
+        body = client.get("/api/discover", params={"suburb": "Bondi"}).json()
+        assert "North Bondi Hair" not in _names(body)
+        assert "Junction Blowdry" not in _names(body)
+
+    def test_longer_suburb_keeps_its_own_business(self, client, db):
+        _seed(db)
+        body = client.get("/api/discover",
+                          params={"suburb": "Bondi Junction", "radius_km": 0.5}).json()
+        assert body["suburb"] == "bondi junction"
+        assert _names(body) == ["Junction Blowdry"]
 
     def test_no_coordinate_business_in_requested_suburb_is_kept(self, client, db):
         _seed(db)
@@ -55,7 +71,8 @@ class TestFallbackEngine:
         body = client.get("/api/discover",
                           params={"lat": -33.8915, "lng": 151.2743}).json()
         assert _names(body) == ["Bondi Cuts", "Bondí Hair Studio",
-                                "Byron Trim", "Surry Hills Barber"]
+                                "Byron Trim", "Junction Blowdry",
+                                "North Bondi Hair", "Surry Hills Barber"]
 
 
 def _fake_typedb_module():
@@ -86,5 +103,6 @@ class TestGraphEngine:
         _seed(db)
         body = client.get("/api/discover", params={"suburb": "Bondi"}).json()
         assert body["engine"] == "graph"
+        # Byron Bay, Surry Hills, North Bondi and Bondi Junction all dropped
         assert _names(body) == ["Bondi Cuts", "Bondí Hair Studio"]
         assert body["total_results"] == 2

@@ -1260,20 +1260,6 @@
     "website": null
    },
    {
-    "address": "256 Fake St, North Bondi NSW",
-    "avg_rating": 3.4,
-    "business_id": 67,
-    "card_url": null,
-    "category": "doctor",
-    "distance_km": null,
-    "lat": null,
-    "lng": null,
-    "name": "Fig Tree Golden Doctor 66",
-    "review_count": 20,
-    "top_review": "\"Lovely little spot Quick service Would come back (#177)\"",
-    "website": null
-   },
-   {
     "address": "271 Fake St, Coogee NSW",
     "avg_rating": 2.9,
     "business_id": 154,
@@ -1300,10 +1286,24 @@
     "review_count": 17,
     "top_review": "\"A bit noisy at lunch Lovely little spot Friendly staff (#1849)\"",
     "website": null
+   },
+   {
+    "address": "164 Fake St, Paddington NSW",
+    "avg_rating": 3.1,
+    "business_id": 131,
+    "card_url": "http://localhost:3000/c/bench-131",
+    "category": "electrician",
+    "distance_km": 4.8,
+    "lat": -33.873189323870584,
+    "lng": 151.22759278251996,
+    "name": "Sunny Corner Electrician 130",
+    "review_count": 15,
+    "top_review": "\"Great value A bit noisy at lunch Easy parking nearby (#569)\"",
+    "website": null
    }
   ],
   "suburb": "bondi",
-  "total_results": 282
+  "total_results": 280
  },
  "/api/search?{\"lat\": -33.8908, \"lng\": 151.2743, \"q\": \"café near Bondi Beach\", \"radius_km\": 3}": {
   "message": "Here are 5 options for 'café near Bondi Beach': best match first, then most community reviews, then nearest. I don't pick favorites — you decide! ✨",
