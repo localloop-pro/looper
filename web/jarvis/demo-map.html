@@ -56,6 +56,10 @@
     /* Phones: the open hint must not reach the dock column on the right. */
     @media (max-width: 480px) {
       .hint-wrap { max-width: calc(100vw - 32px - 96px); }
+      /* The dock row must stop short of the zoom/compass buttons
+         (10px margin + 29px wide), so the pills wrap above the face
+         instead of covering zoom-out. "body" outranks the dock's own CSS. */
+      body #looper-jarvis { max-width: calc(100vw - 12px - 48px); }
     }
     .maplibregl-ctrl-attrib { background: rgba(5,7,11,.6) !important; }
     .maplibregl-ctrl-attrib a { color: #7ddfff !important; }
@@ -178,6 +182,9 @@
         home: HOME,
         district: "Bondi",
         markerLib: maplibregl,
+        // Sit above the bottom-right map credit (10px margin + 24px tall)
+        // so the face never hides "© OpenStreetMap contributors".
+        dock: { bottom: "40px" },
         // Served by the backend (/web/…) → same-origin, ANY port (Bill runs
         // 8010 locally — TypeDB owns 8000). Opened standalone → ?api=… or
         // the localhost default.
