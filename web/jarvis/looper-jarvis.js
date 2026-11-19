@@ -52,6 +52,10 @@
     apiDown: [
       "Sorry — the Looper brain is offline right now. Try me again in a tick.",
     ],
+    // a 4xx: the brain answered and rejected the request — not an outage
+    badRequest: [
+      "Sorry — I couldn't read that request. Try asking another way, or type it below.",
+    ],
     unknown: [
       "I didn't catch that. Try: find me a café, any deals nearby, or take me to Bondi Junction.",
     ],
@@ -710,6 +714,9 @@
       .filter(function (d) { return typeof d === "number" && isFinite(d); });
     var nearest = dists.length ? Math.min.apply(null, dists) : null;
     var outside = dists.some(function (d) { return d > radiusKm; });
+    // no known distance (rows without coordinates): claim no radius at all,
+    // not even a widened one (looper#153)
+    if (!dists.length) return { prefix: "", within: "" };
     if (!widened && !outside) return { prefix: "", within: " within " + fmtKm(radiusKm) + " kilometres" };
     var prefix = "Nothing within " + fmtKm(radiusKm) + " kilometres, so I looked further. ";
     if (nearest != null) prefix += "The nearest is " + fmtKm(nearest) + " kilometres away. ";
@@ -808,20 +815,35 @@
       speakResults(results, cmd, radiusKm, data);
     }).catch(function (error) {
       if (seq !== S.reqSeq) return; // superseded — don't clobber the newer UI
-      var timingMeta = error.meta || { rid: null, cache: null, fetch_ms: 0, parse_ms: 0 };
-      Bus.clearResults(); // stale pins next to "brain offline" read as results
+      apiFailed(error, cmd, route_ms, turnStart);
+    });
+  }
+
+  // A failed /search turn. Network errors, timeouts and 5xx mean the brain
+  // is down; a 4xx means it answered and rejected the request, so say that
+  // instead of "offline" and leave the typed input open (looper#153).
+  function apiFailed(error, cmd, route_ms, turnStart) {
+    var timingMeta = error.meta || { rid: null, cache: null, fetch_ms: 0, parse_ms: 0 };
+    var badRequest = timingMeta.status >= 400 && timingMeta.status < 500;
+    var line = pick(badRequest ? PERSONA.badRequest : PERSONA.apiDown);
+    Bus.clearResults(); // stale pins next to a failure line read as results
+    if (badRequest) {
+      S.statusPinned = false;
+      settleUi();
+      S.ui.inputRow.classList.add("lj-open");
+    } else {
       S.face.setMood("error");
       setStatus("Looper brain offline");
       S.statusPinned = true; // keep the offline message up until the next turn
-      var renderStart = performance.now();
-      showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.apiDown)) + "</p>");
-      var render_ms = performance.now() - renderStart;
-      var to_speech_ms = performance.now() - turnStart;
-      recordTiming({ intent: cmd.intent, rid: timingMeta.rid, cache: timingMeta.cache, status: "error",
-        route_ms: route_ms, fetch_ms: timingMeta.fetch_ms, parse_ms: timingMeta.parse_ms,
-        render_ms: render_ms, to_speech_ms: to_speech_ms, results: 0 });
-      speak(pick(PERSONA.apiDown));
-    });
+    }
+    var renderStart = performance.now();
+    showPanel('<p class="lj-msg">' + escapeHtml(line) + "</p>");
+    var render_ms = performance.now() - renderStart;
+    var to_speech_ms = performance.now() - turnStart;
+    recordTiming({ intent: cmd.intent, rid: timingMeta.rid, cache: timingMeta.cache, status: "error",
+      route_ms: route_ms, fetch_ms: timingMeta.fetch_ms, parse_ms: timingMeta.parse_ms,
+      render_ms: render_ms, to_speech_ms: to_speech_ms, results: 0 });
+    speak(line);
   }
 
   function runBusiness(cmd) {
@@ -881,20 +903,8 @@
       speak(line);
     }).catch(function (error) {
       if (seq !== S.reqSeq) return; // superseded — don't clobber the newer UI
-      var timingMeta = error.meta || { rid: null, cache: null, fetch_ms: 0, parse_ms: 0 };
-      Bus.clearResults(); // stale marker next to "brain offline" reads as current
-      // same offline treatment as runSearch — the dock must not look healthy
-      S.face.setMood("error");
-      setStatus("Looper brain offline");
-      S.statusPinned = true; // keep the offline message up until the next turn
-      var renderStart = performance.now();
-      showPanel('<p class="lj-msg">' + escapeHtml(pick(PERSONA.apiDown)) + "</p>");
-      var render_ms = performance.now() - renderStart;
-      var to_speech_ms = performance.now() - turnStart;
-      recordTiming({ intent: cmd.intent, rid: timingMeta.rid, cache: timingMeta.cache, status: "error",
-        route_ms: route_ms, fetch_ms: timingMeta.fetch_ms, parse_ms: timingMeta.parse_ms,
-        render_ms: render_ms, to_speech_ms: to_speech_ms, results: 0 });
-      speak(pick(PERSONA.apiDown));
+      // same failure treatment as runSearch — the dock must not look healthy
+      apiFailed(error, cmd, route_ms, turnStart);
     });
   }
 

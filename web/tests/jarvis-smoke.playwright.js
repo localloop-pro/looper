@@ -75,6 +75,27 @@ const WIDENED_VETS = {
   ],
 };
 const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10 km yet.", total_results: 0, widened_to_km: 10, results: [] };
+// Rows the API could not place (no coordinates): distance_km is null, so
+// no distance is known and speech must not claim "within N kilometres".
+const UNPLACED_VETS = {
+  query: "vet",
+  message: "Here are 2 options for 'vet': best match first, then most community reviews, then nearest.",
+  total_results: 2,
+  results: [
+    Object.assign({ business_id: 13, name: "Unmapped Vet", lat: null, lng: null, distance_km: null }, VET),
+    Object.assign({ business_id: 14, name: "Nowhere Vet", lat: null, lng: null, distance_km: null }, VET),
+  ],
+};
+// One known distance is enough to keep the radius wording.
+const MIXED_VETS = {
+  query: "vet",
+  message: "Here are 2 options for 'vet': best match first, then most community reviews, then nearest.",
+  total_results: 2,
+  results: [
+    Object.assign({ business_id: 15, name: "Bondi Vet", lat: -33.8915, lng: 151.2743, distance_km: 0.4 }, VET),
+    Object.assign({ business_id: 16, name: "Unmapped Vet", lat: null, lng: null, distance_km: null }, VET),
+  ],
+};
 
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
@@ -303,6 +324,46 @@ const EMPTY_VETS = { query: "vet", message: "No one's listed for 'vet' within 10
       const bare = await spokenFor(sp, "find me a vet", { query: "vet", results: [], total_results: 0 });
       console.log(tag + " empty, no message:", JSON.stringify(bare));
       if (/add (it|one)|first to add/i.test(bare)) errors.push(tag + ": empty speech invites adding: " + bare);
+
+      // looper#153: no known distance -> no "within N kilometres" claim
+      const unplaced = await spokenFor(sp, "find me a vet", UNPLACED_VETS);
+      console.log(tag + " no known distance:", JSON.stringify(unplaced));
+      if (/within \d/.test(unplaced)) errors.push(tag + ": claimed a radius with no known distance: " + unplaced);
+      if (!/I found 2 options\./.test(unplaced)) errors.push(tag + ": no-distance speech wrong: " + unplaced);
+      const mixed = await spokenFor(sp, "find me a vet", MIXED_VETS);
+      console.log(tag + " one known distance:", JSON.stringify(mixed));
+      if (!/I found 2 options within 1\.5 kilometres\./.test(mixed)) errors.push(tag + ": mixed-distance speech wrong: " + mixed);
+
+      // looper#153: a 4xx is a bad request, not an outage — no "brain
+      // offline", a short "couldn't read that request" line, typed input open.
+      // A 5xx keeps the offline treatment.
+      for (const [label, text, status] of [["search 422", "find me a cafe", 422], ["business 400", "take me to gertrude and alice", 400]]) {
+        await sp.evaluate((st) => {
+          window.__spoken = [];
+          window.__searchFor = () => ({ ok: false, status: st, body: { detail: "bad request" } });
+        }, status);
+        await sp.evaluate((t) => LooperJarvis.ask(t), text);
+        await sp.waitForFunction(() => window.__spoken.length > 0);
+        const st = await sp.evaluate(() => ({
+          spoken: window.__spoken.join(" "),
+          status: document.querySelector("#looper-jarvis .lj-status").textContent,
+          panel: document.querySelector("#looper-jarvis .lj-panel").textContent,
+          inputOpen: document.querySelector("#looper-jarvis .lj-input-row").classList.contains("lj-open"),
+        }));
+        console.log(tag + " " + label + ":", JSON.stringify(st));
+        if (/offline/i.test(st.status + " " + st.panel + " " + st.spoken)) errors.push(tag + " " + label + ": 4xx reported as brain offline: " + JSON.stringify(st));
+        if (!/couldn't read that request/i.test(st.panel)) errors.push(tag + " " + label + ": 4xx panel missing the bad-request line: " + st.panel);
+        if (!st.inputOpen) errors.push(tag + " " + label + ": 4xx left the typed input closed");
+      }
+      await sp.evaluate(() => {
+        window.__spoken = [];
+        window.__searchFor = () => ({ ok: false, status: 503, body: {} });
+      });
+      await sp.evaluate(() => LooperJarvis.ask("find me a cafe"));
+      await sp.waitForFunction(() => window.__spoken.length > 0);
+      const down = await sp.evaluate(() => document.querySelector("#looper-jarvis .lj-status").textContent);
+      if (down !== "Looper brain offline") errors.push(tag + ": 503 no longer reports brain offline: " + down);
+      await sp.evaluate(() => { window.__searchFor = null; });
       await sp.close();
     }
 
