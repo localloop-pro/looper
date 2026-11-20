@@ -8,8 +8,8 @@ class OnboardUserRequest(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100)
     mobile_number: str = Field(..., pattern=r"^(0\d{9}|\+61\d{9})$")  # AU format
     interest_category: Optional[str] = Field(None, max_length=100)
-    user_type: Optional[str] = Field("local", max_length=20)  # local, tourist, business
-    preferred_language: Optional[str] = Field("en", max_length=10)
+    user_type: Optional[str] = "local"  # local, tourist, business
+    preferred_language: Optional[str] = "en"
 
 
 class OnboardUserResponse(BaseModel):
@@ -63,7 +63,7 @@ class SubmitReviewRequest(BaseModel):
 
 class MapPinRequest(BaseModel):
     user_id: int
-    pin_type: str = Field(..., max_length=30)  # offering, looking_for, event, alert
+    pin_type: str  # offering, looking_for, event, alert
     title: str = Field(..., max_length=200)
     description: Optional[str] = Field(..., max_length=2000)
     # Same bounds as the read params (routes/params.py): the #160 bounding box
