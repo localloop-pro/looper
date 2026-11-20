@@ -4,11 +4,13 @@ Rules (master plan): query, response summary, intent, session_id — NO PII.
 Telemetry must NEVER break or block the request that triggered it.
 `training/export.py` consumes these rows for the fine-tune loop.
 """
+import logging
 import re
 
 from models import TrainingLog
 from services.pii import AU_MOBILE_RE, EMAIL_RE, scrub_pii
 
+logger = logging.getLogger("looper.telemetry")
 
 # `intent` and `session` arrive as public query params (looper#84), so they
 # are allow-listed by shape rather than scrubbed: anything that is not a short
@@ -51,8 +53,10 @@ def log_query(db, query_text: str, intent: str | None = None,
             session_id=clean_session_id(session_id),
         ))
         db.commit()
-    except Exception:
+    except Exception as exc:
+        # Class name only: the message can echo the row (query / session).
+        logger.warning("training_log write dropped: %s", type(exc).__name__)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as rb_exc:
+            logger.warning("training_log rollback failed: %s", type(rb_exc).__name__)
