@@ -64,13 +64,13 @@ class SubmitReviewRequest(BaseModel):
 class MapPinRequest(BaseModel):
     user_id: int
     pin_type: str  # offering, looking_for, event, alert
-    title: str
-    description: Optional[str]
+    title: str = Field(..., max_length=200)
+    description: Optional[str] = Field(..., max_length=2000)
     # Same bounds as the read params (routes/params.py): the #160 bounding box
     # never matches a pin stored outside them (looper#162).
     lat: float = Field(..., ge=-90.0, le=90.0, allow_inf_nan=False)
     lng: float = Field(..., ge=-180.0, le=180.0, allow_inf_nan=False)
-    category: Optional[str]
+    category: Optional[str] = Field(..., max_length=100)
     # 0 means no expiry. The upper bound keeps timedelta/datetime from
     # overflowing into a 500 (looper#169).
     expires_in_days: Optional[int] = Field(30, ge=0, le=365)
