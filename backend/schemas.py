@@ -71,7 +71,9 @@ class MapPinRequest(BaseModel):
     lat: float = Field(..., ge=-90.0, le=90.0, allow_inf_nan=False)
     lng: float = Field(..., ge=-180.0, le=180.0, allow_inf_nan=False)
     category: Optional[str]
-    expires_in_days: Optional[int] = 30
+    # 0 means no expiry. The upper bound keeps timedelta/datetime from
+    # overflowing into a 500 (looper#169).
+    expires_in_days: Optional[int] = Field(30, ge=0, le=365)
 
 
 class MapPinResponse(BaseModel):
