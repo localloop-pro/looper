@@ -4,7 +4,7 @@ import math
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from models import MapPin, get_db
+from models import MapPin, User, get_db
 from routes.params import Latitude, Longitude, OptionalLatitude, OptionalLongitude, RadiusKm
 from schemas import MapPinRequest, MapPinResponse
 from services.write_guard import require_public_writes
@@ -15,6 +15,9 @@ router = APIRouter(prefix="/api", tags=["map"])
 @router.post("/pins", response_model=MapPinResponse, dependencies=[Depends(require_public_writes)])
 def add_pin(req: MapPinRequest, db: Session = Depends(get_db)):
     """Add a pin to the community map."""
+    if not db.query(User).filter(User.id == req.user_id).first():
+        raise HTTPException(status_code=404, detail="User not found")
+
     expires_at = None
     if req.expires_in_days:
         expires_at = datetime.now(timezone.utc) + timedelta(days=req.expires_in_days)
