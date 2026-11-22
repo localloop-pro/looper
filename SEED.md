@@ -19,7 +19,7 @@ bot + FastAPI search backend). Owner: Bill / QikFlo Pty Ltd. This repo is the
 ## Folder map
 
 - `looper-bot/` — Electron voice companion (OpenAI Realtime over WebRTC,
-  23 tools, artifact panel, animated face). The Jarvis UI.
+  30 tools, artifact panel, animated face). The Jarvis UI.
 - `backend/` — FastAPI + SQLite: search, onboarding, reviews, map pins,
   Facebook review-import pipeline (`services/facebook_pipeline.py`).
 - `web/` — embeddable `looper-widget.js` chat widget (already wired into

@@ -20,8 +20,8 @@ identity branch had one P2 browser-expiry finding at `9a89b3b`; it is fixed in
 `dc680f1` (PR #15) with a Node regression. Remaining gates before acceptance are
 live KNS provider verification and production deployment; existing bridge phase
 sequencing is unchanged.
-See [review evidence](evidence/kaspa-identity-review/README.md) and
-[current tracker](COMPLETION_STATUS.md).
+See [review evidence](evidence/kaspa-identity-review/README.md),
+[archived tracker](archive/COMPLETION_STATUS.md), and live [STATUS.md](../STATUS.md).
 
 ## Issue #121 maintenance checkpoint (2026-10-26)
 
@@ -41,7 +41,7 @@ parallel trackers.
 Bill owns three working systems and two large Facebook communities:
 
 1. **LOOPER** (`localloop-pro/looper`) — a "Jarvis" desktop voice companion
-   (`looper-bot/`, Electron + OpenAI Realtime over WebRTC, 23 tools, artifact
+   (`looper-bot/`, Electron + OpenAI Realtime over WebRTC, 30 tools, artifact
    panel) and a FastAPI + SQLite community-search backend (`backend/`) with an
    embeddable chat widget (`web/looper-widget.js`). Anti-bias search over
    Bondi businesses + reviews. Already partially wired into the live map's
@@ -159,7 +159,7 @@ knowledge graph. The Facebook members have no funnel to the map or the cards.
   `scripts/inject-env.js` → `assets/js/env.js` (ADR-0002 — placeholders only
   in git). Live host **localloop.ai**; `localloop.pro` currently broken
   (Traefik default cert / 503) — fixed in F9.1.
-- **House rules:** FollowMe.md lock protocol, confirm-first autonomy, ADRs in
+- **House rules:** confirm-first autonomy, ADRs in
   `SPEC/decisions.md`, no new top-level deps without justification, pin
   contract (`SPEC/pin-webhook-contract.md`) is load-bearing.
 
@@ -1259,7 +1259,7 @@ Safe parallel tracks once Phase 0 is done: **(A)** Phase 1 bridge,
 | `plans/IMPLEMENTATION_PLAN.md` (llx11's own) | llx11 | Site-B rebuild PRD — SEPARATE plan, do not merge/overwrite |
 | `COOLIFY_AUTO_DEPLOY_GUIDE.md` | llx11 | F9.x deploy mechanics |
 | `explore-local.tsx` | golive_LocalLoop_Explore_html | F3.2 port source (logic only) |
-| `FollowMe.md` (looper) | looper | repo status/history |
+| `STATUS.md` (looper) | looper | repo status/history |
 
 ---
 

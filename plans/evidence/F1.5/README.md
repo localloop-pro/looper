@@ -19,7 +19,7 @@ leg hits the same pin — dealId `f150000000000000000000d1`).
 
 | Check | Status | Evidence |
 | --- | --- | --- |
-| Outbox events go `pending→sent` (not `dead`), both targets | ✅ | `01-phase1-drain-vitest.log` (test asserts sent=2, dead=0, failed=0) |
+| Outbox events go `pending→sent` (not `dead`), both targets | ✅ | `f15-bridge-dryrun.test.ts` (drain asserts sent=2, dead=0, failed=0) |
 | looper `businesses.hybrid_card_id` populated, deal active | ✅ | `02-looper-sqlite-after-upsert.txt` |
 | Draft pin lands in Supabase as `pending_review`, premium/1-month | ✅ | `03-supabase-draft-pin.json` (read via PUBLIC anon path) |
 | Pending pin NOT on the public map | ✅ | `04-public-map-filter-check.json` (exact marker-layer query → 0 rows) |
