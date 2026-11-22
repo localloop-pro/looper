@@ -128,7 +128,7 @@ class HybridCardCardPayload(BaseModel):
     """Card-lifecycle payload (card.upserted / card.removed) — T2 spec in
     new-card localloop-waze-bridge/implementation-spec.md. eventId mirrors
     the deal payload; the T2 sender isn't built yet — flagged as open
-    question R2 in .SEED/decisions.md."""
+    question R2 in .SEED/decisions/legacy-decisions-archive.md (Phase 0 / F1.1)."""
     model_config = ConfigDict(extra="ignore")
 
     event_kind: str = "card"

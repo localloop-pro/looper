@@ -13,7 +13,7 @@ Environment:
 
 Package: pip install typedb-driver
 Verify the version with `pip index versions typedb-driver` and pin it in
-requirements-brain.txt; record the pinned version in .SEED/decisions.md.
+requirements-brain.txt; record the pinned version in `.SEED/decisions/legacy-decisions-archive.md` (F2.1 / graph engine).
 """
 import argparse
 import os
@@ -53,7 +53,7 @@ def migrate(host: str, db_name: str, dry_run: bool = False) -> None:
         print(
             "ERROR: typedb-driver not installed.\n"
             "  pip install typedb-driver\n"
-            "  (pin exact version — see README.md and .SEED/decisions.md)",
+            "  (pin exact version — see README.md and .SEED/decisions/legacy-decisions-archive.md)",
             file=sys.stderr,
         )
         sys.exit(1)

@@ -24,7 +24,7 @@
     var details = document.createElement('details');
     details.className = 'kaspa-identity';
     var summary = document.createElement('summary');
-    // Every collapsed state names the organization (.SEED/decisions.md: every UI
+    // Every collapsed state names the organization (.SEED/decisions/legacy-decisions-archive.md#legacy-2-2026-09-01-kaspa-integration-v1-is-a-read-only-organization)
     // must scope the claim), so a stale/mismatch/unavailable badge can never be
     // read as belonging to an adjacent listing or user.
     var scope = (record && record.domain) || domain || 'localloop.kas';
