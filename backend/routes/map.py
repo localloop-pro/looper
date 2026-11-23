@@ -125,7 +125,6 @@ def tourist_info(
     db: Session = Depends(get_db),
 ):
     """Get tourist-specific information: attractions, transport, emergency info."""
-    # Get nearby tourist attractions (pins + businesses)
     from routes.search import haversine_km
 
     attractions = []
