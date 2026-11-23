@@ -49,3 +49,6 @@ training/checkpoints/
 workers/**/.wrangler/
 
 node_modules/
+
+# Generated call graph (regenerate: python3 tools/callgraph/build.py)
+plans/INTENT_PROMPT_CALL_GRAPH.md
