@@ -1,12 +1,18 @@
 """LOOPER API — User Onboarding Routes"""
 import random
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 from models import User, get_db
 from schemas import OnboardUserRequest, OnboardUserResponse
+from services.onboard_sms import deliver_join_code_sms
 from services.write_guard import require_public_writes
 
 router = APIRouter(prefix="/api", tags=["users"])
+
+ONBOARD_ACK_MESSAGE = (
+    "If this number can sign up, you'll receive your Bondi Local Loop code shortly. "
+    "Watch your messages for next steps."
+)
 
 
 def generate_join_code(db: Session) -> str:
@@ -18,55 +24,33 @@ def generate_join_code(db: Session) -> str:
     raise HTTPException(status_code=500, detail="Could not generate unique code")
 
 
+def _onboard_ack() -> OnboardUserResponse:
+    return OnboardUserResponse(message=ONBOARD_ACK_MESSAGE)
+
+
 @router.post("/onboard", response_model=OnboardUserResponse,
              dependencies=[Depends(require_public_writes)])
-def onboard_user(req: OnboardUserRequest, db: Session = Depends(get_db)):
-    """Register a new user and generate their 6-digit join code."""
-    # An already-registered number gets 409 with no data. Echoing the stored
-    # user_id / join code would hand them to anyone who knows the mobile.
+def onboard_user(
+    req: OnboardUserRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Register a new user; return the same public-safe ack for every mobile."""
     existing = db.query(User).filter(User.mobile_number == req.mobile_number).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="could not complete sign-up")
+    # Same join-code probe on both paths so timing is closer for enumerators.
+    _unused = generate_join_code(db)
 
-    # Create new user
-    join_code = generate_join_code(db)
-    user = User(
-        first_name=req.first_name,
-        mobile_number=req.mobile_number,
-        join_code=join_code,
-        user_type=req.user_type or "local",
-        interest_category=req.interest_category,
-        preferred_language=req.preferred_language or "en",
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    # Welcome message based on user_type and interest
-    if user.user_type == "tourist":
-        message = (
-            f"Welcome to Bondi, {user.first_name}! 🧳\n\n"
-            f"Your Bondi Local Loop code is: **{join_code}**\n\n"
-            f"Here's how it works:\n"
-            f"1. Use this code to join the Bondi Local Loop community\n"
-            f"2. I can show you local attractions, transport tips, and hidden gems\n"
-            f"3. Would you like me to show you what's around on the map? 📍"
+    if not existing:
+        user = User(
+            first_name=req.first_name,
+            mobile_number=req.mobile_number,
+            join_code=_unused,
+            user_type=req.user_type or "local",
+            interest_category=req.interest_category,
+            preferred_language=req.preferred_language or "en",
         )
-    else:
-        message = (
-            f"Welcome to Bondi Local Loop, {user.first_name}! 🏠\n\n"
-            f"Your unique join code is: **{join_code}**\n\n"
-            f"What you can do:\n"
-            f"1. Use this code to join the Bondi Local Loop group\n"
-            f"2. Search for local businesses backed by real reviews\n"
-            f"3. Pin your needs or offerings on the community map\n\n"
-            f"Would you like me to show you available community needs on the map? 📍"
-        )
+        db.add(user)
+        db.commit()
 
-    return OnboardUserResponse(
-        user_id=user.id,
-        first_name=user.first_name,
-        join_code=join_code,
-        message=message,
-    )
-
+    background_tasks.add_task(deliver_join_code_sms, req.mobile_number)
+    return _onboard_ack()

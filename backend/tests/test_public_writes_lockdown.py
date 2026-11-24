@@ -110,19 +110,26 @@ def test_onboard_new_number_works(client, db, writes_on):
     resp = client.post("/api/onboard", json={"first_name": "Ann", "mobile_number": "0400000002"})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["first_name"] == "Ann" and len(body["join_code"]) == 6
+    assert list(body.keys()) == ["message"]
+    assert "join_code" not in body and "first_name" not in body
+    user = db.query(User).filter(User.mobile_number == "0400000002").one()
+    assert user.first_name == "Ann"
+    assert len(user.join_code) == 6
 
 
-def test_onboard_existing_number_echoes_nothing(client, db, writes_on):
-    existing = _user(db, mobile="0400000003")
-    resp = client.post("/api/onboard", json={"first_name": "Mallory",
-                                             "mobile_number": "0400000003"})
-    assert resp.status_code == 409
-    assert resp.json() == {"detail": "could not complete sign-up"}
-    assert existing.join_code not in resp.text
-    assert "Tester" not in resp.text
+def test_onboard_same_mobile_twice_is_indistinguishable(client, db, writes_on):
+    mobile = "0400000158"
+    payload = {"first_name": "Ann", "mobile_number": mobile}
+    first = client.post("/api/onboard", json=payload)
+    assert first.status_code == 200
+    second = client.post("/api/onboard", json={"first_name": "Mallory", "mobile_number": mobile})
+    assert second.status_code == first.status_code
+    assert list(second.json().keys()) == list(first.json().keys())
+    assert second.json() == first.json()
     db.expire_all()
-    assert db.query(User).count() == 1
+    assert db.query(User).filter(User.mobile_number == mobile).count() == 1
+    assert "join_code" not in second.text
+    assert "Mallory" not in second.text
 
 
 def test_pin_write_works(client, db, writes_on):
