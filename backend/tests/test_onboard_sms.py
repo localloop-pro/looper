@@ -1,9 +1,11 @@
 """Twilio join-code SMS after onboard — mocked, no real network (looper#158)."""
 
 import logging
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
-from models import User
+from models import OnboardSmsSend, User
 from services import onboard_sms
 
 
@@ -111,3 +113,57 @@ def test_existing_mobile_rate_limited_resend_same_ack(client, db, writes_on, twi
     assert first.json() == second.json()
     assert db.query(User).filter(User.mobile_number == "0400000996").count() == 1
     assert sent_codes == ["654321", "654321"]
+
+
+def test_daily_cap_skips_send_same_http_ack(client, db, writes_on, twilio_env, monkeypatch, caplog):
+    monkeypatch.setenv("LOOPER_SMS_DAILY_CAP", "1")
+    calls = []
+    monkeypatch.setattr(
+        onboard_sms,
+        "send_join_code_via_twilio",
+        lambda *a, **k: calls.append(True),
+    )
+
+    caplog.set_level(logging.WARNING, logger="looper.onboard_sms")
+    first = _onboard(client, mobile="0400000881")
+    second = _onboard(client, mobile="0400000882")
+
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert len(calls) == 1
+    daily_logs = [r for r in caplog.records if "daily cap" in r.getMessage()]
+    assert daily_logs
+    log_text = " ".join(r.getMessage() for r in caplog.records)
+    assert "0400000882" not in log_text and "join" not in log_text.lower()
+
+
+def test_per_number_limit_survives_limiter_reinstantiation(db):
+    """SQLite ledger enforces cap across new limiter instances (worker restart)."""
+    mobile = "0400000777"
+    first = onboard_sms.OnboardSmsRateLimiter()
+    second = onboard_sms.OnboardSmsRateLimiter()
+
+    for _ in range(onboard_sms.ONBOARD_SMS_LIMIT_PER_HOUR):
+        assert first.allow(mobile)
+
+    assert not second.allow(mobile)
+
+
+def test_rolling_hour_window_not_clock_aligned(db, monkeypatch):
+    """A send just outside the 60-minute window does not count toward the cap."""
+    monkeypatch.setenv("LOOPER_SMS_DAILY_CAP", "100")
+    mobile = "0400000666"
+    key = onboard_sms.hashed_mobile_key(mobile)
+    old = datetime.now(timezone.utc) - timedelta(hours=1, minutes=5)
+    db.add(OnboardSmsSend(mobile_key=key, sent_at=old))
+    for _ in range(onboard_sms.ONBOARD_SMS_LIMIT_PER_HOUR - 1):
+        db.add(
+            OnboardSmsSend(
+                mobile_key=key,
+                sent_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+            )
+        )
+    db.commit()
+
+    limiter = onboard_sms.OnboardSmsRateLimiter()
+    assert limiter.allow(mobile)
