@@ -13,9 +13,7 @@ class OnboardUserRequest(BaseModel):
 
 
 class OnboardUserResponse(BaseModel):
-    user_id: int
-    first_name: str
-    join_code: str
+    # Public-safe ack only — no user_id, join_code or first_name (looper#158).
     message: str
 
 
