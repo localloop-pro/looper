@@ -10,13 +10,20 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test electron/tests/*.test.cjs"
   },
-  "keywords": ["electron", "openai", "realtime", "voice", "desktop-assistant", "ai-companion"],
+  "keywords": [
+    "electron",
+    "openai",
+    "realtime",
+    "voice",
+    "desktop-assistant",
+    "ai-companion"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "dotenv": "^17.4.2",
     "lucide-react": "^1.22.0",
-    "mermaid": "^11.16.0",
+    "mermaid": "^12.3.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
