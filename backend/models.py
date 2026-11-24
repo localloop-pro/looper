@@ -159,11 +159,38 @@ class Deal(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
+class OnboardSmsSend(Base):
+    """Ledger row for each onboard join-code SMS we attempt (rate + daily caps)."""
+
+    __tablename__ = "onboard_sms_sends"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    mobile_key = Column(String(64), nullable=False, index=True)
+    sent_at = Column(DateTime, nullable=False, index=True)
+
+
+def _apply_sql_migrations() -> None:
+    """Run idempotent SQL files under backend/migrations/ (additive only)."""
+    import pathlib
+
+    mig_dir = pathlib.Path(__file__).resolve().parent / "migrations"
+    if not mig_dir.is_dir():
+        return
+    with engine.connect() as conn:
+        for path in sorted(mig_dir.glob("*.sql")):
+            for chunk in path.read_text().split(";"):
+                stmt = chunk.strip()
+                if stmt:
+                    conn.exec_driver_sql(stmt)
+        conn.commit()
+
+
 def init_db():
     """Create all tables. Safe to call multiple times."""
     import os
     os.makedirs("data", exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    _apply_sql_migrations()
     # create_all never ALTERs existing tables — add columns introduced after
     # a DB was first created (additive, idempotent).
     if "sqlite" in DATABASE_URL:

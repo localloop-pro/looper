@@ -71,6 +71,7 @@ Every variable the backend reads (`backend/**/*.py` and `backend/docker-entrypoi
 | `TWILIO_API_KEY_SECRET` | empty | API key secret when `TWILIO_API_KEY_SID` is set. **Secret.** | owner |
 | `TWILIO_FROM_NUMBER` | empty | E.164 sender (e.g. `+614…`) when not using a messaging service. | owner |
 | `TWILIO_MESSAGING_SERVICE_SID` | empty | Twilio Messaging Service SID instead of `TWILIO_FROM_NUMBER`. | owner |
+| `LOOPER_SMS_DAILY_CAP` | `200` | Max onboard join-code SMS sends per UTC calendar day (all numbers combined). When reached, background send is skipped; HTTP ack unchanged. | owner |
 | `LOOPER_DEV_ORIGINS` | empty | Extra comma-separated browser origins allowed by CORS, for local development (`*` is ignored). | local |
 | `LOOPER_ORIGIN_KEY` | empty (lock off) | **Secret.** When set, every request except `GET`/`HEAD /health` must carry the matching `x-looper-origin-key` header or gets 403. Must match the Worker's `ORIGIN_KEY`. See [docs/EDGE-READ-BOUNDARY.md](docs/EDGE-READ-BOUNDARY.md). | owner |
 | `LOOPER_CLIENT_IP_HEADER` | empty (use the socket address) | Header name (e.g. `cf-connecting-ip`) to trust for the client address in the read rate limit. Spoofable unless the origin is locked first. See [docs/EDGE-READ-BOUNDARY.md](docs/EDGE-READ-BOUNDARY.md). | owner |

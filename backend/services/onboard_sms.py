@@ -5,22 +5,25 @@ Never logs mobiles or join codes.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
-import threading
-import time
-from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Literal, Optional
 
 import httpx
 
-from models import SessionLocal, User
+from models import OnboardSmsSend, SessionLocal, User
 
 LOGGER = logging.getLogger("looper.onboard_sms")
 
-# Per-mobile cap; applies to new sign-ups and existing re-sends alike.
+# Per hashed-mobile cap; rolling 60-minute window (not clock-aligned).
 ONBOARD_SMS_LIMIT_PER_HOUR = 3
+DEFAULT_SMS_DAILY_CAP = 200
+MOBILE_KEY_SALT_DEFAULT = "looper-onboard-sms-v1"
+
+SkipReason = Literal["daily_cap", "rate_limit"]
 
 
 @dataclass(frozen=True)
@@ -32,33 +35,88 @@ class TwilioConfig:
     messaging_service_sid: Optional[str]
 
 
+def _rate_salt() -> str:
+    return (os.environ.get("LOOPER_SMS_RATE_SALT") or MOBILE_KEY_SALT_DEFAULT).strip()
+
+
+def hashed_mobile_key(mobile: str) -> str:
+    """SHA-256 of salt + mobile — stored in SQLite, not the raw number."""
+    payload = f"{_rate_salt()}:{mobile}".encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def sms_daily_cap_from_env() -> int:
+    raw = (os.environ.get("LOOPER_SMS_DAILY_CAP") or "").strip()
+    if not raw:
+        return DEFAULT_SMS_DAILY_CAP
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_SMS_DAILY_CAP
+
+
+def _utc_day_start(now: datetime) -> datetime:
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 class OnboardSmsRateLimiter:
-    """Fixed one-hour window per hashed mobile key."""
-
-    MAX_KEYS = 10_000
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._windows: OrderedDict[str, tuple[int, int]] = OrderedDict()
+    """Rolling one-hour window per hashed mobile; counts durable in SQLite."""
 
     def clear(self) -> None:
-        with self._lock:
-            self._windows.clear()
+        session = SessionLocal()
+        try:
+            session.query(OnboardSmsSend).delete()
+            session.commit()
+        finally:
+            session.close()
 
     def allow(self, mobile: str, limit: int = ONBOARD_SMS_LIMIT_PER_HOUR) -> bool:
-        now = time.time()
-        window = int(now // 3600)
-        key = f"sms:{mobile}"
-        with self._lock:
-            seen_window, count = self._windows.get(key, (window, 0))
-            if seen_window != window:
-                count = 0
-            count += 1
-            self._windows[key] = (window, count)
-            self._windows.move_to_end(key)
-            while len(self._windows) > self.MAX_KEYS:
-                self._windows.popitem(last=False)
-        return count <= limit
+        ok, _reason = self.try_record(mobile, limit=limit)
+        return ok
+
+    def try_record(
+        self, mobile: str, limit: int = ONBOARD_SMS_LIMIT_PER_HOUR,
+    ) -> tuple[bool, Optional[SkipReason]]:
+        now = datetime.now(timezone.utc)
+        cap = sms_daily_cap_from_env()
+        if cap <= 0:
+            return False, "daily_cap"
+
+        day_start = _utc_day_start(now)
+        window_start = now - timedelta(hours=1)
+        key = hashed_mobile_key(mobile)
+
+        session = SessionLocal()
+        try:
+            daily_count = (
+                session.query(OnboardSmsSend)
+                .filter(OnboardSmsSend.sent_at >= day_start)
+                .count()
+            )
+            if daily_count >= cap:
+                return False, "daily_cap"
+
+            hourly_count = (
+                session.query(OnboardSmsSend)
+                .filter(
+                    OnboardSmsSend.mobile_key == key,
+                    OnboardSmsSend.sent_at >= window_start,
+                )
+                .count()
+            )
+            if hourly_count >= limit:
+                return False, "rate_limit"
+
+            session.add(OnboardSmsSend(mobile_key=key, sent_at=now))
+            session.commit()
+            return True, None
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
 
 rate_limiter = OnboardSmsRateLimiter()
@@ -141,8 +199,12 @@ def deliver_join_code_sms(mobile_number: str) -> None:
         LOGGER.warning("onboard SMS skipped: Twilio not configured")
         return
 
-    if not rate_limiter.allow(mobile_number):
-        LOGGER.warning("onboard SMS skipped: rate limit")
+    ok, reason = rate_limiter.try_record(mobile_number)
+    if not ok:
+        if reason == "daily_cap":
+            LOGGER.warning("onboard SMS skipped: daily cap")
+        else:
+            LOGGER.warning("onboard SMS skipped: rate limit")
         return
 
     session = SessionLocal()
