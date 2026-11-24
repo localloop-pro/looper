@@ -28,7 +28,6 @@ def onboard_user(req: OnboardUserRequest, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="could not complete sign-up")
 
-    # Create new user
     join_code = generate_join_code(db)
     user = User(
         first_name=req.first_name,
