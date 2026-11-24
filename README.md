@@ -54,6 +54,51 @@ open http://localhost:8000/docs
 
 Use [`.env.example`](.env.example) as the configuration reference. The backend reads the process environment; export the required variables (or source a private local env file in your shell) before startup. Keep bridge secrets, TypeDB credentials, and production values out of source control.
 
+### Backend environment variables
+
+Every variable the backend reads (`backend/**/*.py` and `backend/docker-entrypoint.sh`, tests excluded). Use your browser's find (Cmd+F) to jump to a name. **Who sets it:** *owner* = Bill decides, in the Coolify environment; *deploy* = set once by the deploy/compose setup, normally left alone; *local* = only for your own Mac. Unset means the default applies. Dark flags default to off, and only Bill flips them.
+
+**Secrets** (`LOOPER_ORIGIN_KEY`, `HYBRIDCARD_INGEST_SECRET`): set them only in the deploy environment (Coolify), never in git, a README, an issue or a chat. This table never shows a value.
+
+| Name | Default | What it does | Who sets it |
+|---|---|---|---|
+| `LOOPER_PORT` | `8000` | Port `python main.py` and the Docker entrypoint listen on. With compose it is also the host port. | local / deploy |
+| `LOOPER_DB_URL` | `sqlite:///data/looper.db` | Database location (also used by `backend/scripts/sqlite_backup.py`). Compose sets `sqlite:////app/data/looper.db`. Changing it points the app at a different database. | deploy |
+| `LOOPER_PUBLIC_WRITES` | off (anything but exactly `true` is off) | **The switch that turns public writes on.** Off: `POST /api/onboard`, `/api/reviews` and `/api/pins` answer 403. Hot zone: owner only. | owner |
+| `LOOPER_DEV_ORIGINS` | empty | Extra comma-separated browser origins allowed by CORS, for local development (`*` is ignored). | local |
+| `LOOPER_ORIGIN_KEY` | empty (lock off) | **Secret.** When set, every request except `GET`/`HEAD /health` must carry the matching `x-looper-origin-key` header or gets 403. Must match the Worker's `ORIGIN_KEY`. See [docs/EDGE-READ-BOUNDARY.md](docs/EDGE-READ-BOUNDARY.md). | owner |
+| `LOOPER_CLIENT_IP_HEADER` | empty (use the socket address) | Header name (e.g. `cf-connecting-ip`) to trust for the client address in the read rate limit. Spoofable unless the origin is locked first. See [docs/EDGE-READ-BOUNDARY.md](docs/EDGE-READ-BOUNDARY.md). | owner |
+| `LOOPER_READ_CACHE_TTL_S` | `0` (cache off) | Seconds to cache finished read responses. See [docs/EDGE-READ-BOUNDARY.md](docs/EDGE-READ-BOUNDARY.md). | owner |
+| `LOOPER_READ_CACHE_STALE_S` | `60` | Extra seconds an old copy may be served if the route errors. Same doc. | owner |
+| `LOOPER_READ_CACHE_MAX_ENTRIES` | `512` | Size limit of the read cache (`0` becomes 1). Same doc. | owner |
+| `LOOPER_READ_RATE_LIMIT_PER_MIN` | `0` (off) | Requests per client per minute on public reads. Same doc; see also [docs/E6-RELEASE-GATE.md](docs/E6-RELEASE-GATE.md). | owner |
+| `LOOPER_TRACE_LOG` | `on` | Request trace lines on stderr; `off`, `0`, `false` or `no` stops them. See [docs/E6-RELEASE-GATE.md](docs/E6-RELEASE-GATE.md). | owner |
+| `LOOPER_SEARCH_FALLBACK_KM` | `10` | Radius for the one widened retry when search finds nothing. Anything that is not a finite number above 0 falls back to 10. Read once at startup. See [docs/CROSS-REPO-CONTRACTS.md](docs/CROSS-REPO-CONTRACTS.md). | owner |
+| `LOOPER_FRONTDOOR_LIVE` | `0` (off) | Public API front door (`backend/public_surface.py`); on only for `1`, `true`, `yes` or `on`. Verify on Coolify before turning it on. | owner |
+| `LOOPER_FORWARDED_ALLOW_IPS` | loopback + private ranges | Proxy IPs/CIDRs whose forwarded headers are trusted (read by `backend/docker-entrypoint.sh`). See [Docker / Coolify](#docker--coolify). | deploy |
+| `LOOPER_COMMIT` | empty | Commit sha shown by `/health` (baked in at build). See [docs/BACKEND-COMMIT-MARKER.md](docs/BACKEND-COMMIT-MARKER.md). | deploy |
+| `SOURCE_COMMIT` | empty | Fallback for `LOOPER_COMMIT`; Coolify sets it. | deploy |
+| `HYBRIDCARD_INGEST_SECRET` | empty (no key, bridge events rejected) | **Secret.** HMAC secret for HybridCard bridge events. Rotation: [docs/SECRET-ROTATION.md](docs/SECRET-ROTATION.md). | owner |
+| `HYBRIDCARD_KEY_IDS` | `hc-1` | Comma-separated key ids accepted for bridge events. | owner |
+| `TYPEDB_ENABLED` | `false` (SQLite is used) | Turns the TypeDB graph brain on when exactly `true`. Frozen for now. See [docs/E6-RELEASE-GATE.md](docs/E6-RELEASE-GATE.md). | owner |
+| `TYPEDB_ADDRESS` | `localhost:1729` | TypeDB server address (only used when `TYPEDB_ENABLED=true`). | owner |
+| `TYPEDB_DB` | `localloop` | TypeDB database name (same condition). | owner |
+| `KNS_API_BASE_URL` | `https://api.knsdomains.org/mainnet` | Read-only KNS provider for the organization identity check. A different value is logged as an override. | deploy |
+| `KASPA_IDENTITY_CACHE_PATH` | `backend/data/kaspa_identity_cache.json` (compose: `/app/data/kaspa_identity_cache.json`) | Where the identity cache file lives. | deploy |
+| `KASPA_IDENTITY_TTL_SECONDS` | `3600` | How long an identity answer is fresh. | deploy |
+| `KASPA_IDENTITY_STALE_SECONDS` | `86400` | How long an old answer may be served if the provider is down. | deploy |
+| `KASPA_IDENTITY_FAILURE_BACKOFF_SECONDS` | `30` | Pause before retrying after a provider failure. | deploy |
+| `LOOPER_ALLOW_SEED` | empty | `yes` lets `backend/seed.py` run against a production-shaped database. Never set it in production. | local |
+| `LOOPER_ENV` | empty | `seed.py` refuses to run when this is `production`. | deploy |
+| `COOLIFY_URL` / `COOLIFY_*` | empty | Set by Coolify. `seed.py` treats any `COOLIFY_*` variable (and `COOLIFY_URL`, `SOURCE_COMMIT`, `LOOPER_COMMIT`) as "this is a deployed environment" and refuses to seed. | deploy |
+
+To check this table, list the names the code reads and compare them with the table (the second list also shows non-variable words from other tables; ignore those):
+
+```bash
+grep -rhoE "(getenv|environ\.get|environ)\(?\[?\"[A-Z_]+\"" backend --include='*.py' --exclude-dir=tests --exclude-dir=.venv | grep -oE "\"[A-Z_]+\"" | tr -d '"' | sort -u
+grep -oE "^\| \`[A-Z_]+" README.md | tr -d '| `' | sort -u
+```
+
 ## Docker / Coolify
 
 The default compose stack builds `backend/Dockerfile`, persists SQLite and the bounded KNS cache in the `looper-data` volume, and publishes the API on `LOOPER_PORT`:
