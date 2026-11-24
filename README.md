@@ -65,6 +65,12 @@ Every variable the backend reads (`backend/**/*.py` and `backend/docker-entrypoi
 | `LOOPER_PORT` | `8000` | Port `python main.py` and the Docker entrypoint listen on. With compose it is also the host port. | local / deploy |
 | `LOOPER_DB_URL` | `sqlite:///data/looper.db` | Database location (also used by `backend/scripts/sqlite_backup.py`). Compose sets `sqlite:////app/data/looper.db`. Changing it points the app at a different database. | deploy |
 | `LOOPER_PUBLIC_WRITES` | off (anything but exactly `true` is off) | **The switch that turns public writes on.** Off: `POST /api/onboard`, `/api/reviews` and `/api/pins` answer 403. Hot zone: owner only. | owner |
+| `TWILIO_ACCOUNT_SID` | empty (SMS off) | Twilio Account SID for join-code SMS after onboard. With auth + sender below, sends in the background; HTTP ack never includes the code. | owner |
+| `TWILIO_AUTH_TOKEN` | empty | Twilio auth token (pair with `TWILIO_ACCOUNT_SID`). Omit when using an API key pair. **Secret.** | owner |
+| `TWILIO_API_KEY_SID` | empty | Optional API key SID instead of `TWILIO_AUTH_TOKEN`. **Secret.** | owner |
+| `TWILIO_API_KEY_SECRET` | empty | API key secret when `TWILIO_API_KEY_SID` is set. **Secret.** | owner |
+| `TWILIO_FROM_NUMBER` | empty | E.164 sender (e.g. `+614…`) when not using a messaging service. | owner |
+| `TWILIO_MESSAGING_SERVICE_SID` | empty | Twilio Messaging Service SID instead of `TWILIO_FROM_NUMBER`. | owner |
 | `LOOPER_DEV_ORIGINS` | empty | Extra comma-separated browser origins allowed by CORS, for local development (`*` is ignored). | local |
 | `LOOPER_ORIGIN_KEY` | empty (lock off) | **Secret.** When set, every request except `GET`/`HEAD /health` must carry the matching `x-looper-origin-key` header or gets 403. Must match the Worker's `ORIGIN_KEY`. See [docs/EDGE-READ-BOUNDARY.md](docs/EDGE-READ-BOUNDARY.md). | owner |
 | `LOOPER_CLIENT_IP_HEADER` | empty (use the socket address) | Header name (e.g. `cf-connecting-ip`) to trust for the client address in the read rate limit. Spoofable unless the origin is locked first. See [docs/EDGE-READ-BOUNDARY.md](docs/EDGE-READ-BOUNDARY.md). | owner |

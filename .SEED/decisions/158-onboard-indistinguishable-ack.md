@@ -4,14 +4,24 @@ Decision (2026-11-24): `POST /api/onboard` always answers HTTP 200 with
 `{"message": "<fixed ack>"}`. The body never includes `user_id`, `join_code`, or
 `first_name`. A new row is created only when the mobile is not already stored;
 repeat posts create no duplicate user. Both code paths call `generate_join_code`
-(DB uniqueness probes) before returning the same ack. Join codes stay in SQLite
-for the owner-side delivery path (manual / future loop-onboard); this route does
-not send SMS and does not change that path.
+(DB uniqueness probes) before returning the same ack.
 
-Why: 409 vs 200 let anyone enumerate registered mobiles. The vision asks for
-public-safe payloads before public writes go on. A fixed ack closes registration
-oracle without leaking credentials in HTTP.
+**Join-code delivery (Twilio SMS, Bill 2026-11-24):** After the HTTP response,
+a background task (`services/onboard_sms.py`) may send the stored join code by
+SMS via Twilio's Messaging REST API. Credentials come only from env
+(`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` or `TWILIO_API_KEY_SID` /
+`TWILIO_API_KEY_SECRET`, plus `TWILIO_FROM_NUMBER` or
+`TWILIO_MESSAGING_SERVICE_SID`). If Twilio is not configured, log a generic
+warning (no mobile, no code) and skip send. **Existing mobiles:** re-send the
+stored join code when the per-number rate limit allows (default 3 per hour);
+**new mobiles:** send the code just written. Same background hook on every
+onboard so HTTP timing does not reveal new vs existing. The HTTP body never
+contains the code.
 
-Rollback: revert `backend/routes/users.py` and `backend/schemas.py`, restore
-`OnboardUserResponse` with `user_id` / `first_name` / `join_code`, and bring
-back the 409 branch for duplicate mobiles.
+Why: 409 vs 200 let anyone enumerate registered mobiles. SMS keeps delivery
+off the wire while legitimate users (new or re-requesting) get their code when
+Twilio is enabled.
+
+Rollback: remove `services/onboard_sms.py` and Twilio env from README;
+revert `users.py` to ack-only; or full rollback per first paragraph to restore
+409 and inline join_code in JSON.

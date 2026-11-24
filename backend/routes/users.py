@@ -1,9 +1,10 @@
 """LOOPER API — User Onboarding Routes"""
 import random
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 from models import User, get_db
 from schemas import OnboardUserRequest, OnboardUserResponse
+from services.onboard_sms import deliver_join_code_sms
 from services.write_guard import require_public_writes
 
 router = APIRouter(prefix="/api", tags=["users"])
@@ -29,7 +30,11 @@ def _onboard_ack() -> OnboardUserResponse:
 
 @router.post("/onboard", response_model=OnboardUserResponse,
              dependencies=[Depends(require_public_writes)])
-def onboard_user(req: OnboardUserRequest, db: Session = Depends(get_db)):
+def onboard_user(
+    req: OnboardUserRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Register a new user; return the same public-safe ack for every mobile."""
     existing = db.query(User).filter(User.mobile_number == req.mobile_number).first()
     # Same join-code probe on both paths so timing is closer for enumerators.
@@ -47,4 +52,5 @@ def onboard_user(req: OnboardUserRequest, db: Session = Depends(get_db)):
         db.add(user)
         db.commit()
 
+    background_tasks.add_task(deliver_join_code_sms, req.mobile_number)
     return _onboard_ack()
