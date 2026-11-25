@@ -108,6 +108,7 @@ function boot(answer) {
       return {
         spoken: spoken.join(" "),
         status: ui("#lj-status").textContent,
+        html: ui("#lj-panel").innerHTML,
         panel: ui("#lj-panel").innerHTML.replace(/<[^>]*>/g, "").replace(/&#39;/g, "'"),
         inputOpen: ui("#lj-input-row").classList.contains("lj-open"),
       };
@@ -166,6 +167,17 @@ async function run(ok) {
     ok(`speech, ${label}: ${want}`, want.test(r.spoken), r.spoken);
     if (never) ok(`speech, ${label}: no radius claim`, !never.test(r.spoken), r.spoken);
   }
+
+  // ---- business links: absolute http(s) only, verbatim (looper#204) -----
+  for (const bad of ["/card/abc", "//evil.example/x", "card/abc", "?a=1"]) {
+    const dock = boot(() => ({ status: 200, body: vets([{ card_url: bad, website: bad }, {}]) }));
+    const r = await dock.ask("find me a vet");
+    ok(`panel: relative link ${JSON.stringify(bad)} not rendered`, !/View card|Website/.test(r.html), r.html);
+  }
+  const GOOD = "http://localhost:3000/c/Abc?x=1#f";
+  const dock = boot(() => ({ status: 200, body: vets([{ card_url: GOOD }, {}]) }));
+  const good = await dock.ask("find me a vet");
+  ok("panel: absolute card_url kept verbatim", good.html.includes(`href="${GOOD}"`), good.html);
 }
 
 module.exports = { run };
