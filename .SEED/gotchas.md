@@ -39,8 +39,8 @@
 - Web Speech API needs HTTPS (or localhost), works in Chrome/Edge/Safari,
   NOT Firefox — always feature-detect and fall back to typing.
 - looper `README.md` mentions files that don't exist yet
-  (`backend/services/review.py`, `matching.py`, `hermes/`,
-  `training/finetune.py`) — trust the file tree, not the README.
+  (`backend/services/review.py`, `matching.py`, `hermes/`) — trust the file tree,
+  not the README.
 - looper-bot uses OpenAI Realtime endpoints/models configured in
   `electron/main.cjs` — confirm current model names against OpenAI docs at
   build time before changing.

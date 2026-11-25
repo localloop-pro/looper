@@ -17,15 +17,6 @@ class OnboardUserResponse(BaseModel):
     message: str
 
 
-class SearchRequest(BaseModel):
-    query: str = Field(..., min_length=1)
-    lat: Optional[float] = None
-    lng: Optional[float] = None
-    radius_km: Optional[float] = 5.0
-    category: Optional[str] = None
-    limit: Optional[int] = 5
-
-
 class SearchResult(BaseModel):
     business_id: int
     name: str
@@ -81,19 +72,6 @@ class MapPinResponse(BaseModel):
     lat: float
     lng: float
     created_at: datetime
-
-
-class TouristInfoResponse(BaseModel):
-    attractions: List[dict]
-    transport: dict
-    emergency: dict
-    weather_summary: Optional[str]
-
-
-class TrainingExportResponse(BaseModel):
-    records_exported: int
-    file_path: str
-    format: str  # jsonl, parquet, etc.
 
 
 class HybridCardDealPayload(BaseModel):
