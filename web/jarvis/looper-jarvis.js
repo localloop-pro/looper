@@ -137,6 +137,8 @@
     "#looper-jarvis .lj-status{max-width:220px;background:rgba(10,12,18,.9);border:1px solid rgba(86,189,255,.3);color:#bfe9ff;font-size:12px;padding:6px 12px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}",
     "#looper-jarvis .lj-wake{border:1px solid rgba(86,189,255,.3);background:rgba(10,12,18,.9);color:#7ddfff;font-size:12px;padding:6px 11px;border-radius:999px;cursor:pointer;}",
     "#looper-jarvis .lj-wake.on{background:#56bdff;color:#04121e;border-color:#56bdff;}",
+    "#looper-jarvis .lj-type{border:1px solid rgba(86,189,255,.3);background:rgba(10,12,18,.9);color:#7ddfff;font-size:12px;padding:6px 11px;border-radius:999px;cursor:pointer;}",
+    "@media (max-width:480px){#looper-jarvis .lj-dock{gap:4px;flex-wrap:nowrap;}#looper-jarvis .lj-status{min-width:0;max-width:65px;font-size:10px;padding:5px 6px;}#looper-jarvis .lj-wake,#looper-jarvis .lj-type{font-size:10px;padding:5px 6px;white-space:nowrap;}}",
     "#looper-jarvis .lj-input-row{display:none;gap:6px;width:min(340px,calc(100vw - 36px));}",
     "#looper-jarvis .lj-input-row.lj-open{display:flex;}",
     "#looper-jarvis .lj-input-row input{flex:1;background:rgba(10,12,18,.94);border:1px solid rgba(86,189,255,.35);color:#e8ecf4;border-radius:999px;padding:9px 14px;font-size:13px;outline:none;}",
@@ -175,6 +177,7 @@
       '  <button id="lj-send" aria-label="Send">➤</button>' +
       "</div>" +
       '<div class="lj-dock">' +
+      '  <button class="lj-type" id="lj-type" aria-controls="lj-input-row">Type a search</button>' +
       '  <button class="lj-wake" id="lj-wake" title="Hands-free: say ‘Hey Looper …’" aria-label="Toggle hands-free Hey Looper mode">🎙 Hey Looper</button>' +
       '  <div class="lj-status" id="lj-status">Tap my face to talk</div>' +
       '  <button class="lj-face-btn" id="lj-face-btn" aria-label="Talk to Looper"></button>' +
@@ -188,6 +191,10 @@
     S.ui.inputRow = wrap.querySelector("#lj-input-row");
     S.ui.input = wrap.querySelector("#lj-input");
     S.ui.send = wrap.querySelector("#lj-send");
+    wrap.querySelector("#lj-type").addEventListener("click", function () {
+      S.ui.inputRow.classList.add("lj-open");
+      S.ui.input.focus();
+    });
 
     // smaller face on narrow phones so the dock fits beside the map UI
     var faceSize = (root.innerWidth && root.innerWidth <= 480) ? 88 : 118;
