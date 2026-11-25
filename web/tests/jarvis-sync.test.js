@@ -75,6 +75,8 @@ ok("Looper's own looper-jarvis.js reads Router.WAKE_*", sync.checkJarvisDock("lo
 
 // ---- what the dock says about failures and distance (looper#153) ---------
 // lives in jarvis-honesty.test.js; run here so CI's existing command covers it
+// ...and the absolute-links-only popup check (looper#204)
+require("./jarvis-relative-links.test.js").run(ok);
 require("./jarvis-honesty.test.js").run(ok)
   // widget "View card" link safety (looper#205)
   .then(() => require("./widget-card-link.test.js").run(ok))
