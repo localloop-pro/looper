@@ -117,17 +117,32 @@
 
       if (data.results && data.results.length > 0) {
         // Build response
-        let resultText = (data.message || '') + '\n\n';
+        const message = document.createElement('div');
+        message.className = 'looper-msg looper-bot';
+        message.appendChild(document.createTextNode((data.message || '') + '\n\n'));
         data.results.forEach((r, i) => {
           const stars = r.avg_rating ? '⭐'.repeat(Math.round(r.avg_rating)) : 'No ratings yet';
           const dist = r.distance_km ? ` (${r.distance_km}km)` : '';
           // Plain text: addMessage uses textContent, so **bold** would show raw.
-          resultText += `${i+1}. ${r.name}${dist} — ${r.category}\n`;
+          let resultText = `${i+1}. ${r.name}${dist} — ${r.category}\n`;
           resultText += `   ${stars} · ${r.review_count} review${r.review_count !== 1 ? 's' : ''}\n`;
           if (r.top_review) resultText += `   ${r.top_review}\n`;
-          resultText += '\n';
+          message.appendChild(document.createTextNode(resultText));
+          if (typeof r.card_url === 'string') {
+            try {
+              const url = new URL(r.card_url);
+              if (url.protocol === 'http:' || url.protocol === 'https:') {
+                const link = document.createElement('a');
+                link.href = r.card_url;
+                link.textContent = 'View card';
+                message.appendChild(link);
+              }
+            } catch (_) { /* Invalid URLs have no link. */ }
+          }
+          message.appendChild(document.createTextNode('\n\n'));
         });
-        addMessage(resultText);
+        chat.appendChild(message);
+        chat.scrollTop = chat.scrollHeight;
       } else {
         addMessage(data.message || "I couldn't find anything matching that yet. Want to be the first to add it? 🌱");
       }
