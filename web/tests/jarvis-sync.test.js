@@ -75,7 +75,10 @@ ok("Looper's own looper-jarvis.js reads Router.WAKE_*", sync.checkJarvisDock("lo
 
 // ---- what the dock says about failures and distance (looper#153) ---------
 // lives in jarvis-honesty.test.js; run here so CI's existing command covers it
-require("./jarvis-honesty.test.js").run(ok).then(() => {
+require("./jarvis-honesty.test.js").run(ok)
+  // widget "View card" link safety (looper#205)
+  .then(() => require("./widget-card-link.test.js").run(ok))
+  .then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
 }, (e) => { console.error(e); process.exit(1); });
