@@ -42,6 +42,22 @@ const assert = require('node:assert/strict');
         assert(await input.evaluate(el => el === document.activeElement));
       }
       const success = { message: '<img src=x onerror=alert(1)>', results: [{ name: 'Cafe One', category: 'cafe', avg_rating: 4, review_count: 2, top_review: 'Friendly', distance_km: 1 }] };
+      const cards = { message: '<img src=x onerror=alert(1)>', results: [
+        { name: '<b>First</b>', category: 'cafe', review_count: 0, card_url: 'http://localhost:3000/c/one?x=1#card' },
+        { name: 'Second', category: 'cafe', review_count: 0, card_url: 'https://example.test/c/two?x=2' },
+        { name: 'No card', category: 'cafe', review_count: 0 },
+        { name: 'Unsafe', category: 'cafe', review_count: 0, card_url: 'javascript:alert(1)' },
+        { name: 'Malformed', category: 'cafe', review_count: 0, card_url: 'http://[' },
+      ] };
+      await submit(); await reply(cards); await restored();
+      const links = page.locator('#looper-chat a');
+      assert.equal(await links.count(), 2);
+      assert.equal(await links.nth(0).getAttribute('href'), cards.results[0].card_url);
+      assert.equal(await links.nth(1).getAttribute('href'), cards.results[1].card_url);
+      assert.equal(await page.locator('#looper-chat b, #looper-chat img').count(), 0);
+      assert((await page.locator('#looper-chat').innerText()).includes('<b>First</b>'));
+      await links.nth(0).focus(); await page.keyboard.press('Tab');
+      assert(await links.nth(1).evaluate(el => el === document.activeElement));
       await submit(); await reply(success); await restored();
       assert((await page.locator('#looper-chat').innerText()).includes('Cafe One'));
       assert.equal(await page.locator('#looper-chat img').count(), 0);
