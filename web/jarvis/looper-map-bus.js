@@ -47,9 +47,11 @@
     // Absolute only, returned exactly as supplied: a relative or
     // protocol-relative value must never resolve against the host page.
     var s = String(value);
-    if (!/^https?:\/\/[^\s]/i.test(s)) return null;
+    // Malformed values the URL parser would silently repair (extra slashes,
+    // backslashes, whitespace/control characters) are rejected too.
+    if (!/^https?:\/\/[^\/\\?#]/i.test(s) || /[\u0000-\u0020\u007f\\]/.test(s)) return null;
     try {
-      new URL(s);
+      if (!new URL(s).hostname) return null;
       return s;
     } catch (e) {
       return null;

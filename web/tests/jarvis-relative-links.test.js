@@ -10,7 +10,10 @@ const path = require("path");
 const vm = require("vm");
 
 
-const BAD = ["/card/abc", "//evil.example/x", "card/abc", "./card", "?a=1", "#frag"];
+const BAD = ["/card/abc", "//evil.example/x", "card/abc", "./card", "?a=1", "#frag",
+  "http:///evil.example/x", "https:///evil.example/x", "https://\\evil.example/x", "https:/\\evil.example/x",
+  "https://evil.example\\@good.example/", "https://evil.\nexample/x", " https://evil.example/x", "https://evil.example/ x",
+  "javascript:alert(1)", "data:text/html,x", "ftp://evil.example/x", "http://", "https://?a=1"];
 const GOOD = "https://hybridcard.ai/c/Abc?x=1";
 
 function popupFor(r) {
@@ -34,6 +37,10 @@ function popupFor(r) {
 }
 
 function run(ok) {
+  const LOCAL = "http://localhost:3000/c/Abc?x=1#f";
+  ok("popup: localhost card_url kept verbatim", popupFor({ card_url: LOCAL }).includes(`href="${LOCAL}"`));
+  const fb = popupFor({ card_url: "/card/abc", website: GOOD });
+  ok("popup: invalid card_url falls back to valid website", !/View card/.test(fb) && fb.includes(`href="${GOOD}"`), fb);
   for (const bad of BAD) {
     const a = popupFor({ card_url: bad });
     ok(`popup: card_url ${JSON.stringify(bad)} not rendered as a link`, !/View card/.test(a), a);

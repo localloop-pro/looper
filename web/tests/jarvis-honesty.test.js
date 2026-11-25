@@ -169,15 +169,22 @@ async function run(ok) {
   }
 
   // ---- business links: absolute http(s) only, verbatim (looper#204) -----
-  for (const bad of ["/card/abc", "//evil.example/x", "card/abc", "?a=1"]) {
-    const dock = boot(() => ({ status: 200, body: vets([{ card_url: bad, website: bad }, {}]) }));
-    const r = await dock.ask("find me a vet");
-    ok(`panel: relative link ${JSON.stringify(bad)} not rendered`, !/View card|Website/.test(r.html), r.html);
-  }
+  const BADLINKS = ["/card/abc", "//evil.example/x", "card/abc", "?a=1", "http:///evil.example/x",
+    "https://\\evil.example/x", "https://evil.\nexample/x", "javascript:alert(1)", "data:text/html,x", "ftp://evil.example/x"];
   const GOOD = "http://localhost:3000/c/Abc?x=1#f";
-  const dock = boot(() => ({ status: 200, body: vets([{ card_url: GOOD }, {}]) }));
+  const SITE = "https://example.com/shop?a=1";
+  for (const bad of BADLINKS) {
+    for (const field of ["card_url", "website"]) {
+      const dock = boot(() => ({ status: 200, body: vets([{ [field]: bad }, {}]) }));
+      const r = await dock.ask("find me a vet");
+      ok(`panel: ${field} ${JSON.stringify(bad)} not rendered`, !/View card|Website/.test(r.html), r.html);
+    }
+  }
+  const dock = boot(() => ({ status: 200, body: vets([{ card_url: GOOD }, { website: SITE }, { card_url: "/x", website: SITE }]) }));
   const good = await dock.ask("find me a vet");
-  ok("panel: absolute card_url kept verbatim", good.html.includes(`href="${GOOD}"`), good.html);
+  ok("panel: localhost card_url kept verbatim", good.html.includes(`href="${GOOD}"`), good.html);
+  ok("panel: valid website kept verbatim, also as fallback for an invalid card_url",
+    good.html.split(`href="${SITE}"`).length === 3, good.html);
 }
 
 module.exports = { run };
