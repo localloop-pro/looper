@@ -80,6 +80,8 @@ require("./jarvis-relative-links.test.js").run(ok);
 require("./jarvis-honesty.test.js").run(ok)
   // widget "View card" link safety (looper#205)
   .then(() => require("./widget-card-link.test.js").run(ok))
+  // map bus message validation
+  .then(() => require("./looper-map-bus.test.js").run(ok))
   .then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
