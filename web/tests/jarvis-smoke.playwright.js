@@ -106,8 +106,35 @@ const MIXED_VETS = {
     page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
     page.on("console", (m) => { if (m.type() === "error") errors.push("console: " + m.text()); });
 
+    // A browser with speech recognition must still offer typing before any mic use.
+    await page.addInitScript(() => {
+      window.__micStarts = 0;
+      window.SpeechRecognition = function () { this.start = () => { window.__micStarts++; }; this.stop = () => {}; };
+    });
     await page.goto("http://127.0.0.1:8088/tests/jarvis-harness.html");
     await page.waitForSelector("#looper-jarvis .lj-face-btn .looper-face");
+    await page.locator('#lj-type').focus();
+    await page.keyboard.press('Enter');
+    if (!(await page.locator('#lj-input').isVisible()) || !(await page.locator('#lj-input').evaluate(el => el === document.activeElement))) {
+      throw new Error('Typed search is not visible and focused before microphone use when SpeechRecognition exists');
+    }
+    await page.keyboard.type('find me a cafe near me');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#looper-jarvis .lj-option a');
+    if (new URL(await page.locator('#looper-jarvis .lj-option a').first().getAttribute('href')).origin !== 'https://gertrude.hybridcard.ai') throw new Error('Typed search did not reach the supplied card');
+    if (await page.evaluate(() => window.__micStarts) !== 0) throw new Error('Typed search started recognition');
+    await page.locator('#lj-face-btn').click();
+    await page.waitForFunction(() => window.__micStarts === 1);
+    const noSpeech = await browser.newPage();
+    await noSpeech.addInitScript(() => { window.SpeechRecognition = undefined; window.webkitSpeechRecognition = undefined; });
+    await noSpeech.goto('http://127.0.0.1:8088/tests/jarvis-harness.html');
+    await noSpeech.locator('#lj-type').focus();
+    await noSpeech.keyboard.press('Enter');
+    await noSpeech.keyboard.type('find me a cafe');
+    await noSpeech.keyboard.press('Enter');
+    await noSpeech.waitForSelector('#looper-jarvis .lj-option a');
+    if (new URL(await noSpeech.locator('#looper-jarvis .lj-option a').first().getAttribute('href')).origin !== 'https://gertrude.hybridcard.ai') throw new Error('Typed fallback did not reach the supplied card');
+    await noSpeech.close();
 
     // 1. Face mounted + idle
     const mood = await page.getAttribute("#looper-jarvis .lj-face-btn .looper-face", "class");
