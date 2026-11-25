@@ -266,9 +266,15 @@
   // otherwise smuggle javascript:/data: URIs into the options panel.
   function safeUrl(value) {
     if (!value) return null;
+    // Absolute only, returned exactly as supplied: a relative or
+    // protocol-relative value must never resolve against the host page.
+    var s = String(value);
+    // Malformed values the URL parser would silently repair (extra slashes,
+    // backslashes, whitespace/control characters) are rejected too.
+    if (!/^https?:\/\/[^\/\\?#]/i.test(s) || /[\u0000-\u0020\u007f\\]/.test(s)) return null;
     try {
-      var u = new URL(String(value), root.location ? root.location.href : "https://localloop.ai");
-      return (u.protocol === "http:" || u.protocol === "https:") ? u.href : null;
+      if (!new URL(s).hostname) return null;
+      return s;
     } catch (e) {
       return null;
     }
