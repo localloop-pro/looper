@@ -1,7 +1,8 @@
 # tools/callgraph — intent prompt + call graph generator
 
-Builds `plans/INTENT_PROMPT_CALL_GRAPH.md`: the hand-written intent prompt (`intent.md`)
-plus a generated, complete function-level call graph of the non-test code.
+Writes `plans/INTENT_PROMPT_CALL_GRAPH.md` locally (gitignored): the hand-written
+intent prompt (`intent.md`) plus a generated, complete function-level call graph of
+the non-test code. Regenerate: `python3 tools/callgraph/build.py`.
 
 ```bash
 python3 tools/callgraph/build.py
