@@ -122,7 +122,11 @@ def test_import_truncates_long_author_name(db):
 def test_demo_mode_runs_without_credentials(db):
     imported, skipped = fb.run_pipeline()
     assert imported >= 1
-    assert imported + skipped >= 4  # 5 sample posts; one may import 2 reviews
+    # 5 sample posts. Since #216 (name extraction scoped to capitalised names),
+    # demo_1 and demo_5 are reviews with no extractable business: they import
+    # nothing and are not counted as skipped. demo_4 is a plain question (skipped).
+    assert imported == 2
+    assert skipped == 1
     assert db.query(models.Review).count() == imported
 
 
