@@ -12,10 +12,16 @@ from services import edge_boundary
 from tests.conftest import sample_deal_payload, signed_post
 
 ORIGIN = "https://localloop.ai"
+WALL_CLOCK = {"t": 30.0}
 
 
 @pytest.fixture(autouse=True)
 def fresh_boundary(monkeypatch):
+    # The rate limiter is a fixed window on wall-clock minutes. Pin the clock
+    # mid-window so a test's requests can never straddle a minute boundary
+    # (#213: flaky 200 == 429). Tests that need rollover move it themselves.
+    monkeypatch.setattr(edge_boundary.time, "time", lambda: WALL_CLOCK["t"])
+    WALL_CLOCK["t"] = 30.0
     edge_boundary.read_cache.clear()
     edge_boundary.rate_limiter.clear()
     for name in ("LOOPER_READ_CACHE_TTL_S", "LOOPER_READ_CACHE_STALE_S",
@@ -264,6 +270,15 @@ def test_rate_limit_429_with_retry_after_and_cors(client, db, monkeypatch):
     assert client.get("/health").status_code == 200
     resp = signed_post(client, "/api/ingest/hybridcard-deal", sample_deal_payload())
     assert resp.status_code == 200
+
+
+def test_rate_limit_window_resets_on_next_minute(client, db, monkeypatch):
+    monkeypatch.setenv("LOOPER_READ_RATE_LIMIT_PER_MIN", "2")
+    for _ in range(2):
+        assert _search(client).status_code == 200
+    assert _search(client).status_code == 429
+    WALL_CLOCK["t"] = 60.5  # next minute window
+    assert _search(client).status_code == 200
 
 
 def test_rate_limit_keys_on_trusted_header_only(client, db, monkeypatch):
