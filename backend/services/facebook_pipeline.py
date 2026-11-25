@@ -29,26 +29,26 @@ logger = logging.getLogger("looper.facebook")
 # ── Business name patterns for Bondi area ──
 BONDI_BUSINESS_PATTERNS = [
     # Format: (regex, category) — tighter patterns to avoid false matches
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:caf[ée]|coffee)\b", "café"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:medical\s*centre|clinic|doctor|GP)\b", "doctor"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:vet\b|veterinary)", "vet"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:dental|dentist)\b", "dentist"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:plumb(?:er|ing))\b", "plumber"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:restaurant|bistro|dining|eatery)\b", "restaurant"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:pharmacy|chemist)\b", "pharmacy"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:physio|physical\s+therapy)\b", "physiotherapist"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:hairdresser|barber|salon)\b", "hairdresser"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:yoga|gym|fitness|pilates)\b", "fitness"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:electrician|electrical)\b", "electrician"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:bakery|baker)\b", "bakery"),
-    (r"(?i)\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:mechanic|auto)\b", "mechanic"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:caf[ée]|coffee)\b", "café"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:medical\s*centre|clinic|doctor|GP)\b", "doctor"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:vet\b|veterinary)", "vet"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:dental|dentist)\b", "dentist"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:plumb(?:er|ing))\b", "plumber"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:restaurant|bistro|dining|eatery)\b", "restaurant"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:pharmacy|chemist)\b", "pharmacy"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:physio|physical\s+therapy)\b", "physiotherapist"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:hairdresser|barber|salon)\b", "hairdresser"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:yoga|gym|fitness|pilates)\b", "fitness"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:electrician|electrical)\b", "electrician"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:bakery|baker)\b", "bakery"),
+    (r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?i:mechanic|auto)\b", "mechanic"),
 ]
 
 # Words that should NOT appear as business names (adjectives, verbs, etc.)
 NON_NAME_WORDS = {
     "good", "great", "best", "amazing", "fantastic", "wonderful", "excellent",
     "new", "old", "nice", "lovely", "friendly", "local", "nearby", "closest",
-    "avoid", "try", "recommend", "recommended", "anyone", "someone", "looking",
+    "avoid", "try", "tried", "recommend", "recommended", "anyone", "someone", "looking",
     "need", "want", "find", "found", "use", "used", "using", "know", "knows",
     "terrible", "awful", "horrible", "worst", "bad", "poor", "disappointing",
 }
@@ -56,7 +56,8 @@ NON_NAME_WORDS = {
 # Stop-phrases that indicate a post is NOT a review
 NOT_A_REVIEW = [
     "for sale", "selling", "wanted", "looking for room",
-    "iso", "in search of", "lost cat", "lost dog", "found",
+    "iso", "in search of", "lost cat", "lost dog",
+    "found a cat", "found a dog", "found keys", "found a wallet",
     "spam", "scam", "warning",
 ]
 
@@ -67,7 +68,7 @@ def classify_post(text: str) -> dict:
 
     # Check if it's clearly not a review
     for phrase in NOT_A_REVIEW:
-        if phrase in text_lower:
+        if re.search(r"\b" + re.escape(phrase) + r"\b", text_lower):
             return {"is_review": False, "confidence": 0.0, "reason": f"matched stop-phrase: '{phrase}'", "businesses": [], "sentiment": "neutral", "estimated_rating": 0, "summary": text[:200].strip()}
 
     # Check for recommendation indicators
@@ -113,8 +114,8 @@ def classify_post(text: str) -> dict:
     estimated_rating = rating_map[sentiment]
 
     # Extract rating if explicitly mentioned
-    rating_match = re.search(r"(\d)[\s/]*(?:5|stars|out of 5)", text)
-    if rating_match:
+    rating_match = re.search(r"(?<![\d$.])([1-5])\s*(?:/\s*5\b|stars?\b|out of 5\b)", text)
+    if rating_match and 1 <= int(rating_match.group(1)) <= 5:
         estimated_rating = int(rating_match.group(1))
 
     return {
