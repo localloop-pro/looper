@@ -106,9 +106,8 @@ knowledge graph. The Facebook members have no funnel to the map or the cards.
   (API base hardcoded `http://localhost:8000/api` — F3.3 makes configurable).
 - CORS already allows `https://localloop.pro`, `https://www.localloop.pro`,
   `https://explorer.localloop.ai`, localhost 3000/5173.
-- Known drift: `README.md` names files that don't exist yet
-  (`backend/services/review.py`, `matching.py`, `training.py`, `hermes/`,
-  `training/finetune.py`). Trust the file tree.
+- Known drift: `README.md` may name files that are not in the tree yet —
+  trust the file tree, not the README.
 
 ### 2.2 LocalLoop Explore v11 (`llx11/localloop.pro-main`)
 
