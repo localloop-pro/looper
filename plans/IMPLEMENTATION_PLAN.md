@@ -159,7 +159,7 @@ knowledge graph. The Facebook members have no funnel to the map or the cards.
   `scripts/inject-env.js` → `assets/js/env.js` (ADR-0002 — placeholders only
   in git). Live host **localloop.ai**; `localloop.pro` currently broken
   (Traefik default cert / 503) — fixed in F9.1.
-- **House rules:** FollowMe.md lock protocol, confirm-first autonomy, ADRs in
+- **House rules:** confirm-first autonomy, ADRs in
   `SPEC/decisions.md`, no new top-level deps without justification, pin
   contract (`SPEC/pin-webhook-contract.md`) is load-bearing.
 
@@ -1259,7 +1259,7 @@ Safe parallel tracks once Phase 0 is done: **(A)** Phase 1 bridge,
 | `plans/IMPLEMENTATION_PLAN.md` (llx11's own) | llx11 | Site-B rebuild PRD — SEPARATE plan, do not merge/overwrite |
 | `COOLIFY_AUTO_DEPLOY_GUIDE.md` | llx11 | F9.x deploy mechanics |
 | `explore-local.tsx` | golive_LocalLoop_Explore_html | F3.2 port source (logic only) |
-| `FollowMe.md` (looper) | looper | repo status/history |
+| `STATUS.md` (looper) | looper | repo status/history |
 
 ---
 

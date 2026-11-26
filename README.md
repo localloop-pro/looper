@@ -14,7 +14,7 @@ web/           Embeddable widget and Jarvis map modules/demos
 training/      Privacy-filtered training export and optional ML tooling
 tools/         Operator and news/audio utilities
 workers/       Edge/API proxy workers
-plans/         Master plan, feature plans, completion state, and evidence
+plans/         Master plan, feature plans, and evidence; live status in STATUS.md
 data/          Local runtime data (not source-controlled)
 ```
 
@@ -358,4 +358,4 @@ TypeDB tests and services are optional unless the active task enables that lane.
 - LocalLoop public map: `../localloop.pro/localloop.pro-main/llx11/localloop.pro-main/`
 - HybridCard product: `../hybridcard.ai/new-card/`
 - Shared HybridCard/Looper skill hub: [`../hybridcard.ai/looper/skills/SKILLS.md`](../hybridcard.ai/looper/skills/SKILLS.md)
-- Bridge and rollout status: [`plans/COMPLETION_STATUS.md`](plans/COMPLETION_STATUS.md)
+- Bridge and rollout status: [`STATUS.md`](STATUS.md) (archive: [`plans/archive/COMPLETION_STATUS.md`](plans/archive/COMPLETION_STATUS.md))
