@@ -206,17 +206,12 @@ def search_businesses(
     candidates are filtered once more with FALLBACK_KM and the response sets
     ``widened_to_km`` (looper#73). The sort is identical in both passes."""
 
-    # Build query — deactivated businesses (card.removed) never surface.
     # IS NOT false (not != false): NULL-safe, so legacy NULL rows stay visible
     query = db.query(Business).filter(Business.is_active.is_not(False))
     if category:
         query = query.filter(Business.category == category)
 
-    # Tokenized free-text search — split query into words, match any token
-    # This way "café near Bondi Beach" matches businesses with category "café" in "Bondi"
-    # Tokens are accent-folded ("cafe" == "café") — voice transcripts type ASCII.
     tokens = [fold_accents(t.strip()) for t in q.split() if len(t.strip()) > 1]
-    # Also include stopwords that might be relevant (like "beach", "road")
     stopwords = {"near", "the", "a", "an", "in", "at", "on", "is", "are", "was", "for", "to", "of", "and", "or", "i", "me", "my", "what", "where", "who", "how", "find", "good", "best", "great"}
     # Place words ("Bondi Junction") say where, not what (looper#143): when
     # the question also names a thing ("vet"), only that thing decides which
@@ -232,15 +227,8 @@ def search_businesses(
     if not search_tokens:
         search_tokens = tokens  # fallback if all words are stopwords
 
-    # Expand each word with the explicit synonym / compound table
-    # (services/query_terms.py, looper#29): "hairdresser" also tries "hair"
-    # and "salon". Originals always stay; added words must start a word.
     groups = query_terms.expand(search_tokens)
 
-    # Build OR filter: match any term against name, category, suburb,
-    # description — both sides accent-folded via the registered SQLite
-    # fold_accents() function (models.py), so "cafe" finds "café".
-    # SQL LIKE only narrows candidates; group_matches() below is the rule.
     from sqlalchemy import or_
     conditions = []
     for term in sorted({t.text for group in groups for t in group}):
@@ -319,14 +307,9 @@ def search_businesses(
             "relevance": relevance,
         })
 
-    # SORT: relevance DESC (category match > name match > suburb match),
-    # then review_count DESC (most community-trusted first), then proximity
-    # ANTI-BIAS INVARIANT (BRIDGE-CONTRACT-v1 §7): ranking inputs are
-    # relevance, review_count, distance ONLY. Never discount_size, source,
-    # rank_boost, or any paid signal. test_search_antibias.py enforces this.
+    # rank_boost and other paid signals never affect sort (BRIDGE-CONTRACT-v1 §7).
     results.sort(key=lambda r: (-r["relevance"], -r["review_count"], r["distance_km"] if r["distance_km"] is not None else 999))
 
-    # Build response
     page = results[:limit]
     page_businesses = [r["business"] for r in page]
     tops = top_reviews(db, [biz.id for biz in page_businesses])
@@ -344,7 +327,6 @@ def search_businesses(
             lng=biz.lng,
             review_count=r["review_count"],
             avg_rating=r["avg_rating"],
-            # only for the returned page (<= limit), not every match
             top_review=tops.get(biz.id),
             distance_km=r["distance_km"],
             website=biz.website,
@@ -353,8 +335,6 @@ def search_businesses(
 
     message = _message(q, category, ranked, radius_km, widened_to_km)
 
-    # F2.5 telemetry: query + summary into training_log (PII-scrubbed,
-    # best-effort — see services/telemetry.py). Feeds training/export.py.
     telemetry.log_query(
         db, q, intent=intent or "search", session_id=session,
         response_text=f"{message} [{', '.join(r.name for r in ranked[:5])}]",

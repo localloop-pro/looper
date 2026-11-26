@@ -1,18 +1,7 @@
-"""Facebook Group Data Pipeline for LOOPER
+"""Regex-based importer for Bondi Local Loop Facebook group posts (CLI/tests).
 
-Collects raw review and recommendation data from the Bondi Local Loop
-Facebook group (~150,000 members) and imports into LOOPER database.
-
-Architecture:
-1. Facebook Graph API → fetch group posts
-2. NLP classifier → identify review/recommendation posts
-3. Entity extractor → pull out business names, categories, sentiments
-4. DB importer → create/update LOOPER Business + Review records
-
-Requirements:
-- Facebook App with groups_access_member_info permission
-- Group admin access token (long-lived)
-- group_id for Bondi Local Loop
+Fetches posts via httpx (demo or live Graph API mode), classifies posts with
+heuristics, and writes Business/Review rows into the LOOPER database.
 """
 
 import re
