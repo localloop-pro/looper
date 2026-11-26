@@ -14,7 +14,7 @@
 - [ ] **F4.2** — Map deep links (`?cat=…&q=…&fly=lng,lat,zoom`)
 - [ ] **F4.3** — Ricky bridge-ops cockpit (read-only v1)
 
-> **2026-07-12 progress (see `.SEED/decisions.md`):** F4.1 tools
+> **2026-07-12 progress (see `.SEED/decisions/legacy-decisions-archive.md`):** F4.1 tools
 > (localloop_search/businesses/open_map/bridge_status) + LocalLoop persona
 > shipped in `looper-bot/electron/main.cjs`; F4.2 map-side deep-link parsing
 > shipped in `web/jarvis/looper-jarvis.js` (verified headless) and the

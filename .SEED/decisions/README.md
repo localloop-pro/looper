@@ -1,6 +1,7 @@
 # .SEED/decisions/ — one decision per PR, one file each
 
-`.SEED/decisions.md` holds the older decisions; read both.
+`.SEED/decisions.md` is the index; legacy body text lives in
+`legacy-decisions-archive.md`. Read the index plus any per-issue files.
 
 - One new file per PR, named `<issue>-<short-slug>.md`,
   e.g. `53-one-file-per-entry.md`.

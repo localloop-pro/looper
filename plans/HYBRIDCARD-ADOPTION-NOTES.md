@@ -422,7 +422,7 @@ Effort M · Risk: behind Coolify's proxy `request.client.host` may be the proxy;
       TYPEDB_DB: ${TYPEDB_DB:-}
 ```
 
-Empty values are safe: `discover.py:71-74` treats empty as unset (decision 2026-08-12, `.SEED/decisions.md:186`).
+Empty values are safe: `discover.py:71-74` treats empty as unset (decision 2026-08-12, [`.SEED/decisions/legacy-decisions-archive.md#legacy-23-2026-08-12-typedb-local-acceptance-completed-against-pinned`](.SEED/decisions/legacy-decisions-archive.md#legacy-23-2026-08-12-typedb-local-acceptance-completed-against-pinned)).
 
 **Fix, option B:** leave compose as is and add one line to `plans/COMPLETION_STATUS.md` under F2.1-F2.3: "Docker deploy runs graph-off by design until the internal-only TypeDB service exists; `engine` is always `fallback`." Option B costs nothing but must be written down so nobody debugs a "missing" graph.
 

@@ -52,7 +52,7 @@
 **F7.2 — Member intake API + Facebook capture (verified July 2026 reality)**
 
 - **Hard facts the design is built on (verified, sources in
-  `.SEED/decisions.md`):** the Facebook **Groups API is dead** (removed
+  `.SEED/decisions/legacy-decisions-archive.md`):** the Facebook **Groups API is dead** (removed
   April 2024 — no app can read member requests, answers, or approve
   members); membership-question answers are **only visible while a request
   is pending** (they vanish at approval, no export exists); Pages/apps

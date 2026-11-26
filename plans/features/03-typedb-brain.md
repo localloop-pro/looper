@@ -16,7 +16,7 @@
 - [ ] **F2.4** — Archetype + skill graph (category assist)
 - [ ] **F2.5** — Self-improving telemetry (finally write `training_log`)
 
-> **2026-07-12 progress (see `.SEED/decisions.md`):** the FALLBACK half of
+> **2026-07-12 progress (see `.SEED/decisions/legacy-decisions-archive.md`):** the FALLBACK half of
 > F2.3 shipped — `GET /api/discover` (routes/discover.py) with the frozen
 > response shape + `engine: "fallback"`, seed suburb table mirroring the
 > voice router's, `TYPEDB_ENABLED` gate ready for the graph engine. F2.5's
@@ -27,7 +27,7 @@
 > test (needs F2.1/F2.2); F2.5's after the TypeDB DB-2 archetype counters
 > (needs F2.4).
 >
-> **2026-08-11 progress (see `.SEED/decisions.md`):** F2.1/F2.2/F2.3 code
+> **2026-08-11 progress (see `.SEED/decisions/legacy-decisions-archive.md`):** F2.1/F2.2/F2.3 code
 > complete. TypeDB schemas (`brain/schema/001_geo.tql` + `002_business.tql`),
 > migration runner (`brain/migrate.py`), geo seed (`brain/seed_geo.py`),
 > sync worker (`brain/sync.py`), full-sync CLI (`brain/full_sync.py`),

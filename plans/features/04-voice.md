@@ -15,7 +15,7 @@
 - [ ] **F3.3** — Voice answers come from the LOOPER brain
 - [ ] **F3.4** — `LooperMapBus`: one documented control surface for the map
 
-> **2026-07-12 progress (see `.SEED/decisions.md`):** the F3.2 router
+> **2026-07-12 progress (see `.SEED/decisions/legacy-decisions-archive.md`):** the F3.2 router
 > (ported grammar + bug fixes, 46 unit tests), the F3.4 bus, and the F3.3
 > speak-from-the-brain flow (chunked TTS, barge-in, anti-bias summaries,
 > configurable API base incl. `web/looper-widget.js`) are BUILT in this repo
