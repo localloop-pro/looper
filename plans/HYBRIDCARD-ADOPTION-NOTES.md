@@ -356,7 +356,7 @@ A version label does not detect drift by itself: if HybridCard regenerates its f
 
 ### B-4. Client timeout and local expiry for the kaspa badge (resolved 2026-09-27 in `dc680f1`, PR #15)
 
-This was the one "changes requested" item on `feat/kaspa-org-identity` (`plans/COMPLETION_STATUS.md`, "Kaspa identity branch review"; `plans/evidence/kaspa-identity-review/README.md`, "Resolution"). It is implemented; nothing below is a to-do.
+This was the one "changes requested" item on `feat/kaspa-org-identity` (`plans/archive/COMPLETION_STATUS.md`, "Kaspa identity branch review"; `plans/evidence/kaspa-identity-review/README.md`, "Resolution"). It is implemented; nothing below is a to-do.
 
 **Implemented behaviour** (`$LP/web/kaspa-identity.js`):
 
@@ -424,7 +424,7 @@ Effort M · Risk: behind Coolify's proxy `request.client.host` may be the proxy;
 
 Empty values are safe: `discover.py:71-74` treats empty as unset (decision 2026-08-12, [`.SEED/decisions/legacy-decisions-archive.md#legacy-23-2026-08-12-typedb-local-acceptance-completed-against-pinned`](.SEED/decisions/legacy-decisions-archive.md#legacy-23-2026-08-12-typedb-local-acceptance-completed-against-pinned)).
 
-**Fix, option B:** leave compose as is and add one line to `plans/COMPLETION_STATUS.md` under F2.1-F2.3: "Docker deploy runs graph-off by design until the internal-only TypeDB service exists; `engine` is always `fallback`." Option B costs nothing but must be written down so nobody debugs a "missing" graph.
+**Fix, option B:** leave compose as is and add one line to `plans/archive/COMPLETION_STATUS.md` under F2.1-F2.3: "Docker deploy runs graph-off by design until the internal-only TypeDB service exists; `engine` is always `fallback`." Option B costs nothing but must be written down so nobody debugs a "missing" graph.
 
 Effort S · Risk: option A with `TYPEDB_ENABLED=true` and an unreachable address adds a failed TypeDB connect to every `/api/discover` call before fallback (`discover.py:266-270`); watch latency after enabling.
 

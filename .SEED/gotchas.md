@@ -38,9 +38,7 @@
   misfires on "bus stop" — use word boundaries.
 - Web Speech API needs HTTPS (or localhost), works in Chrome/Edge/Safari,
   NOT Firefox — always feature-detect and fall back to typing.
-- looper `README.md` mentions files that don't exist yet
-  (`backend/services/review.py`, `matching.py`, `hermes/`) — trust the file tree,
-  not the README.
+- Trust `git ls-files`, not plan docs, for what exists in the repo.
 - looper-bot uses OpenAI Realtime endpoints/models configured in
   `electron/main.cjs` — confirm current model names against OpenAI docs at
   build time before changing.

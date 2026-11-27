@@ -5,7 +5,7 @@
 `plans/IMPLEMENTATION_PLAN.md` and feature checklists define scope and
 acceptance; unchecked boxes alone do not prove code is absent or deployed.
 
-`plans/BOT_HANDOFF.md` and `plans/COMPLETION_STATUS.md` have moved to
+`plans/BOT_HANDOFF.md` and `plans/archive/COMPLETION_STATUS.md` have moved to
 `plans/archive/` as historical evidence, with a superseded notice. Historical
 audit references now point readers at the current status instead.
 
